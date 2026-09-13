@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="820" viewBox="0 0 1180 820" role="img" aria-label="Side stack of the 13.3 inch e-ink frame">
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .title { font: 700 28px system-ui, sans-serif; fill: #101828; }
+      .sub { font: 15px system-ui, sans-serif; fill: #344054; }
+      .head { font: 700 16px system-ui, sans-serif; fill: #101828; }
+      .text { font: 13px system-ui, sans-serif; fill: #101828; }
+      .small { font: 12px system-ui, sans-serif; fill: #475467; }
+      .mono { font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #101828; }
+      .white { font: 700 12px system-ui, sans-serif; fill: #ffffff; }
+      .glass { fill: #e0f2fe; stroke: #1570ef; stroke-width: 2; }
+      .inky { fill: #111827; stroke: #000; stroke-width: 2; }
+      .hat { fill: #12b76a; stroke: #027a48; stroke-width: 2; }
+      .pico { fill: #175cd3; stroke: #0b4ea2; stroke-width: 2; }
+      .chg { fill: #f79009; stroke: #b54708; stroke-width: 2; }
+      .lipo { fill: #fef0c7; stroke: #dc6803; stroke-width: 2; }
+      .frame { fill: none; stroke: #667085; stroke-width: 3; }
+      .card { fill: #f8fafc; stroke: #667085; stroke-width: 1.6; }
+      .warn { fill: #fffaeb; stroke: #dc6803; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1180" height="820"/>
+  <text class="title" x="40" y="40">13.3 frame - side stack</text>
+  <text class="sub" x="40" y="64">Looking at the thin edge. Glass at the front (left). Battery is the flattest layer at the back.</text>
+
+  <rect class="frame" x="48" y="96" width="520" height="560" rx="8"/>
+  <text class="small" x="64" y="120">Box frame, at least 20 mm internal depth, landscape A4 (297 x 210 mm)</text>
+
+  <rect class="glass" x="80" y="140" width="36" height="480" rx="4"/>
+  <text class="mono" transform="translate(92 380) rotate(-90)">glass</text>
+
+  <rect class="inky" x="124" y="148" width="28" height="464" rx="3"/>
+  <text class="white" transform="translate(132 390) rotate(-90)">Inky 13.3 PCB</text>
+
+  <rect class="hat" x="160" y="250" width="40" height="220" rx="4"/>
+  <text class="white" transform="translate(174 380) rotate(-90)">Pico-to-Pi HAT</text>
+
+  <rect class="pico" x="208" y="280" width="32" height="160" rx="4"/>
+  <text class="white" transform="translate(218 388) rotate(-90)">Plus 2 W</text>
+
+  <rect class="chg" x="248" y="300" width="24" height="120" rx="3"/>
+  <text class="white" transform="translate(256 390) rotate(-90)">Amigo</text>
+
+  <rect class="lipo" x="280" y="200" width="22" height="360" rx="3"/>
+  <text class="mono" transform="translate(286 390) rotate(-90)">flat LiPo</text>
+
+  <text class="small" x="80" y="648">Front (wall-facing glass)</text>
+  <text class="small" x="360" y="648">Back (frame backing board)</text>
+
+  <rect class="card" x="600" y="96" width="540" height="280" rx="8"/>
+  <text class="head" x="620" y="124">40-pin header (after the HAT)</text>
+  <text class="mono" x="620" y="152">SCLK   Pico GP10   SPI1 SCK     meter this - some HATs swap clock/data</text>
+  <text class="mono" x="620" y="174">MOSI   Pico GP11   SPI1 TX</text>
+  <text class="mono" x="620" y="196">DC     Pico GP22</text>
+  <text class="mono" x="620" y="218">RST    Pico GP27   active low</text>
+  <text class="mono" x="620" y="240">BUSY   Pico GP17   active low on Inky 13.3</text>
+  <text class="mono" x="620" y="262">CS_M   Pico GP26   left half, columns 0-599</text>
+  <text class="mono" x="620" y="284">CS_S   Pico GP16   right half, columns 600-1199</text>
+  <text class="mono" x="620" y="306">SDA/SCL GP2 / GP3  Inky model EEPROM (I2C)</text>
+  <text class="small" x="620" y="340">Power and ground for the panel ride the same 40-pin header. Do not add a second 5 V supply to the Inky.</text>
+  <text class="small" x="620" y="360">Source: tesserae-device-pico-bin + el133-pico-driver, verified on Plus 2 W.</text>
+
+  <rect class="card" x="600" y="396" width="540" height="200" rx="8"/>
+  <text class="head" x="620" y="424">Power (weeks, not days)</text>
+  <text class="text" x="620" y="452">LiPo pouch -&gt; LiPo Amigo Pro (USB-C charge + switch) -&gt; Pico VSYS and GND</text>
+  <text class="text" x="620" y="476">Cell voltage 3.0-4.2 V is legal on VSYS. Skip any 5 V boost that idles all day.</text>
+  <text class="text" x="620" y="500">Common ground with the HAT. USB-C on the Pico is for flashing only.</text>
+  <text class="text" x="620" y="524">Inky draws current only while refreshing (~12-35 s). Image holds with power off.</text>
+  <text class="text" x="620" y="548">2.4 GHz Wi-Fi. Shut the CYW43439 before deep sleep.</text>
+
+  <rect class="warn" x="600" y="616" width="540" height="88" rx="8"/>
+  <text class="head" x="620" y="644">If the panel stays white</text>
+  <text class="text" x="620" y="672">Swap SCLK and MOSI on the HAT (do not trust the vendor PDF). Confirm with a continuity meter.</text>
+  <text class="text" x="620" y="694">BUSY is active low. A 300 ms D/C setup delay is required on Spectra 6.</text>
+</svg>

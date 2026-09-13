@@ -1,0 +1,57 @@
+# Copy to config.toml (gitignored) or point EINK_CONFIG at another file.
+
+bind = "0.0.0.0:8765"
+timezone = "Europe/London"
+family_name = "Family"
+# How often the Pico should poll. The server re-renders when data changes
+# or this interval has elapsed since the last successful render.
+refresh_minutes = 60
+
+# Optional Chromium / Chrome binary. Leave empty to auto-detect
+# google-chrome / chromium on PATH, or the usual macOS .app paths.
+chrome_path = ""
+
+[icloud]
+# Apple Account email + an *app-specific* password from
+# https://account.apple.com (not your normal Apple ID password).
+# Leave both empty to use the built-in demo calendar / lists.
+apple_id = ""
+app_password = ""
+# Display names as they appear in Calendar.app / Reminders.
+# Family Sharing calendars show up over CalDAV like any other calendar.
+calendars = ["Family"]
+todo_list = "Family"
+shopping_list = "Shopping"
+
+[meross]
+# Meross app email + password. The MS100 sensors report through the hub;
+# the server signs in to get the account key, then reads temperatures.
+email = ""
+password = ""
+# Leave empty unless the Meross app asks for a one-time code.
+mfa_code = ""
+api_base_url = "https://iotx-eu.meross.com"
+country_code = "GB"
+# Optional LAN IPs of the hub (tried before MQTT).
+hub_hosts = []
+# Optional display order / filter (Meross name or label). Empty = all sensors.
+rooms = []
+
+# [meross.labels]
+# "Sensor living room" = "Living room"
+
+[weather]
+# GeoNames id from the BBC Weather page URL:
+# https://www.bbc.co.uk/weather/2643743  →  2643743
+# Leave empty to show the built-in demo forecast.
+location_id = "2643743"
+
+[sources]
+# Extra public ICS URLs (no password). Calendar.app’s webcal:// links
+# are fine — they are fetched as https://. Useful if you publish the
+# family calendar as a read-only link instead of using CalDAV.
+ics_urls = []
+# Local JSON fallbacks / overrides. Paths are relative to this file
+# unless they are absolute.
+shopping_file = "fixtures/shopping.json"
+todos_file = "fixtures/todos.json"

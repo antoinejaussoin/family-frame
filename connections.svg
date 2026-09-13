@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="1560" viewBox="0 0 1180 1560" role="img" aria-label="Electrical connections for the e-ink frame: power, Inky SPI pins, and the LAN server">
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .title { font: 700 26px system-ui, sans-serif; fill: #101828; }
+      .sub { font: 14px system-ui, sans-serif; fill: #344054; }
+      .head { font: 700 17px system-ui, sans-serif; fill: #101828; }
+      .text { font: 13px system-ui, sans-serif; fill: #101828; }
+      .small { font: 12px system-ui, sans-serif; fill: #475467; }
+      .mono { font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #101828; }
+      .white { font: 700 12px system-ui, sans-serif; fill: #ffffff; }
+      .pico { fill: #175cd3; stroke: #0b4ea2; stroke-width: 2; }
+      .usb { fill: #98a2b3; stroke: #344054; stroke-width: 1.5; }
+      .pin { fill: #e4e7ec; stroke: #98a2b3; stroke-width: 1; }
+      .pin-use { fill: #fef0c7; stroke: #b54708; stroke-width: 1.4; }
+      .pin-bad { fill: #fda29b; stroke: #b42318; stroke-width: 1.4; }
+      .dot { fill: #101828; }
+      .w { fill: none; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+      .red { stroke: #d92d20; }
+      .blk { stroke: #101828; }
+      .blu { stroke: #1570ef; }
+      .org { stroke: #dc6803; }
+      .grn { stroke: #12b76a; }
+      .card { fill: #f8fafc; stroke: #d0d5dd; stroke-width: 1.6; }
+      .lipo { fill: #fef0c7; stroke: #dc6803; stroke-width: 2; }
+      .amigo { fill: #f79009; stroke: #b54708; stroke-width: 2; }
+      .hat { fill: #12b76a; stroke: #027a48; stroke-width: 2; }
+      .inky { fill: #111827; stroke: #000; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1180" height="1560"/>
+  <text class="title" x="36" y="36">E-ink frame - connections</text>
+  <text class="sub" x="36" y="58">Three separate diagrams. Power on VSYS, never VBUS. SPI stays on the 40-pin header. Hole names and the side stack are in wiring.svg.</text>
+
+  <!-- ========== 1. Power ========== -->
+  <g transform="translate(28,76)">
+    <rect class="card" x="0" y="0" width="1124" height="420" rx="12"/>
+    <text class="head" x="24" y="32">1. Power</text>
+    <text class="small" x="24" y="52">LiPo pouch to Amigo Pro to Pico VSYS. USB-C on the Pico is for flashing only. Cell voltage 3.0-4.2 V is legal on VSYS.</text>
+
+    <rect class="usb" x="74" y="90" width="100" height="28" rx="4"/>
+    <text class="mono" x="102" y="109">USB-C</text>
+    <rect class="pico" x="56" y="118" width="136" height="250" rx="8"/>
+    <text class="white" x="74" y="144">Plus 2 W</text>
+    <circle cx="124" cy="170" r="9" fill="#f2f4f7" stroke="#0b4ea2" stroke-width="2"/>
+    <text class="white" x="94" y="200">BOOTSEL</text>
+    <text class="white" x="88" y="348">antenna</text>
+
+    <rect class="pin-bad" x="192" y="130" width="22" height="14"/>
+    <text class="mono" x="220" y="141" style="fill:#b42318">40 VBUS  leave empty</text>
+    <rect class="pin-use" x="192" y="168" width="22" height="14"/>
+    <text class="mono" x="220" y="179">39 VSYS  battery +</text>
+    <rect class="pin-use" x="192" y="206" width="22" height="14"/>
+    <text class="mono" x="220" y="217">38 GND   battery -</text>
+
+    <rect class="lipo" x="760" y="110" width="200" height="90" rx="8"/>
+    <text class="head" x="776" y="140">LiPo pouch</text>
+    <text class="mono" x="776" y="166">3.7 V  2500-6600 mAh</text>
+    <text class="mono" x="776" y="186">JST-PH  red = +</text>
+
+    <rect class="amigo" x="500" y="100" width="200" height="110" rx="8"/>
+    <text class="white" x="516" y="130">LiPo Amigo Pro</text>
+    <text class="mono" x="516" y="156">USB-C charge</text>
+    <text class="mono" x="516" y="176">JST in -&gt; JST out</text>
+    <text class="mono" x="516" y="196">power switch</text>
+
+    <path class="w red" d="M760 140 H700"/>
+    <path class="w blk" d="M760 176 H700"/>
+    <path class="w red" d="M500 140 H390 V175 H214"/>
+    <path class="w blk" d="M500 176 H370 V213 H214"/>
+    <text class="mono" x="710" y="130" style="fill:#d92d20">+</text>
+    <text class="mono" x="710" y="196">GND</text>
+
+    <text class="mono" x="24" y="396" style="fill:#d92d20">red    LiPo +  -&gt;  Amigo in  -&gt;  Amigo out  -&gt;  VSYS (pin 39)</text>
+    <text class="mono" x="620" y="396">black  LiPo -  -&gt;  Amigo  -&gt;  GND (pin 38)</text>
+  </g>
+
+  <!-- ========== 2. Inky via HAT ========== -->
+  <g transform="translate(28,512)">
+    <rect class="card" x="0" y="0" width="1124" height="620" rx="12"/>
+    <text class="head" x="24" y="32">2. Inky via Pico-to-Pi HAT</text>
+    <text class="small" x="24" y="52">The HAT carries the Pico onto the Inky 40-pin header. 3V3 and GND ride that header. Do not add a second 5 V supply to the panel.</text>
+
+    <rect class="usb" x="74" y="90" width="100" height="28" rx="4"/>
+    <text class="mono" x="102" y="109">USB-C</text>
+    <rect class="pico" x="56" y="118" width="136" height="400" rx="8"/>
+    <text class="white" x="74" y="144">Plus 2 W</text>
+    <circle cx="124" cy="170" r="9" fill="#f2f4f7" stroke="#0b4ea2" stroke-width="2"/>
+    <text class="white" x="94" y="200">BOOTSEL</text>
+    <text class="white" x="88" y="500">antenna</text>
+
+    <rect class="pin-use" x="192" y="130" width="22" height="14"/>
+    <text class="mono" x="220" y="141">36 3V3   through HAT</text>
+    <rect class="pin-use" x="192" y="168" width="22" height="14"/>
+    <text class="mono" x="220" y="179">38 GND   through HAT</text>
+    <rect class="pin-use" x="192" y="214" width="22" height="14"/>
+    <text class="mono" x="220" y="225">15 GP11  MOSI</text>
+    <rect class="pin-use" x="192" y="248" width="22" height="14"/>
+    <text class="mono" x="220" y="259">14 GP10  SCLK</text>
+    <rect class="pin-use" x="192" y="282" width="22" height="14"/>
+    <text class="mono" x="220" y="293">4  GP2   SDA EEPROM</text>
+    <rect class="pin-use" x="192" y="316" width="22" height="14"/>
+    <text class="mono" x="220" y="327">5  GP3   SCL EEPROM</text>
+    <rect class="pin-use" x="192" y="350" width="22" height="14"/>
+    <text class="mono" x="220" y="361">29 GP22  DC</text>
+    <rect class="pin-use" x="192" y="384" width="22" height="14"/>
+    <text class="mono" x="220" y="395">32 GP27  RST</text>
+    <rect class="pin-use" x="192" y="418" width="22" height="14"/>
+    <text class="mono" x="220" y="429">22 GP17  BUSY</text>
+    <rect class="pin-use" x="192" y="452" width="22" height="14"/>
+    <text class="mono" x="220" y="463">31 GP26  CS_M  left</text>
+    <rect class="pin-use" x="192" y="486" width="22" height="14"/>
+    <text class="mono" x="220" y="497">21 GP16  CS_S  right</text>
+
+    <rect class="hat" x="560" y="160" width="200" height="120" rx="8"/>
+    <text class="white" x="584" y="196">Pico to Pi HAT</text>
+    <text class="mono" x="576" y="226">40-pin  -&gt;  check SCLK/MOSI</text>
+    <text class="mono" x="576" y="248">3V3 and GND through-header</text>
+
+    <rect class="inky" x="860" y="140" width="230" height="200" rx="8"/>
+    <text class="white" x="876" y="174">Inky Impression 13.3</text>
+    <text class="mono" x="876" y="206">SPI + dual CS</text>
+    <text class="mono" x="876" y="226">3V3 from Pico via HAT</text>
+    <text class="mono" x="876" y="246">image holds with power off</text>
+    <text class="mono" x="876" y="266">no extra 5 V</text>
+    <text class="mono" x="876" y="294">CS_M GP26  cols 0-599</text>
+    <text class="mono" x="876" y="314">CS_S GP16  cols 600-1199</text>
+
+    <path class="w blu" d="M214 255 H560"/>
+    <path class="w blu" d="M760 220 H860"/>
+    <path class="w grn" d="M690 280 V220"/>
+    <text class="mono" x="400" y="246" style="fill:#1570ef">SPI + I2C + 3V3 + GND</text>
+
+    <text class="mono" x="24" y="580" style="fill:#1570ef">blue   GP10/GP11/GP22/GP27/GP17/GP26/GP16  -&gt;  HAT  -&gt;  Inky</text>
+    <text class="small" x="24" y="604">If the panel stays white, swap SCLK and MOSI on the HAT and confirm with a continuity meter. BUSY is active low.</text>
+  </g>
+
+  <!-- ========== 3. Server ========== -->
+  <g transform="translate(28,1148)">
+    <rect class="card" x="0" y="0" width="1124" height="360" rx="12"/>
+    <text class="head" x="24" y="32">3. Server (this repo) lives on the LAN, not on the Pico</text>
+    <text class="small" x="24" y="52">The Plus 2 W is a dumb client. Family calendar and HTML layout never reach the Pico.</text>
+
+    <rect class="pin-bad" x="24" y="80" width="22" height="16"/>
+    <text class="mono" x="56" y="93">Do not use Pico VBUS (5 V USB) as the battery feed.</text>
+
+    <text class="text" x="24" y="136">Pico hourly:  GET http://&lt;server&gt;:8765/frame.bin?checksum=&lt;etag&gt;</text>
+    <text class="text" x="24" y="164">304 Not Modified  -&gt;  skip Inky refresh.   200  -&gt;  960000-byte Spectra 6 frame.</text>
+    <text class="text" x="24" y="192">Layout: HTML/CSS on the server. Chromium screenshots /dashboard at 1600 x 1200.</text>
+    <text class="text" x="24" y="220">iCloud Family calendar is CalDAV on the server. The Pico never sees Apple passwords.</text>
+    <text class="text" x="24" y="256">2.4 GHz Wi-Fi only. Shut the CYW43439 before deep sleep or you will not get weeks.</text>
+    <text class="text" x="24" y="284">First bring-up: el133-pico-driver / tesserae-device-pico-bin, then point GET at this server.</text>
+    <text class="small" x="24" y="328">See firmware/PROTOCOL.md. Hole-by-hole stack is wiring.svg. Shopping list is shopping.md.</text>
+  </g>
+</svg>

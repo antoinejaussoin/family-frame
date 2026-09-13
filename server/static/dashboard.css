@@ -1,0 +1,254 @@
+/* Spectra 6 only: black, white, yellow, red, blue, green.
+   This file is the layout source of truth. /dashboard is screenshotted
+   at 1600×1200. Do not add clocks or checksums — they would force a
+   panel refresh every hour. */
+
+:root {
+  --black: #000000;
+  --white: #ffffff;
+  --yellow: #ffff00;
+  --red: #ff0000;
+  --blue: #0000ff;
+  --green: #00ff00;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 1600px;
+  height: 1200px;
+  overflow: hidden;
+  background: var(--white);
+  color: var(--black);
+  font-family: "Noto Sans", "Noto Sans Display", Arial, Helvetica, sans-serif;
+  font-kerning: none;
+  font-smooth: never;
+  -webkit-font-smoothing: none;
+  letter-spacing: 0;
+  word-spacing: 0.08em;
+}
+
+.panel {
+  box-sizing: border-box;
+  width: 1600px;
+  height: 1200px;
+  padding: 44px 52px 36px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  grid-template-rows: auto auto 1fr 1fr;
+  grid-template-areas:
+    "mast mast"
+    "weather weather"
+    "today todos"
+    "week rooms";
+  gap: 20px 40px;
+}
+
+.mast {
+  grid-area: mast;
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  border-bottom: 8px solid var(--black);
+  padding-bottom: 16px;
+}
+.today { grid-area: today; min-width: 0; }
+.week { grid-area: week; min-width: 0; }
+.todos { grid-area: todos; min-width: 0; }
+.rooms { grid-area: rooms; min-width: 0; }
+.weather {
+  grid-area: weather;
+  min-width: 0;
+  position: relative;
+}
+
+.kicker {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+h1 {
+  margin: 0;
+  font-size: 72px;
+  line-height: 0.95;
+  font-weight: 700;
+}
+
+.date {
+  margin: 0 0 0 auto;
+  font-size: 32px;
+  font-weight: 600;
+}
+
+h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: 26px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 4px solid var(--black);
+  padding-bottom: 8px;
+}
+
+.section-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: block;
+}
+
+.rooms h2,
+.todos h2 {
+  color: var(--black);
+  border-bottom-color: var(--black);
+}
+
+.wx-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  grid-area: mast;
+  pointer-events: none;
+}
+
+.weather-days {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 36px;
+}
+
+.weather-day + .weather-day {
+  border-left: 4px solid var(--black);
+  padding-left: 36px;
+}
+
+.weather-day h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.weather-day .section-icon {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+}
+
+.slots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 8px 0 4px;
+  border-bottom: 0;
+  font-size: inherit;
+  line-height: 1;
+}
+
+.slot .period {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wx-icon {
+  width: 96px;
+  height: 96px;
+  display: block;
+}
+
+.slot .degrees {
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--red);
+  line-height: 1;
+}
+
+ol,
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+li {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 2px solid var(--black);
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.when {
+  flex: 0 0 150px;
+  font-weight: 700;
+  font-size: 24px;
+}
+
+.what { flex: 1 1 auto; min-width: 0; }
+.who,
+.temp,
+.humidity {
+  flex: 0 0 auto;
+  font-size: 22px;
+  font-weight: 700;
+}
+.temp {
+  color: var(--red);
+  font-size: 32px;
+  min-width: 3.2ch;
+  text-align: right;
+}
+.humidity {
+  color: var(--blue);
+  min-width: 3.4ch;
+  text-align: right;
+}
+.rooms li.offline .what {
+  color: var(--black);
+}
+.rooms li.offline .temp,
+.rooms li.offline .humidity {
+  color: var(--black);
+}
+
+.todos li::before {
+  content: "□ ";
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.todos li.done { text-decoration: line-through; }
+
+.empty {
+  font-size: 28px;
+  margin: 20px 0 0;
+}
+
+.today li:first-child .when {
+  background: var(--yellow);
+  color: var(--black);
+  padding: 2px 8px;
+}

@@ -1,0 +1,76 @@
+{
+  "location": {
+    "id": "2643743",
+    "name": "London"
+  },
+  "forecasts": [
+    {
+      "detailed": {
+        "reports": [
+          {
+            "localDate": "2026-09-12",
+            "timeslot": "09:00",
+            "temperatureC": 16,
+            "weatherType": 1,
+            "weatherTypeText": "Sunny"
+          },
+          {
+            "localDate": "2026-09-12",
+            "timeslot": "12:00",
+            "temperatureC": 19,
+            "weatherType": 3,
+            "weatherTypeText": "Sunny Intervals"
+          },
+          {
+            "localDate": "2026-09-12",
+            "timeslot": "15:00",
+            "temperatureC": 21,
+            "weatherType": 7,
+            "weatherTypeText": "Light Cloud"
+          },
+          {
+            "localDate": "2026-09-12",
+            "timeslot": "18:00",
+            "temperatureC": 18,
+            "weatherType": 10,
+            "weatherTypeText": "Light Rain Showers"
+          },
+          {
+            "localDate": "2026-09-12",
+            "timeslot": "21:00",
+            "temperatureC": 15,
+            "weatherType": 12,
+            "weatherTypeText": "Light Rain"
+          }
+        ]
+      }
+    },
+    {
+      "detailed": {
+        "reports": [
+          {
+            "localDate": "2026-09-13",
+            "timeslot": "09:00",
+            "temperatureC": 14,
+            "weatherType": 8,
+            "weatherTypeText": "Thick Cloud"
+          },
+          {
+            "localDate": "2026-09-13",
+            "timeslot": "15:00",
+            "temperatureC": 17,
+            "weatherType": 29,
+            "weatherTypeText": "Thundery Showers"
+          },
+          {
+            "localDate": "2026-09-13",
+            "timeslot": "21:00",
+            "temperatureC": 13,
+            "weatherType": 0,
+            "weatherTypeText": "Clear Sky"
+          }
+        ]
+      }
+    }
+  ]
+}

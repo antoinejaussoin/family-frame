@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>E-ink frame simulator</title>
+  <link rel="stylesheet" href="/static/preview.css">
+</head>
+<body>
+  <div class="workbench">
+    <aside class="tools">
+      <p class="brand">13.3″ Inky simulator</p>
+      <h1>Edit the layout in HTML/CSS, then look here.</h1>
+      <p>
+        The framed panel is the same 1600×1200 page the server screenshots for the Pico.
+        Change <code>templates/dashboard.html</code> and <code>static/dashboard.css</code>
+        and refresh this page. No Rust rebuild needed.
+      </p>
+      <dl>
+        <dt>Family</dt><dd>{{ family_name }}</dd>
+        <dt>Date on panel</dt><dd>{{ date_long }}</dd>
+        <dt>Data</dt><dd>{{ source_note }}</dd>
+      </dl>
+      <div class="swatches" aria-label="Spectra 6 palette">
+        <span class="k"></span><span class="w"></span><span class="y"></span>
+        <span class="r"></span><span class="b"></span><span class="g"></span>
+      </div>
+      <nav>
+        <a href="/dashboard" target="_blank">Open dashboard only</a>
+        <a href="/frame.png">Screenshot PNG</a>
+        <a href="/frame-dither.png">Dithered PNG</a>
+        <a href="/frame.bin">Packed .bin</a>
+        <a href="/frame.json">Checksum JSON</a>
+      </nav>
+      <p class="hint" id="checksum">Checksum loads after the first raster…</p>
+    </aside>
+
+    <div class="stage">
+      <div class="bezel">
+        <iframe
+          title="Family dashboard at panel resolution"
+          src="/dashboard?v=crisp-type"
+          width="1600"
+          height="1200"
+        ></iframe>
+      </div>
+      <p class="caption">Pimoroni Inky Impression 13.3″ · 1600×1200 · Spectra 6</p>
+    </div>
+  </div>
+  <script src="/static/preview.js"></script>
+</body>
+</html>
