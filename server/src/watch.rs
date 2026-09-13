@@ -1,6 +1,6 @@
-//! Dev-only rebuild/restart loop for `serve --watch`.
+//! Dev-only rebuild/restart loop for `--watch`.
 //!
-//! Production (Docker `CMD`) is plain `serve` and never enters this path.
+//! Production (Docker `CMD`) is the binary with no flags and never enters this path.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
@@ -190,7 +190,7 @@ fn spawn_server(root: &Path, config: Option<&Path>, bind: Option<&str>) -> Resul
         anyhow::bail!("expected compiled server at {}", bin.display());
     }
     let mut cmd = Command::new(&bin);
-    cmd.arg("serve").kill_on_drop(true);
+    cmd.kill_on_drop(true);
     if let Some(config) = config {
         cmd.arg("--config").arg(config);
     }

@@ -1,0 +1,21 @@
+[package]
+name = "pico-sim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Pico Plus 2 W client simulator: poll /frame.bin and save Spectra 6 PNGs"
+
+[dependencies]
+anyhow = "1.0.99"
+chrono = { version = "0.4.41", default-features = false, features = ["clock"] }
+clap = { version = "4.5.47", features = ["derive"] }
+image = { version = "0.25.8", default-features = false, features = ["png"] }
+reqwest = { version = "0.12.23", default-features = false, features = [
+    "rustls-tls",
+] }
+tokio = { version = "1.47.1", features = ["macros", "net", "rt-multi-thread", "time"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3.21.0"

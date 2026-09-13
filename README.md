@@ -21,6 +21,7 @@ This is being worked on, not working yet.
 | Wiring / stack | [`wiring.svg`](wiring.svg), [`connections.svg`](connections.svg) |
 | Pico protocol | [`firmware/PROTOCOL.md`](firmware/PROTOCOL.md) |
 | Rust server + layout simulator | [`server/`](server/) |
+| Pico client simulator | [`pico-sim/`](pico-sim/) |
 
 ## Layout workflow
 
@@ -43,15 +44,15 @@ HTML simulator works without it.
 ```bash
 cd server
 cp config.example.toml config.toml   # optional; demo data is the default
-cargo run -- serve
+cargo run
 ```
 
 While iterating locally, `--watch` rebuilds and restarts on source, template,
 static, fixture, or config changes. Do not use it in production (Docker `CMD`
-is plain `serve`).
+is the binary with no flags).
 
 ```bash
-cargo run -- serve --watch
+cargo run -- --watch
 # or: make watch
 ```
 
@@ -70,13 +71,18 @@ make docker-run     # http://127.0.0.1:8765 — mounts config.toml when present
 
 `make docker` builds then runs. Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`, same as compta).
 
-Pretend to be the Pico:
+## Pretend to be the Pico
+
+A separate crate polls `/frame.bin` the way the Plus 2 W will: keep the last
+checksum, skip a refresh on 304, and unpack a new frame to PNG on 200.
 
 ```bash
-cargo run -- pico-sim --url http://127.0.0.1:8765 --interval-secs 5
+cd pico-sim
+cargo run -- --url http://127.0.0.1:8765 --interval-secs 5
+# or: make run
 ```
 
-Each new frame is written as a timestamped PNG under `server/out/pico-sim/` (gitignored).
+Each new frame is written as a timestamped PNG under `pico-sim/out/` (gitignored).
 
 ## Family iCloud calendar and lists
 

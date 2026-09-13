@@ -36,14 +36,15 @@ The Plus 2 W firmware can stream this buffer with
 Do not start from a blank embassy driver. Bring up the glass with
 [el133-pico-driver](https://github.com/dmellok/el133-pico-driver) or
 [tesserae-device-pico-bin](https://github.com/dmellok/tesserae-device-pico-bin),
-then point the HTTP GET at this server. The Rust `pico-sim` subcommand
-exercises the checksum loop without hardware:
+then point the HTTP GET at this server. The Rust [`pico-sim`](../pico-sim/)
+crate exercises the checksum loop without hardware:
 
 ```bash
-cargo run --quiet -- pico-sim --url http://127.0.0.1:8765 --interval-secs 5
+cd pico-sim
+cargo run --quiet -- --url http://127.0.0.1:8765 --interval-secs 5
 ```
 
-New frames are saved as timestamped PNGs in `server/out/pico-sim/`.
+New frames are saved as timestamped PNGs in `pico-sim/out/`.
 
 ## Power
 
