@@ -9,6 +9,8 @@ use eink_frame::http::{self, AppState};
 use tokio::net::TcpListener;
 use tracing::{error, info, warn};
 
+mod watch;
+
 #[derive(Parser, Debug)]
 #[command(name = "eink-frame", about = "Family e-ink frame server")]
 struct Cli {
@@ -24,6 +26,10 @@ enum Command {
         config: Option<PathBuf>,
         #[arg(long)]
         bind: Option<String>,
+        /// Rebuild and restart when source, templates, or config change.
+        /// Local development only — do not use in production.
+        #[arg(long)]
+        watch: bool,
     },
     /// Behave like the Pico: poll /frame.bin with the last checksum.
     PicoSim {
@@ -47,7 +53,17 @@ async fn main() -> Result<()> {
         .init();
 
     match Cli::parse().cmd {
-        Command::Serve { config, bind } => serve(config, bind).await,
+        Command::Serve {
+            config,
+            bind,
+            watch,
+        } => {
+            if watch {
+                watch::run(config, bind).await
+            } else {
+                serve(config, bind).await
+            }
+        }
         Command::PicoSim {
             url,
             interval_secs,
@@ -177,6 +193,20 @@ fn save_pico_frame(dir: &std::path::Path, checksum: &str, bin: &[u8]) -> Result<
 mod tests {
     use super::*;
     use eink_frame::pack::PANEL_BYTES;
+
+    #[test]
+    fn serve_watch_flag_parses() {
+        let cli = Cli::try_parse_from(["eink-frame", "serve", "--watch"]).unwrap();
+        match cli.cmd {
+            Command::Serve { watch, .. } => assert!(watch),
+            other => panic!("expected serve, got {other:?}"),
+        }
+        let cli = Cli::try_parse_from(["eink-frame", "serve"]).unwrap();
+        match cli.cmd {
+            Command::Serve { watch, .. } => assert!(!watch),
+            other => panic!("expected serve, got {other:?}"),
+        }
+    }
 
     #[test]
     fn frame_url_omits_empty_checksum() {

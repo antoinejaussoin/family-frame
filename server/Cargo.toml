@@ -17,6 +17,7 @@ md-5 = "0.10.6"
 icalendar = "0.16.15"
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 minijinja = { version = "2.12.0", features = ["loader"] }
+notify = "8.2.0"
 reqwest = { version = "0.12.23", default-features = false, features = [
     "json",
     "rustls-tls",

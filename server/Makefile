@@ -1,9 +1,13 @@
-.PHONY: serve test pico-sim docker-build docker-run docker
+.PHONY: serve watch test pico-sim docker-build docker-run docker
 
 IMAGE := antoinejaussoin/family-frame-server
 
 serve:
 	cargo run -- serve
+
+# Local only: rebuild and restart when source / templates / config change.
+watch:
+	cargo run -- serve --watch
 
 test:
 	cargo test

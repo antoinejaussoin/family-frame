@@ -188,41 +188,43 @@
       </section>
     </div>
 
-    <section class="todos">
-      <h2>
-        <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-todo"/></svg>
-        To do
-      </h2>
-      {% if todos %}
-      <ul>
-        {% for item in todos %}
-        <li class="{% if item.done %}done{% endif %}">{{ item.title }}</li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <p class="empty">No open family tasks.</p>
-      {% endif %}
-    </section>
+    <div class="sidebar">
+      <section class="todos">
+        <h2>
+          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-todo"/></svg>
+          To do
+        </h2>
+        {% if todos %}
+        <ul>
+          {% for item in todos %}
+          <li class="{% if item.done %}done{% endif %}">{{ item.title }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty">No open family tasks.</p>
+        {% endif %}
+      </section>
 
-    <section class="rooms">
-      <h2>
-        <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-house"/></svg>
-        House
-      </h2>
-      {% if rooms %}
-      <ul>
-        {% for room in rooms %}
-        <li class="{% if not room.online %}offline{% endif %}">
-          <span class="what">{{ room.name }}</span>
-          <span class="temp">{{ room.temperature }}</span>
-          <span class="humidity">{{ room.humidity }}</span>
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <p class="empty">No thermometer readings yet.</p>
-      {% endif %}
-    </section>
+      <section class="rooms">
+        <h2>
+          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-house"/></svg>
+          House
+        </h2>
+        {% if rooms %}
+        <ul>
+          {% for room in rooms %}
+          <li class="{% if not room.online %}offline{% endif %}">
+            <span class="what">{{ room.name }}</span>
+            <span class="temp">{{ room.temperature }}</span>
+            <span class="humidity">{{ room.humidity }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty">No thermometer readings yet.</p>
+        {% endif %}
+      </section>
+    </div>
   </main>
 </body>
 </html>

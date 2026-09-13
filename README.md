@@ -46,6 +46,15 @@ cp config.example.toml config.toml   # optional; demo data is the default
 cargo run -- serve
 ```
 
+While iterating locally, `--watch` rebuilds and restarts on source, template,
+static, fixture, or config changes. Do not use it in production (Docker `CMD`
+is plain `serve`).
+
+```bash
+cargo run -- serve --watch
+# or: make watch
+```
+
 Then open <http://127.0.0.1:8765/preview>.
 
 ### Docker

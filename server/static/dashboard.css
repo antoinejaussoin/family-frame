@@ -36,12 +36,11 @@ body {
   padding: 44px 52px 36px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 460px;
-  grid-template-rows: auto auto 1fr 1fr;
+  grid-template-rows: auto auto 1fr;
   grid-template-areas:
     "mast mast"
     "weather weather"
-    "events todos"
-    "events rooms";
+    "events sidebar";
   gap: 20px 40px;
 }
 
@@ -61,16 +60,24 @@ body {
   min-height: 0;
   gap: 60px; /* minimum one event row; extra space sits above Coming next */
 }
-.today { flex: 0 0 auto; min-width: 0; }
-.coming {
+.sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: 60px;
+}
+.today,
+.todos { flex: 0 0 auto; min-width: 0; }
+.coming,
+.rooms {
   flex: 0 1 auto;
   margin-top: auto;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
-.todos { grid-area: todos; min-width: 0; }
-.rooms { grid-area: rooms; min-width: 0; }
 .weather {
   grid-area: weather;
   min-width: 0;
