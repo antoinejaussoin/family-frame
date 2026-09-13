@@ -6,6 +6,7 @@ use embassy_net::tcp::TcpSocket;
 use embassy_net::{IpEndpoint, Stack};
 use embassy_time::Duration;
 use embedded_io_async::Write;
+use family_frame_fw::headers::ResponseReader;
 use family_frame_fw::protocol::frame_target;
 use heapless::String;
 
@@ -108,11 +109,7 @@ async fn read_response(
     socket: &mut TcpSocket<'_>,
     dest: &mut [u8],
 ) -> Option<(u16, usize, String<80>)> {
-    let mut hdr = [0u8; 2048];
-    let mut hdr_len = 0usize;
-    let mut hdr_done = false;
-    let mut body_len = 0usize;
-    let mut overflow = false;
+    let mut reader = ResponseReader::new();
     let mut chunk = [0u8; 1024];
 
     loop {
@@ -120,79 +117,10 @@ async fn read_response(
         if n == 0 {
             break;
         }
-        let mut data = &chunk[..n];
-        if !hdr_done {
-            let room = hdr.len().saturating_sub(hdr_len);
-            let take = data.len().min(room);
-            hdr[hdr_len..hdr_len + take].copy_from_slice(&data[..take]);
-            hdr_len += take;
-            if let Some(end) = find_header_end(&hdr[..hdr_len]) {
-                hdr_done = true;
-                let extra = &hdr[end..hdr_len];
-                if body_len + extra.len() <= dest.len() {
-                    dest[body_len..body_len + extra.len()].copy_from_slice(extra);
-                    body_len += extra.len();
-                } else {
-                    overflow = true;
-                }
-                data = &data[take..];
-            } else if hdr_len >= hdr.len() {
-                return None;
-            } else {
-                continue;
-            }
-        }
-        if hdr_done && !data.is_empty() {
-            if body_len + data.len() <= dest.len() {
-                dest[body_len..body_len + data.len()].copy_from_slice(data);
-                body_len += data.len();
-            } else {
-                overflow = true;
-            }
-        }
-        if overflow {
+        if !reader.feed(&chunk[..n], dest) {
             return None;
         }
     }
 
-    if !hdr_done {
-        return None;
-    }
-    let headers = core::str::from_utf8(&hdr[..hdr_len]).ok()?;
-    let status = parse_status(headers)?;
-    let etag = copy_checksum(headers);
-    Some((status, body_len, etag))
-}
-
-fn find_header_end(buf: &[u8]) -> Option<usize> {
-    buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4)
-}
-
-fn parse_status(headers: &str) -> Option<u16> {
-    let line = headers.lines().next()?;
-    let mut parts = line.split_whitespace();
-    let _ = parts.next()?;
-    parts.next()?.parse().ok()
-}
-
-fn copy_checksum(headers: &str) -> String<80> {
-    let mut out = String::new();
-    let value = header_value(headers, "x-frame-checksum")
-        .or_else(|| header_value(headers, "etag"))
-        .unwrap_or("");
-    let v = value.trim().trim_matches('"');
-    let _ = out.push_str(v);
-    out
-}
-
-fn header_value<'a>(headers: &'a str, name: &str) -> Option<&'a str> {
-    for line in headers.lines() {
-        let Some((k, v)) = line.split_once(':') else {
-            continue;
-        };
-        if k.eq_ignore_ascii_case(name) {
-            return Some(v.trim());
-        }
-    }
-    None
+    reader.finish()
 }

@@ -9,22 +9,9 @@
 //! 90° CW and splits it.
 
 use crate::epd::{Chip, Epd, SETUP_MS};
+use family_frame_fw::panel::{PROWS, ROW_BYTES, pack_controller_row};
 
-pub const WIDTH: usize = 1600;
-pub const HEIGHT: usize = 1200;
-pub const FRAME_BYTES: usize = WIDTH * HEIGHT / 2;
-pub const ROW_BYTES: usize = 300;
-pub const PROWS: usize = 1600;
-
-#[allow(dead_code)]
-pub const BLACK: u8 = 0x0;
-#[allow(dead_code)]
-pub const WHITE: u8 = 0x1;
-pub const YELLOW: u8 = 0x2;
-pub const RED: u8 = 0x3;
-pub const BLUE: u8 = 0x5;
-#[allow(dead_code)]
-pub const GREEN: u8 = 0x6;
+pub use family_frame_fw::panel::{BLUE, FRAME_BYTES, RED, YELLOW};
 
 pub async fn init_panel(epd: &mut Epd) {
     epd.reset(1, 30, 30, 300).await;
@@ -110,14 +97,7 @@ where
 /// Rotate + split a landscape packed-4bpp frame (`FRAME_BYTES`).
 pub async fn show_frame(epd: &mut Epd, frame: &[u8]) {
     show_pattern(epd, |prow, half, out| {
-        let shift = if prow & 1 == 1 { 0 } else { 4 };
-        let col = prow >> 1;
-        let base = if half == 0 { 1199 } else { 599 };
-        for k in 0..ROW_BYTES {
-            let hb = frame[(base - 2 * k) * 800 + col];
-            let lb = frame[(base - 1 - 2 * k) * 800 + col];
-            out[k] = (((hb >> shift) & 0x0F) << 4) | ((lb >> shift) & 0x0F);
-        }
+        pack_controller_row(frame, prow, half, out);
     })
     .await;
 }

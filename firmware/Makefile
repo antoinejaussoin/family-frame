@@ -33,5 +33,5 @@ help:
 	@echo "make        build, convert to UF2, and flash a Pico LiPo 2 XL W in BOOTSEL mode"
 	@echo "make build  compile only"
 	@echo "make uf2    compile and write $(UF2) without flashing"
-	@echo "make test   host-side URL / settings parse tests"
+	@echo "make test   host-side URL, settings, HTTP, and panel-map tests"
 	@echo "make clean  remove build output"
