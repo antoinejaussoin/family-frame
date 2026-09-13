@@ -69,7 +69,7 @@ That is optional. The HAT still only mates with the USB-end 20.
 4. For weeks of sleep, cut the rear **power-LED** trace (LED symbol, USB-C end).
 5. If a refresh browns out or the board dies mid-update, solder the rear **`+1A Mode`** jumper (only if the cell can deliver that).
 6. Stack: frame glass → Inky → Pico-to-Pi HAT H → XL W (USB end) → pouch in the JST.
-7. Run the server simulator in [`server/`](server/) and lock the HTML layout **before** writing Pico firmware.
+7. Run the server simulator in [`server/`](server/) and lock the HTML layout **before** flashing [`firmware/`](firmware/).
 
 ## List B — Pico Plus 2 W (standard Pico outline)
 

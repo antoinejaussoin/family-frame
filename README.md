@@ -19,7 +19,7 @@ This is being worked on, not working yet.
 |---|---|
 | Hardware shopping list | [`shopping.md`](shopping.md) (list A: LiPo 2 XL W, or list B: Plus 2 W) |
 | Wiring / stack | [`wiring.svg`](wiring.svg), [`connections.svg`](connections.svg) |
-| Pico protocol | [`firmware/PROTOCOL.md`](firmware/PROTOCOL.md) |
+| Pico firmware (LiPo 2 XL W) | [`firmware/`](firmware/) |
 | Rust server + layout simulator | [`server/`](server/) |
 | Pico client simulator | [`pico-sim/`](pico-sim/) |
 
@@ -130,6 +130,8 @@ the day’s low and afternoon the high.
 
 ## Pico side
 
-The server is ready. The first panel bring-up should reuse the community
-Inky 13.3 + Pico driver (see the protocol doc). The Pico only needs
-Wi-Fi, an HTTP GET, and `el133_show_frame()` when the checksum changes.
+The [firmware](firmware/) is the Pico LiPo 2 XL W Embassy / Rust client:
+USB-serial `wifi` / `psk` / `server` / `save` (same as the laser-tag
+nodes), then `GET /frame.bin` and paint on 200. `make build` in
+`firmware/` and drop `family-frame.uf2` on the `RP2350` drive. Without
+the board, [`pico-sim`](pico-sim/) speaks the same loop.

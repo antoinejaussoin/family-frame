@@ -1,5 +1,9 @@
 .DS_Store
 
+# Pico firmware (Embassy / Rust)
+firmware/target/
+firmware/*.uf2
+
 # Docker Compose state (config.toml, meross-creds.json, weather-cache.json)
 /data/
 

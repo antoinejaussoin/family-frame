@@ -1,0 +1,203 @@
+//! CYW43 Wi-Fi, DHCP stack, and join loop.
+//!
+//! Same Embassy / PIO wiring as the laser-tag temperature and IR-capture nodes.
+
+use core::sync::atomic::{AtomicU8, Ordering};
+use cyw43::JoinOptions;
+use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
+use embassy_executor::Spawner;
+use embassy_futures::select::{Either, select};
+use embassy_net::{Config, Stack, StackResources};
+use embassy_rp::Peri;
+use embassy_rp::clocks::RoscRng;
+use embassy_rp::dma;
+use embassy_rp::gpio::{Level, Output};
+use embassy_rp::peripherals::{DMA_CH0, PIN_23, PIN_24, PIN_25, PIN_29, PIO0};
+use embassy_rp::pio::Pio;
+use embassy_time::{Duration, Timer};
+use static_cell::StaticCell;
+
+use crate::board::Irqs;
+use crate::settings;
+
+static WIFI_STATUS: AtomicU8 = AtomicU8::new(WifiStatus::Setup as u8);
+static FRAME_STATUS: AtomicU8 = AtomicU8::new(FrameStatus::None as u8);
+
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WifiStatus {
+    Setup = 0,
+    Joining = 1,
+    Up = 2,
+    Fail = 3,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FrameStatus {
+    None = 0,
+    Ok = 1,
+    NotModified = 2,
+    Fail = 3,
+}
+
+impl WifiStatus {
+    fn store(self) {
+        WIFI_STATUS.store(self as u8, Ordering::Relaxed);
+    }
+
+    fn load() -> Self {
+        match WIFI_STATUS.load(Ordering::Relaxed) {
+            1 => Self::Joining,
+            2 => Self::Up,
+            3 => Self::Fail,
+            _ => Self::Setup,
+        }
+    }
+}
+
+impl FrameStatus {
+    pub fn store(self) {
+        FRAME_STATUS.store(self as u8, Ordering::Relaxed);
+    }
+
+    fn load() -> Self {
+        match FRAME_STATUS.load(Ordering::Relaxed) {
+            1 => Self::Ok,
+            2 => Self::NotModified,
+            3 => Self::Fail,
+            _ => Self::None,
+        }
+    }
+}
+
+pub fn is_up() -> bool {
+    WifiStatus::load() == WifiStatus::Up
+}
+
+pub fn status_line() -> &'static str {
+    match WifiStatus::load() {
+        WifiStatus::Joining => "wifi: joining",
+        WifiStatus::Up => match FrameStatus::load() {
+            FrameStatus::Ok => "wifi ok  frame 200",
+            FrameStatus::NotModified => "wifi ok  frame 304",
+            FrameStatus::Fail => "wifi ok  frame fail",
+            FrameStatus::None => "wifi ok",
+        },
+        WifiStatus::Fail => "wifi fail",
+        WifiStatus::Setup => "USB: wifi/save",
+    }
+}
+
+pub async fn start(
+    spawner: Spawner,
+    pin_pwr: Peri<'static, PIN_23>,
+    pin_cs: Peri<'static, PIN_25>,
+    pin_dio: Peri<'static, PIN_24>,
+    pin_clk: Peri<'static, PIN_29>,
+    pio0: Peri<'static, PIO0>,
+    dma_ch0: Peri<'static, DMA_CH0>,
+) -> Stack<'static> {
+    let fw = cyw43::aligned_bytes!("../cyw43-firmware/43439A0.bin");
+    let clm = cyw43::aligned_bytes!("../cyw43-firmware/43439A0_clm.bin");
+    let nvram = cyw43::aligned_bytes!("../cyw43-firmware/nvram_rp2040.bin");
+
+    let pwr = Output::new(pin_pwr, Level::Low);
+    let cs = Output::new(pin_cs, Level::High);
+    let mut pio = Pio::new(pio0, Irqs);
+    let spi = PioSpi::new(
+        &mut pio.common,
+        pio.sm0,
+        RM2_CLOCK_DIVIDER,
+        pio.irq0,
+        cs,
+        pin_dio,
+        pin_clk,
+        dma::Channel::new(dma_ch0, Irqs),
+    );
+
+    static STATE: StaticCell<cyw43::State> = StaticCell::new();
+    let (net_device, mut control, runner) =
+        cyw43::new(STATE.init(cyw43::State::new()), pwr, spi, fw, nvram).await;
+    spawner.spawn(cyw43_task(runner).unwrap());
+    control.init(clm.as_ref()).await;
+    control
+        .set_power_management(cyw43::PowerManagementMode::PowerSave)
+        .await;
+
+    let mut rng = RoscRng;
+    static RESOURCES: StaticCell<StackResources<8>> = StaticCell::new();
+    let (stack, net_runner) = embassy_net::new(
+        net_device,
+        Config::dhcpv4(Default::default()),
+        RESOURCES.init(StackResources::new()),
+        rng.next_u64(),
+    );
+    spawner.spawn(net_task(net_runner).unwrap());
+    spawner.spawn(wifi_task(control, stack).unwrap());
+    stack
+}
+
+#[embassy_executor::task]
+async fn cyw43_task(
+    runner: cyw43::Runner<'static, cyw43::SpiBus<Output<'static>, PioSpi<'static, PIO0, 0>>>,
+) -> ! {
+    runner.run().await
+}
+
+#[embassy_executor::task]
+async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
+    runner.run().await
+}
+
+#[embassy_executor::task]
+async fn wifi_task(mut control: cyw43::Control<'static>, stack: Stack<'static>) -> ! {
+    loop {
+        let cfg = settings::snapshot().await;
+        if cfg.ssid.is_empty() {
+            WifiStatus::Setup.store();
+            control.gpio_set(0, false).await;
+            settings::wait_rejoin().await;
+            continue;
+        }
+
+        WifiStatus::Joining.store();
+        FrameStatus::None.store();
+        control.leave().await;
+        Timer::after_millis(200).await;
+
+        let up = embassy_time::with_timeout(Duration::from_secs(30), async {
+            let join = if cfg.psk.is_empty() {
+                control
+                    .join(cfg.ssid.as_str(), JoinOptions::new_open())
+                    .await
+            } else {
+                control
+                    .join(cfg.ssid.as_str(), JoinOptions::new(cfg.psk.as_bytes()))
+                    .await
+            };
+            match join {
+                Ok(()) => {
+                    stack.wait_config_up().await;
+                    true
+                }
+                Err(_) => false,
+            }
+        })
+        .await
+        .unwrap_or(false);
+
+        if up {
+            WifiStatus::Up.store();
+            control.gpio_set(0, true).await;
+            settings::wait_rejoin().await;
+        } else {
+            WifiStatus::Fail.store();
+            control.gpio_set(0, false).await;
+            control.leave().await;
+            match select(settings::wait_rejoin(), Timer::after_secs(2)).await {
+                Either::First(()) | Either::Second(()) => {}
+            }
+        }
+    }
+}
