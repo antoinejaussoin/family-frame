@@ -1,7 +1,7 @@
 # Pico firmware (dumb client)
 
 The family data and HTML layout live on the Rust server. This directory is
-only the contract the Plus 2 W must speak.
+only the contract the Pico LiPo 2 XL W must speak.
 
 See [`PROTOCOL.md`](PROTOCOL.md).
 

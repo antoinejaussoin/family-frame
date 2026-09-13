@@ -13,7 +13,6 @@
       .inky { fill: #111827; stroke: #000; stroke-width: 2; }
       .hat { fill: #12b76a; stroke: #027a48; stroke-width: 2; }
       .pico { fill: #175cd3; stroke: #0b4ea2; stroke-width: 2; }
-      .chg { fill: #f79009; stroke: #b54708; stroke-width: 2; }
       .lipo { fill: #fef0c7; stroke: #dc6803; stroke-width: 2; }
       .frame { fill: none; stroke: #667085; stroke-width: 3; }
       .card { fill: #f8fafc; stroke: #667085; stroke-width: 1.6; }
@@ -26,7 +25,7 @@
   <text class="sub" x="40" y="64">Looking at the thin edge. Glass at the front (left). Battery is the flattest layer at the back.</text>
 
   <rect class="frame" x="48" y="96" width="520" height="560" rx="8"/>
-  <text class="small" x="64" y="120">Box frame, at least 20 mm internal depth, landscape A4 (297 x 210 mm)</text>
+  <text class="small" x="64" y="120">Box frame, at least 35 mm internal depth, landscape A4 (297 x 210 mm)</text>
 
   <rect class="glass" x="80" y="140" width="36" height="480" rx="4"/>
   <text class="mono" transform="translate(92 380) rotate(-90)">glass</text>
@@ -38,13 +37,10 @@
   <text class="white" transform="translate(174 380) rotate(-90)">Pico-to-Pi HAT</text>
 
   <rect class="pico" x="208" y="280" width="32" height="160" rx="4"/>
-  <text class="white" transform="translate(218 388) rotate(-90)">Plus 2 W</text>
+  <text class="white" transform="translate(218 400) rotate(-90)">LiPo 2 XL W</text>
 
-  <rect class="chg" x="248" y="300" width="24" height="120" rx="3"/>
-  <text class="white" transform="translate(256 390) rotate(-90)">Amigo</text>
-
-  <rect class="lipo" x="280" y="200" width="22" height="360" rx="3"/>
-  <text class="mono" transform="translate(286 390) rotate(-90)">flat LiPo</text>
+  <rect class="lipo" x="248" y="200" width="22" height="360" rx="3"/>
+  <text class="mono" transform="translate(254 390) rotate(-90)">flat LiPo</text>
 
   <text class="small" x="80" y="648">Front (wall-facing glass)</text>
   <text class="small" x="360" y="648">Back (frame backing board)</text>
@@ -60,13 +56,13 @@
   <text class="mono" x="620" y="284">CS_S   Pico GP16   right half, columns 600-1199</text>
   <text class="mono" x="620" y="306">SDA/SCL GP2 / GP3  Inky model EEPROM (I2C)</text>
   <text class="small" x="620" y="340">Power and ground for the panel ride the same 40-pin header. Do not add a second 5 V supply to the Inky.</text>
-  <text class="small" x="620" y="360">Source: tesserae-device-pico-bin + el133-pico-driver, verified on Plus 2 W.</text>
+  <text class="small" x="620" y="360">Source: tesserae-device-pico-bin + el133-pico-driver. Target board: Pico LiPo 2 XL W.</text>
 
   <rect class="card" x="600" y="396" width="540" height="200" rx="8"/>
   <text class="head" x="620" y="424">Power (weeks, not days)</text>
-  <text class="text" x="620" y="452">LiPo pouch -&gt; LiPo Amigo Pro (USB-C charge + switch) -&gt; Pico VSYS and GND</text>
-  <text class="text" x="620" y="476">Cell voltage 3.0-4.2 V is legal on VSYS. Skip any 5 V boost that idles all day.</text>
-  <text class="text" x="620" y="500">Common ground with the HAT. USB-C on the Pico is for flashing only.</text>
+  <text class="text" x="620" y="452">LiPo pouch -&gt; Pico LiPo 2 XL W JST-PH (onboard MCP73831 charger)</text>
+  <text class="text" x="620" y="476">Cell voltage 3.0-4.2 V. Skip any 5 V boost that idles all day. Do not feed VBUS.</text>
+  <text class="text" x="620" y="500">Common ground with the HAT. USB-C on the XL W flashes and charges (~215 mA).</text>
   <text class="text" x="620" y="524">Inky draws current only while refreshing (~12-35 s). Image holds with power off.</text>
   <text class="text" x="620" y="548">2.4 GHz Wi-Fi. Shut the CYW43439 before deep sleep.</text>
 

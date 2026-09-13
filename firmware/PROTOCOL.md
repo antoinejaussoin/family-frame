@@ -27,7 +27,7 @@ hour it:
 - two pixels per byte: high nibble = even column, low nibble = odd
 - nibbles: `0` black, `1` white, `2` yellow, `3` red, `5` blue, `6` green
 
-The Plus 2 W firmware can stream this buffer with
+The Pico LiPo 2 XL W firmware can stream this buffer with
 [`el133_show_frame()`](https://github.com/dmellok/el133-pico-driver) after a
 90° rotate/split (the panel’s two controllers are portrait halves).
 
@@ -48,7 +48,8 @@ New frames are saved as timestamped PNGs in `pico-sim/out/`.
 
 ## Power
 
-- LiPo → LiPo Amigo Pro → Pico **VSYS** + **GND** (3.0–4.2 V).
+- LiPo → Pico LiPo 2 XL W **JST-PH** (onboard MCP73831; 3.0–4.2 V).
+- USB-C flashes and charges. Do not feed **VBUS**.
 - Inky 3.3 V and SPI ride the 40-pin header.
 - Shut the CYW43439 down before POWMAN sleep or you will not get weeks.
 - 2.4 GHz only. Reserved DHCP or a static IP keeps the wake under ~45 s.

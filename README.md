@@ -2,7 +2,7 @@
 
 An e-ink, battery-powered frame for the family.
 
-A 13.3″ Spectra 6 panel in a picture frame. A **Pimoroni Pico Plus 2 W**
+A 13.3″ Spectra 6 panel in a picture frame. A **Pimoroni Pico LiPo 2 XL W**
 wakes once an hour, downloads a packed image, and sleeps. A **Rust server**
 on the LAN builds that image from HTML/CSS plus the family calendar,
 to-dos, house temperatures, and a BBC weather strip.
@@ -17,7 +17,7 @@ This is being worked on, not working yet.
 
 | Piece | Where |
 |---|---|
-| Hardware shopping list | [`shopping.md`](shopping.md) (list A: Plus 2 W, or list B: LiPo 2 XL W) |
+| Hardware shopping list | [`shopping.md`](shopping.md) (list A: LiPo 2 XL W, or list B: Plus 2 W) |
 | Wiring / stack | [`wiring.svg`](wiring.svg), [`connections.svg`](connections.svg) |
 | Pico protocol | [`firmware/PROTOCOL.md`](firmware/PROTOCOL.md) |
 | Rust server + layout simulator | [`server/`](server/) |
@@ -77,7 +77,7 @@ Local one-off: `cd server && make docker-build && make docker-run`. Pushes to Do
 
 ## Pretend to be the Pico
 
-A separate crate polls `/frame.bin` the way the Plus 2 W will: keep the last
+A separate crate polls `/frame.bin` the way the LiPo 2 XL W will: keep the last
 checksum, skip a refresh on 304, and unpack a new frame to PNG on 200.
 
 ```bash
@@ -131,5 +131,5 @@ the day’s low and afternoon the high.
 ## Pico side
 
 The server is ready. The first panel bring-up should reuse the community
-Inky 13.3 + Plus 2 W driver (see the protocol doc). The Pico only needs
+Inky 13.3 + Pico driver (see the protocol doc). The Pico only needs
 Wi-Fi, an HTTP GET, and `el133_show_frame()` when the checksum changes.

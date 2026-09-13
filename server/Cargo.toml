@@ -3,7 +3,7 @@ name = "eink-frame"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Family wall-frame server: HTML/CSS dashboard → Spectra 6 image for a Pico Plus 2 W"
+description = "Family wall-frame server: HTML/CSS dashboard → Spectra 6 image for a Pico LiPo 2 XL W"
 
 [dependencies]
 anyhow = "1.0.99"

@@ -23,7 +23,6 @@
       .grn { stroke: #12b76a; }
       .card { fill: #f8fafc; stroke: #d0d5dd; stroke-width: 1.6; }
       .lipo { fill: #fef0c7; stroke: #dc6803; stroke-width: 2; }
-      .amigo { fill: #f79009; stroke: #b54708; stroke-width: 2; }
       .hat { fill: #12b76a; stroke: #027a48; stroke-width: 2; }
       .inky { fill: #111827; stroke: #000; stroke-width: 2; }
     </style>
@@ -37,43 +36,39 @@
   <g transform="translate(28,76)">
     <rect class="card" x="0" y="0" width="1124" height="420" rx="12"/>
     <text class="head" x="24" y="32">1. Power</text>
-    <text class="small" x="24" y="52">LiPo pouch to Amigo Pro to Pico VSYS. USB-C on the Pico is for flashing only. Cell voltage 3.0-4.2 V is legal on VSYS.</text>
+    <text class="small" x="24" y="52">LiPo pouch into the XL W JST-PH. Onboard MCP73831 charges the cell. USB-C flashes and charges. Cell voltage 3.0-4.2 V. Do not feed VBUS.</text>
 
     <rect class="usb" x="74" y="90" width="100" height="28" rx="4"/>
-    <text class="mono" x="102" y="109">USB-C</text>
-    <rect class="pico" x="56" y="118" width="136" height="250" rx="8"/>
-    <text class="white" x="74" y="144">Plus 2 W</text>
+    <text class="mono" x="90" y="109">USB-C flash+chg</text>
+    <rect class="pico" x="56" y="118" width="136" height="280" rx="8"/>
+    <text class="white" x="70" y="144">LiPo 2 XL W</text>
     <circle cx="124" cy="170" r="9" fill="#f2f4f7" stroke="#0b4ea2" stroke-width="2"/>
     <text class="white" x="94" y="200">BOOTSEL</text>
-    <text class="white" x="88" y="348">antenna</text>
+    <rect class="lipo" x="148" y="220" width="36" height="28" rx="3"/>
+    <text class="mono" x="152" y="238">JST</text>
+    <text class="white" x="78" y="280">MCP73831</text>
+    <text class="white" x="88" y="378">antenna</text>
 
     <rect class="pin-bad" x="192" y="130" width="22" height="14"/>
     <text class="mono" x="220" y="141" style="fill:#b42318">40 VBUS  leave empty</text>
     <rect class="pin-use" x="192" y="168" width="22" height="14"/>
-    <text class="mono" x="220" y="179">39 VSYS  battery +</text>
+    <text class="mono" x="220" y="179">39 VSYS  onboard charger</text>
     <rect class="pin-use" x="192" y="206" width="22" height="14"/>
-    <text class="mono" x="220" y="217">38 GND   battery -</text>
+    <text class="mono" x="220" y="217">38 GND   common</text>
 
     <rect class="lipo" x="760" y="110" width="200" height="90" rx="8"/>
     <text class="head" x="776" y="140">LiPo pouch</text>
     <text class="mono" x="776" y="166">3.7 V  2500-6600 mAh</text>
     <text class="mono" x="776" y="186">JST-PH  red = +</text>
 
-    <rect class="amigo" x="500" y="100" width="200" height="110" rx="8"/>
-    <text class="white" x="516" y="130">LiPo Amigo Pro</text>
-    <text class="mono" x="516" y="156">USB-C charge</text>
-    <text class="mono" x="516" y="176">JST in -&gt; JST out</text>
-    <text class="mono" x="516" y="196">power switch</text>
-
-    <path class="w red" d="M760 140 H700"/>
-    <path class="w blk" d="M760 176 H700"/>
-    <path class="w red" d="M500 140 H390 V175 H214"/>
-    <path class="w blk" d="M500 176 H370 V213 H214"/>
+    <path class="w red" d="M760 140 H700 V234 H184"/>
+    <path class="w blk" d="M760 176 H680 V248 H184"/>
     <text class="mono" x="710" y="130" style="fill:#d92d20">+</text>
-    <text class="mono" x="710" y="196">GND</text>
+    <text class="mono" x="690" y="196">GND</text>
 
-    <text class="mono" x="24" y="396" style="fill:#d92d20">red    LiPo +  -&gt;  Amigo in  -&gt;  Amigo out  -&gt;  VSYS (pin 39)</text>
-    <text class="mono" x="620" y="396">black  LiPo -  -&gt;  Amigo  -&gt;  GND (pin 38)</text>
+    <text class="mono" x="24" y="396" style="fill:#d92d20">red    LiPo +  -&gt;  XL W JST-PH +</text>
+    <text class="mono" x="400" y="396">black  LiPo -  -&gt;  XL W JST-PH -</text>
+    <text class="mono" x="760" y="396">USB-C  flash + charge (~215 mA)</text>
   </g>
 
   <!-- ========== 2. Inky via HAT ========== -->
@@ -85,7 +80,7 @@
     <rect class="usb" x="74" y="90" width="100" height="28" rx="4"/>
     <text class="mono" x="102" y="109">USB-C</text>
     <rect class="pico" x="56" y="118" width="136" height="400" rx="8"/>
-    <text class="white" x="74" y="144">Plus 2 W</text>
+    <text class="white" x="70" y="144">LiPo 2 XL W</text>
     <circle cx="124" cy="170" r="9" fill="#f2f4f7" stroke="#0b4ea2" stroke-width="2"/>
     <text class="white" x="94" y="200">BOOTSEL</text>
     <text class="white" x="88" y="500">antenna</text>
@@ -140,7 +135,7 @@
   <g transform="translate(28,1148)">
     <rect class="card" x="0" y="0" width="1124" height="360" rx="12"/>
     <text class="head" x="24" y="32">3. Server (this repo) lives on the LAN, not on the Pico</text>
-    <text class="small" x="24" y="52">The Plus 2 W is a dumb client. Family calendar and HTML layout never reach the Pico.</text>
+    <text class="small" x="24" y="52">The Pico LiPo 2 XL W is a dumb client. Family calendar and HTML layout never reach the Pico.</text>
 
     <rect class="pin-bad" x="24" y="80" width="22" height="16"/>
     <text class="mono" x="56" y="93">Do not use Pico VBUS (5 V USB) as the battery feed.</text>
