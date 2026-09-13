@@ -8,12 +8,49 @@ pub struct CalendarEvent {
     pub who: String,
     pub all_day: bool,
     pub day_label: String,
+    /// Local `YYYY-MM-DD` so Today / Coming next stay in chronological order.
+    pub date: String,
 }
 
 /// Today/week title column is ~830px (1600 panel − padding − 460px sidebar −
 /// 150px time − gaps) at 30px Noto Sans, ~15.5px per character → ~53 glyphs.
 /// 48 leaves room for wide letters and the ellipsis.
 pub const EVENT_TITLE_MAX_CHARS: usize = 48;
+
+/// How far ahead to pull events for Coming next. Today stays in Today.
+pub const EVENT_HORIZON_DAYS: i64 = 180;
+
+/// Pixel budget for the stacked Today + Coming next column on the 1600×1200
+/// panel. Keep in sync with `dashboard.css` (`.panel` padding/gaps, `.mast`,
+/// `.weather`, `h2`, `li`, `.events { gap }`).
+pub const EVENTS_COLUMN_PX: i32 = 780;
+pub const SECTION_HEAD_PX: i32 = 66;
+pub const EVENT_ROW_PX: i32 = 60;
+pub const SECTION_GAP_PX: i32 = EVENT_ROW_PX;
+pub const EMPTY_SECTION_BODY_PX: i32 = 54;
+
+/// How many Coming next rows fit under Today on the 13.3″ panel.
+pub fn coming_event_capacity(today_count: usize) -> usize {
+    let today_body = if today_count == 0 {
+        EMPTY_SECTION_BODY_PX
+    } else {
+        (today_count as i32).saturating_mul(EVENT_ROW_PX)
+    };
+    let leftover =
+        EVENTS_COLUMN_PX - SECTION_HEAD_PX - today_body - SECTION_GAP_PX - SECTION_HEAD_PX;
+    if leftover < EVENT_ROW_PX {
+        0
+    } else {
+        (leftover / EVENT_ROW_PX) as usize
+    }
+}
+
+/// Today is first, but always leave Coming next a heading plus one row.
+pub fn max_today_events() -> usize {
+    let reserved = SECTION_GAP_PX + SECTION_HEAD_PX + EVENT_ROW_PX;
+    let body = EVENTS_COLUMN_PX - SECTION_HEAD_PX - reserved;
+    (body / EVENT_ROW_PX) as usize
+}
 
 pub fn truncate_event_title(title: &str) -> String {
     let title = title.lines().next().unwrap_or("").trim();
@@ -70,7 +107,7 @@ pub struct Dashboard {
     pub date_long: String,
     pub date_iso: String,
     pub events_today: Vec<CalendarEvent>,
-    pub events_week: Vec<CalendarEvent>,
+    pub events_coming: Vec<CalendarEvent>,
     pub todos: Vec<TodoItem>,
     pub rooms: Vec<RoomClimate>,
     pub weather: Weather,
@@ -85,7 +122,7 @@ impl Dashboard {
             date_long: date.format("%-d %B %Y").to_string(),
             date_iso: date.format("%Y-%m-%d").to_string(),
             events_today: Vec::new(),
-            events_week: Vec::new(),
+            events_coming: Vec::new(),
             todos: Vec::new(),
             rooms: Vec::new(),
             weather: Weather::default(),
@@ -97,6 +134,21 @@ impl Dashboard {
     /// and the Pico can skip the panel refresh.
     pub fn content_bytes(&self) -> Vec<u8> {
         serde_json::to_vec(self).expect("dashboard json")
+    }
+
+    /// Sort the calendar and keep only the rows that fit the panel.
+    pub fn fit_calendar_to_panel(&mut self) {
+        self.events_today
+            .sort_by(|a, b| a.start.cmp(&b.start).then(a.title.cmp(&b.title)));
+        self.events_coming.sort_by(|a, b| {
+            a.date
+                .cmp(&b.date)
+                .then(a.start.cmp(&b.start))
+                .then(a.title.cmp(&b.title))
+        });
+        self.events_today.truncate(max_today_events());
+        let cap = coming_event_capacity(self.events_today.len());
+        self.events_coming.truncate(cap);
     }
 }
 
@@ -122,7 +174,45 @@ mod tests {
 
     #[test]
     fn short_title_is_unchanged() {
-        assert_eq!(truncate_event_title("Household Waste and Recycling Centre"), "Household Waste and Recycling Centre");
+        assert_eq!(
+            truncate_event_title("Household Waste and Recycling Centre"),
+            "Household Waste and Recycling Centre"
+        );
+    }
+
+    #[test]
+    fn coming_next_fills_space_left_after_today() {
+        assert_eq!(coming_event_capacity(0), 8);
+        assert_eq!(coming_event_capacity(1), 8);
+        assert_eq!(coming_event_capacity(2), 7);
+        assert_eq!(coming_event_capacity(8), 1);
+        assert_eq!(max_today_events(), 8);
+    }
+
+    #[test]
+    fn fit_calendar_keeps_today_and_truncates_coming_next() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.events_today = vec![event(today, "10:00", "Recycling")];
+        dash.events_coming = (1..20)
+            .map(|i| event(today + chrono::Duration::days(i), "16:00", "Later"))
+            .collect();
+        dash.fit_calendar_to_panel();
+        assert_eq!(dash.events_today.len(), 1);
+        assert_eq!(dash.events_coming.len(), 8);
+        assert_eq!(dash.events_coming[0].date, "2026-09-14");
+        assert_eq!(dash.events_coming[7].date, "2026-09-21");
+    }
+
+    fn event(date: NaiveDate, start: &str, title: &str) -> CalendarEvent {
+        CalendarEvent {
+            start: start.into(),
+            title: title.into(),
+            who: String::new(),
+            all_day: false,
+            day_label: date.format("%a %-d").to_string(),
+            date: date.format("%Y-%m-%d").to_string(),
+        }
     }
 
     #[test]
@@ -133,9 +223,12 @@ mod tests {
         assert!(out.ends_with('…'));
         assert!(!out.contains("https://"));
         assert_eq!(
-            truncate_event_title("Line one is already far too long for the today column on this panel\nLine two"),
-            truncate_event_title("Line one is already far too long for the today column on this panel")
+            truncate_event_title(
+                "Line one is already far too long for the today column on this panel\nLine two"
+            ),
+            truncate_event_title(
+                "Line one is already far too long for the today column on this panel"
+            )
         );
     }
 }
-

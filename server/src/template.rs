@@ -55,5 +55,6 @@ mod tests {
         assert!(html.contains("Tomorrow"));
         assert!(html.contains("icon-house"));
         assert!(html.contains("icon-today"));
+        assert!(html.contains("Coming next"));
     }
 }

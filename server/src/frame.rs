@@ -108,10 +108,7 @@ impl FrameCache {
             .chrome
             .as_ref()
             .context("Chrome/Chromium not found — install it to rasterise /frame.bin, or use /preview to edit the HTML layout")?;
-        let url = format!(
-            "http://127.0.0.1:{}/dashboard?raster=1",
-            self.listen_port
-        );
+        let url = format!("http://127.0.0.1:{}/dashboard?raster=1", self.listen_port);
         let png = screenshot::capture_dashboard(chrome, &url).await?;
         let png = ensure_panel_size(&png)?;
         let bin = pack::pack_png_to_spectra6(&png)?;
@@ -172,10 +169,7 @@ fn ensure_panel_size(png: &[u8]) -> Result<Vec<u8>> {
         image::imageops::FilterType::Triangle,
     );
     let mut out = Vec::new();
-    resized.write_to(
-        &mut std::io::Cursor::new(&mut out),
-        image::ImageFormat::Png,
-    )?;
+    resized.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)?;
     Ok(out)
 }
 

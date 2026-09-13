@@ -4,7 +4,12 @@ use icalendar::{Calendar, CalendarComponent, CalendarDateTime, Component, DatePe
 
 use crate::model::{CalendarEvent, TodoItem};
 
-pub fn parse_events(ics: &str, tz: Tz, from: NaiveDate, days: i64) -> anyhow::Result<Vec<CalendarEvent>> {
+pub fn parse_events(
+    ics: &str,
+    tz: Tz,
+    from: NaiveDate,
+    days: i64,
+) -> anyhow::Result<Vec<CalendarEvent>> {
     let calendar: Calendar = ics
         .parse()
         .map_err(|e| anyhow::anyhow!("parsing ICS: {e}"))?;
@@ -42,9 +47,15 @@ pub fn parse_events(ics: &str, tz: Tz, from: NaiveDate, days: i64) -> anyhow::Re
             who: String::new(),
             all_day,
             day_label: day_label(local.date_naive(), from),
+            date: local.date_naive().format("%Y-%m-%d").to_string(),
         });
     }
-    out.sort_by(|a, b| a.day_label.cmp(&b.day_label).then(a.start.cmp(&b.start)));
+    out.sort_by(|a, b| {
+        a.date
+            .cmp(&b.date)
+            .then(a.start.cmp(&b.start))
+            .then(a.title.cmp(&b.title))
+    });
     Ok(out)
 }
 
@@ -97,13 +108,17 @@ fn date_to_local(when: DatePerhapsTime, tz: Tz) -> Option<(DateTime<Tz>, bool)> 
     }
 }
 
-fn day_label(date: NaiveDate, today: NaiveDate) -> String {
+pub(crate) fn day_label(date: NaiveDate, today: NaiveDate) -> String {
     if date == today {
         "Today".into()
     } else if date == today + Duration::days(1) {
         "Tomorrow".into()
-    } else {
+    } else if date.year() == today.year() && date.month() == today.month() {
         date.format("%a %-d").to_string()
+    } else if date.year() == today.year() {
+        date.format("%-d %b").to_string()
+    } else {
+        date.format("%-d %b %Y").to_string()
     }
 }
 
@@ -197,5 +212,24 @@ END:VCALENDAR
         assert!(events[0].title.ends_with('…'));
         assert!(events[0].title.chars().count() <= crate::model::EVENT_TITLE_MAX_CHARS);
         assert!(events[0].title.starts_with("Your event was created"));
+    }
+
+    #[test]
+    fn coming_next_labels_use_month_when_needed() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        assert_eq!(day_label(today, today), "Today");
+        assert_eq!(day_label(today + Duration::days(1), today), "Tomorrow");
+        assert_eq!(
+            day_label(NaiveDate::from_ymd_opt(2026, 9, 17).unwrap(), today),
+            "Thu 17"
+        );
+        assert_eq!(
+            day_label(NaiveDate::from_ymd_opt(2026, 10, 3).unwrap(), today),
+            "3 Oct"
+        );
+        assert_eq!(
+            day_label(NaiveDate::from_ymd_opt(2027, 1, 15).unwrap(), today),
+            "15 Jan 2027"
+        );
     }
 }

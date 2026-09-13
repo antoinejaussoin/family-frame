@@ -11,10 +11,7 @@ use crate::model::{Dashboard, FileTodo, TodoItem};
 use crate::weather;
 
 pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
-    let tz: Tz = cfg
-        .timezone
-        .parse()
-        .unwrap_or(chrono_tz::Europe::London);
+    let tz: Tz = cfg.timezone.parse().unwrap_or(chrono_tz::Europe::London);
     let today = Utc::now().with_timezone(&tz).date_naive();
     let mut dash = Dashboard::empty(&cfg.family_name, today);
     let mut notes: Vec<String> = Vec::new();
@@ -43,7 +40,7 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
     for url in &cfg.sources.ics_urls {
         match fetch_ics(url).await {
             Ok(ics) => {
-                let events = ics::parse_events(&ics, tz, today, 7)?;
+                let events = ics::parse_events(&ics, tz, today, crate::model::EVENT_HORIZON_DAYS)?;
                 info!(url, n = events.len(), "loaded public ICS");
                 merge_events(&mut dash, events);
                 notes.push("public ICS".into());
@@ -57,7 +54,7 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
             Ok((events, todos, icloud_notes)) => {
                 if !events.is_empty() {
                     dash.events_today.clear();
-                    dash.events_week.clear();
+                    dash.events_coming.clear();
                     merge_events(&mut dash, events);
                 }
                 if !todos.is_empty() {
@@ -70,7 +67,7 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
                 notes.push("iCloud unavailable — using local lists".into());
             }
         }
-    } else if dash.events_today.is_empty() && dash.events_week.is_empty() {
+    } else if dash.events_today.is_empty() && dash.events_coming.is_empty() {
         merge_events(&mut dash, demo_events(today));
         if dash.todos.is_empty() {
             dash.todos = demo_todos();
@@ -105,6 +102,7 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
         notes.push("demo weather (no BBC location)".into());
     }
 
+    dash.fit_calendar_to_panel();
     dash.source_note = notes.join(" · ");
     Ok(dash)
 }
@@ -113,11 +111,7 @@ async fn load_icloud(
     cfg: &Config,
     tz: Tz,
     today: chrono::NaiveDate,
-) -> Result<(
-    Vec<crate::model::CalendarEvent>,
-    Vec<TodoItem>,
-    Vec<String>,
-)> {
+) -> Result<(Vec<crate::model::CalendarEvent>, Vec<TodoItem>, Vec<String>)> {
     let client = CalDav::new(&cfg.icloud)?;
     let calendars = client.list_calendars().await?;
     let start = tz
@@ -131,8 +125,11 @@ async fn load_icloud(
         )
         .single()
         .ok_or_else(|| anyhow::anyhow!("invalid timezone date"))?;
-    let end = start + Duration::days(7);
-    let start_utc = start.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string();
+    let end = start + Duration::days(crate::model::EVENT_HORIZON_DAYS);
+    let start_utc = start
+        .with_timezone(&Utc)
+        .format("%Y%m%dT%H%M%SZ")
+        .to_string();
     let end_utc = end.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string();
 
     let mut events = Vec::new();
@@ -144,7 +141,7 @@ async fn load_icloud(
         let ics = client
             .fetch_calendar_data(&cal.href, &caldav::event_report(&start_utc, &end_utc))
             .await?;
-        let parsed = ics::parse_events(&ics, tz, today, 7)?;
+        let parsed = ics::parse_events(&ics, tz, today, crate::model::EVENT_HORIZON_DAYS)?;
         info!(calendar = %cal.name, n = parsed.len(), "iCloud events");
         events.extend(parsed);
         notes.push(format!("iCloud calendar “{}”", cal.name));
@@ -211,7 +208,7 @@ fn merge_events(dash: &mut Dashboard, events: Vec<crate::model::CalendarEvent>) 
         if ev.day_label == "Today" {
             dash.events_today.push(ev);
         } else {
-            dash.events_week.push(ev);
+            dash.events_coming.push(ev);
         }
     }
 }
@@ -233,35 +230,30 @@ fn read_todo_file(path: &std::path::Path) -> Result<Vec<TodoItem>> {
 
 fn demo_events(today: chrono::NaiveDate) -> Vec<crate::model::CalendarEvent> {
     use crate::model::CalendarEvent;
+
+    let ev = |offset: i64, start: &str, title: &str, all_day: bool| {
+        let date = today + Duration::days(offset);
+        CalendarEvent {
+            start: if all_day { String::new() } else { start.into() },
+            title: title.into(),
+            who: String::new(),
+            all_day,
+            day_label: ics::day_label(date, today),
+            date: date.format("%Y-%m-%d").to_string(),
+        }
+    };
+
     vec![
-        CalendarEvent {
-            start: "08:15".into(),
-            title: "School run".into(),
-            who: "Alex".into(),
-            all_day: false,
-            day_label: "Today".into(),
-        },
-        CalendarEvent {
-            start: "18:30".into(),
-            title: "Dinner at Sam’s".into(),
-            who: "".into(),
-            all_day: false,
-            day_label: "Today".into(),
-        },
-        CalendarEvent {
-            start: String::new(),
-            title: "Swim".into(),
-            who: "Alex".into(),
-            all_day: true,
-            day_label: "Tomorrow".into(),
-        },
-        CalendarEvent {
-            start: "16:00".into(),
-            title: "Parents’ evening".into(),
-            who: "".into(),
-            all_day: false,
-            day_label: (today + Duration::days(3)).format("%a %-d").to_string(),
-        },
+        ev(0, "08:15", "School run", false),
+        ev(0, "18:30", "Dinner at Sam’s", false),
+        ev(1, "", "Swim", true),
+        ev(3, "16:00", "Parents’ evening", false),
+        ev(5, "09:30", "Dentist", false),
+        ev(8, "18:00", "Cinema", false),
+        ev(12, "", "Half term", true),
+        ev(18, "10:00", "Football club", false),
+        ev(25, "19:00", "Book club", false),
+        ev(40, "15:00", "Granny’s birthday", false),
     ]
 }
 

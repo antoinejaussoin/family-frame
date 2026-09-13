@@ -130,6 +130,10 @@ fn chrome_stderr_suffix(bytes: Vec<u8>) -> String {
     if t.is_empty() {
         return String::new();
     }
-    let t = if t.len() > 400 { &t[t.len() - 400..] } else { t };
+    let t = if t.len() > 400 {
+        &t[t.len() - 400..]
+    } else {
+        t
+    };
     format!("; chrome stderr: {t}")
 }

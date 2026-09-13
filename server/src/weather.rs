@@ -193,19 +193,16 @@ fn forecast_from_json(json: &str, today: NaiveDate, cache: &mut SlotCache) -> Re
         parsed.location.name
     };
     let tomorrow = today + ChronoDuration::days(1);
-    let days = [
-        ("Today", today),
-        ("Tomorrow", tomorrow),
-    ]
-    .into_iter()
-    .map(|(label, date)| WeatherDay {
-        label: label.into(),
-        slots: PERIODS
-            .iter()
-            .map(|period| slot_for(date, period, &hours, &summaries, cache))
-            .collect(),
-    })
-    .collect();
+    let days = [("Today", today), ("Tomorrow", tomorrow)]
+        .into_iter()
+        .map(|(label, date)| WeatherDay {
+            label: label.into(),
+            slots: PERIODS
+                .iter()
+                .map(|period| slot_for(date, period, &hours, &summaries, cache))
+                .collect(),
+        })
+        .collect();
 
     cache.retain_recent(today);
     Ok(Weather { location, days })
@@ -293,10 +290,7 @@ fn collect_hours(parsed: &Aggregated) -> Vec<Hourly> {
                 hour,
                 temperature_c: report.temperature_c? as i32,
                 weather_type: report.weather_type.unwrap_or(-1),
-                weather_text: report
-                    .weather_type_text
-                    .clone()
-                    .unwrap_or_default(),
+                weather_text: report.weather_type_text.clone().unwrap_or_default(),
             })
         })
         .collect()

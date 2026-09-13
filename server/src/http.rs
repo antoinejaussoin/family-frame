@@ -144,9 +144,11 @@ fn no_store_html(html: String) -> Response {
 }
 
 fn offered_checksum<'a>(headers: &'a HeaderMap, q: &'a FrameQuery) -> Option<&'a str> {
-    q.checksum
-        .as_deref()
-        .or_else(|| headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()))
+    q.checksum.as_deref().or_else(|| {
+        headers
+            .get(header::IF_NONE_MATCH)
+            .and_then(|v| v.to_str().ok())
+    })
 }
 
 fn not_modified(etag: &str) -> Response {
@@ -171,9 +173,5 @@ fn binary(bytes: Vec<u8>, content_type: &'static str, etag: &str, filename: &str
 
 fn error_response(err: anyhow::Error) -> Response {
     tracing::error!(%err, "request failed");
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        format!("{err:#}\n"),
-    )
-        .into_response()
+    (StatusCode::INTERNAL_SERVER_ERROR, format!("{err:#}\n")).into_response()
 }

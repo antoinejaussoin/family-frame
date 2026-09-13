@@ -7,7 +7,7 @@ use eink_frame::config::Config;
 use eink_frame::frame::FrameCache;
 use eink_frame::http::{self, AppState};
 use tokio::net::TcpListener;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 #[derive(Parser, Debug)]
 #[command(name = "eink-frame", about = "Family e-ink frame server")]
@@ -89,52 +89,78 @@ async fn pico_sim(base: String, interval_secs: u64, out: Option<PathBuf>) -> Res
             .join("out")
             .join("pico-sim")
     });
-    std::fs::create_dir_all(&out_dir)
-        .with_context(|| format!("creating {}", out_dir.display()))?;
+    std::fs::create_dir_all(&out_dir).with_context(|| format!("creating {}", out_dir.display()))?;
     info!(dir = %out_dir.display(), "writing timestamped frame PNGs");
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .context("building HTTP client")?;
     let mut checksum = String::new();
     loop {
-        let url = format!(
-            "{}/frame.bin{}",
-            base.trim_end_matches('/'),
-            if checksum.is_empty() {
-                String::new()
-            } else {
-                format!("?checksum={checksum}")
-            }
-        );
-        let resp = client.get(&url).send().await?;
-        let status = resp.status();
-        if status.as_u16() == 304 {
-            info!(checksum, "304 not modified — Pico would skip the refresh");
-        } else if status.is_success() {
-            let etag = resp
-                .headers()
-                .get("x-frame-checksum")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("")
-                .to_string();
-            let bytes = resp.bytes().await?;
-            checksum = etag;
-            let path = save_pico_frame(&out_dir, &checksum, &bytes)?;
-            info!(
-                checksum,
-                bytes = bytes.len(),
-                path = %path.display(),
-                "200 new frame"
-            );
-        } else {
-            warn!(%status, "frame request failed");
+        let url = pico_frame_url(&base, &checksum);
+        if let Err(err) = poll_pico_frame(&client, &url, &out_dir, &mut checksum).await {
+            error!(%err, %url, "could not reach frame endpoint — retrying");
         }
         tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
     }
 }
 
+fn pico_frame_url(base: &str, checksum: &str) -> String {
+    format!(
+        "{}/frame.bin{}",
+        base.trim_end_matches('/'),
+        if checksum.is_empty() {
+            String::new()
+        } else {
+            format!("?checksum={checksum}")
+        }
+    )
+}
+
+async fn poll_pico_frame(
+    client: &reqwest::Client,
+    url: &str,
+    out_dir: &std::path::Path,
+    checksum: &mut String,
+) -> Result<()> {
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("GET {url}"))?;
+    let status = resp.status();
+    if status.as_u16() == 304 {
+        info!(checksum, "304 not modified — Pico would skip the refresh");
+    } else if status.is_success() {
+        let etag = resp
+            .headers()
+            .get("x-frame-checksum")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let bytes = resp.bytes().await.context("reading frame.bin body")?;
+        let path = save_pico_frame(out_dir, &etag, &bytes)?;
+        *checksum = etag;
+        info!(
+            checksum,
+            bytes = bytes.len(),
+            path = %path.display(),
+            "200 new frame"
+        );
+    } else {
+        warn!(%status, "frame request failed");
+    }
+    Ok(())
+}
+
 fn save_pico_frame(dir: &std::path::Path, checksum: &str, bin: &[u8]) -> Result<PathBuf> {
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let short: String = checksum.chars().filter(|c| c.is_ascii_hexdigit()).take(8).collect();
+    let short: String = checksum
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .take(8)
+        .collect();
     let name = if short.is_empty() {
         format!("frame-{stamp}.png")
     } else {
@@ -151,6 +177,39 @@ fn save_pico_frame(dir: &std::path::Path, checksum: &str, bin: &[u8]) -> Result<
 mod tests {
     use super::*;
     use eink_frame::pack::PANEL_BYTES;
+
+    #[test]
+    fn frame_url_omits_empty_checksum() {
+        assert_eq!(
+            pico_frame_url("http://127.0.0.1:8765/", ""),
+            "http://127.0.0.1:8765/frame.bin"
+        );
+        assert_eq!(
+            pico_frame_url("http://127.0.0.1:8765", "abc"),
+            "http://127.0.0.1:8765/frame.bin?checksum=abc"
+        );
+    }
+
+    #[tokio::test]
+    async fn unreachable_endpoint_returns_error() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut checksum = String::new();
+        let url = format!("http://{addr}/frame.bin");
+        let err = poll_pico_frame(&client, &url, dir.path(), &mut checksum)
+            .await
+            .expect_err("closed port should not succeed");
+        assert!(err.to_string().contains("GET"));
+        assert!(checksum.is_empty());
+        assert!(dir.path().read_dir().unwrap().next().is_none());
+    }
 
     #[test]
     fn writes_timestamped_png() {

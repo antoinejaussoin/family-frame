@@ -139,11 +139,7 @@ fn dither_floyd_steinberg(img: &RgbaImage) -> Vec<u8> {
                 continue;
             }
             let [r, g, b] = work[i];
-            let err = [
-                r - rgb[0] as i32,
-                g - rgb[1] as i32,
-                b - rgb[2] as i32,
-            ];
+            let err = [r - rgb[0] as i32, g - rgb[1] as i32, b - rgb[2] as i32];
             let mut spread = |wx: isize, wy: isize, num: i32, den: i32| {
                 let nx = x as isize + wx;
                 let ny = y as isize + wy;
@@ -182,7 +178,10 @@ fn pack_nibbles(indexed: &[u8]) -> Vec<u8> {
 /// Debug PNG: expand packed nibbles back to the six RGB primaries.
 pub fn unpack_preview_png(bin: &[u8]) -> Result<Vec<u8>> {
     if bin.len() != PANEL_BYTES {
-        bail!("packed frame must be {PANEL_BYTES} bytes, got {}", bin.len());
+        bail!(
+            "packed frame must be {PANEL_BYTES} bytes, got {}",
+            bin.len()
+        );
     }
     let mut img = RgbaImage::new(PANEL_WIDTH, PANEL_HEIGHT);
     let mut i = 0;
@@ -197,10 +196,7 @@ pub fn unpack_preview_png(bin: &[u8]) -> Result<Vec<u8>> {
         }
     }
     let mut png = Vec::new();
-    img.write_to(
-        &mut std::io::Cursor::new(&mut png),
-        image::ImageFormat::Png,
-    )?;
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)?;
     Ok(png)
 }
 
@@ -217,10 +213,7 @@ fn rgba_for(idx: u8) -> Rgba<u8> {
 pub fn solid_png(r: u8, g: u8, b: u8) -> Result<Vec<u8>> {
     let img = RgbaImage::from_pixel(PANEL_WIDTH, PANEL_HEIGHT, Rgba([r, g, b, 255]));
     let mut png = Vec::new();
-    img.write_to(
-        &mut std::io::Cursor::new(&mut png),
-        image::ImageFormat::Png,
-    )?;
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)?;
     Ok(png)
 }
 
@@ -271,7 +264,11 @@ mod tests {
         let bin = pack_rgba(&img).unwrap();
         assert_eq!(nibble_at(&bin, 20, 20), 0, "dark gray snaps to black");
         assert_eq!(nibble_at(&bin, 20, 21), 1, "light gray snaps to white");
-        assert_eq!(nibble_at(&bin, 21, 20), 1, "LCD fringe snaps without a new colour");
+        assert_eq!(
+            nibble_at(&bin, 21, 20),
+            1,
+            "LCD fringe snaps without a new colour"
+        );
         for (x, y) in [
             (19, 20),
             (22, 20),
@@ -284,5 +281,4 @@ mod tests {
             assert_eq!(nibble_at(&bin, x, y), 1, "halo at {x},{y}");
         }
     }
-
 }

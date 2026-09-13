@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>{{ family_name }} frame</title>
-  <link rel="stylesheet" href="/static/dashboard.css?v=crisp-type">
+  <link rel="stylesheet" href="/static/dashboard.css?v=coming-next">
 </head>
 <body>
   <main class="panel">
@@ -148,43 +148,45 @@
       {% endif %}
     </section>
 
-    <section class="today">
-      <h2>
-        <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-today"/></svg>
-        Today
-      </h2>
-      {% if events_today %}
-      <ol>
-        {% for ev in events_today %}
-        <li>
-          <span class="when">{% if ev.all_day %}All day{% else %}{{ ev.start }}{% endif %}</span>
-          <span class="what">{{ ev.title }}</span>
-        </li>
-        {% endfor %}
-      </ol>
-      {% else %}
-      <p class="empty">Nothing on the family calendar today.</p>
-      {% endif %}
-    </section>
+    <div class="events">
+      <section class="today">
+        <h2>
+          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-today"/></svg>
+          Today
+        </h2>
+        {% if events_today %}
+        <ol>
+          {% for ev in events_today %}
+          <li>
+            <span class="when">{% if ev.all_day %}All day{% else %}{{ ev.start }}{% endif %}</span>
+            <span class="what">{{ ev.title }}</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p class="empty">Nothing on the family calendar today.</p>
+        {% endif %}
+      </section>
 
-    <section class="week">
-      <h2>
-        <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-week"/></svg>
-        This week
-      </h2>
-      {% if events_week %}
-      <ol>
-        {% for ev in events_week %}
-        <li>
-          <span class="when">{{ ev.day_label }}{% if ev.start %} {{ ev.start }}{% endif %}</span>
-          <span class="what">{{ ev.title }}</span>
-        </li>
-        {% endfor %}
-      </ol>
-      {% else %}
-      <p class="empty">The rest of the week is clear.</p>
-      {% endif %}
-    </section>
+      <section class="coming">
+        <h2>
+          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-week"/></svg>
+          Coming next
+        </h2>
+        {% if events_coming %}
+        <ol>
+          {% for ev in events_coming %}
+          <li>
+            <span class="when">{{ ev.day_label }}{% if ev.start %} {{ ev.start }}{% endif %}</span>
+            <span class="what">{{ ev.title }}</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p class="empty">Nothing coming up.</p>
+        {% endif %}
+      </section>
+    </div>
 
     <section class="todos">
       <h2>

@@ -153,7 +153,10 @@ async fn cloud_login(cfg: &MerossConfig, api_base: &str) -> Result<CloudCreds> {
     match cloud_post(&url, params, None).await {
         Ok(data) => parse_creds(cfg.email.trim(), data),
         Err(err) if err.to_string().starts_with("meross-region:") => {
-            let domain = err.to_string().trim_start_matches("meross-region:").to_string();
+            let domain = err
+                .to_string()
+                .trim_start_matches("meross-region:")
+                .to_string();
             info!(%domain, "Meross login redirected to another region");
             Box::pin(cloud_login(cfg, &domain)).await
         }
@@ -166,10 +169,12 @@ fn parse_creds(email: &str, data: Value) -> Result<CloudCreds> {
         .ok_or_else(|| anyhow!("Meross login missing userid"))?;
     Ok(CloudCreds {
         email: email.to_string(),
-        token: json_string(&data, &["token"]).ok_or_else(|| anyhow!("Meross login missing token"))?,
+        token: json_string(&data, &["token"])
+            .ok_or_else(|| anyhow!("Meross login missing token"))?,
         key: json_string(&data, &["key"]).ok_or_else(|| anyhow!("Meross login missing key"))?,
         user_id,
-        domain: json_string(&data, &["domain"]).unwrap_or_else(|| "https://iotx-eu.meross.com".into()),
+        domain: json_string(&data, &["domain"])
+            .unwrap_or_else(|| "https://iotx-eu.meross.com".into()),
         mqtt_domain: json_string(&data, &["mqttDomain", "mqtt_domain"])
             .unwrap_or_else(|| "mqtt.meross.com".into()),
     })
@@ -190,17 +195,13 @@ async fn fetch_rooms(cfg: &MerossConfig, creds: &CloudCreds) -> Result<Vec<RoomC
                     if sub.id.is_empty() || !is_temp_sensor(&sub.device_type) {
                         continue;
                     }
-                    let label = cfg
-                        .labels
-                        .get(&sub.name)
-                        .cloned()
-                        .unwrap_or_else(|| {
-                            if sub.name.is_empty() {
-                                sub.id.clone()
-                            } else {
-                                sub.name.clone()
-                            }
-                        });
+                    let label = cfg.labels.get(&sub.name).cloned().unwrap_or_else(|| {
+                        if sub.name.is_empty() {
+                            sub.id.clone()
+                        } else {
+                            sub.name.clone()
+                        }
+                    });
                     names.insert(sub.id, label);
                 }
             }
@@ -219,7 +220,9 @@ async fn fetch_rooms(cfg: &MerossConfig, creds: &CloudCreds) -> Result<Vec<RoomC
     rooms.sort_by(|a, b| a.name.cmp(&b.name));
     if !cfg.rooms.is_empty() {
         rooms.retain(|r| {
-            cfg.rooms.iter().any(|want| want.eq_ignore_ascii_case(&r.name))
+            cfg.rooms
+                .iter()
+                .any(|want| want.eq_ignore_ascii_case(&r.name))
         });
         rooms.sort_by_key(|r| {
             cfg.rooms
@@ -245,7 +248,10 @@ async fn list_devices(creds: &CloudCreds) -> Result<Vec<DeviceInfo>> {
 }
 
 async fn list_subdevices(creds: &CloudCreds, hub_id: &str) -> Result<Vec<SubdeviceInfo>> {
-    let url = format!("{}/v1/Hub/getSubDevices", creds.domain.trim_end_matches('/'));
+    let url = format!(
+        "{}/v1/Hub/getSubDevices",
+        creds.domain.trim_end_matches('/')
+    );
     let data = cloud_post(&url, json!({ "uuid": hub_id }), Some(creds)).await?;
     let list = data.as_array().cloned().unwrap_or_default();
     Ok(list
@@ -254,13 +260,16 @@ async fn list_subdevices(creds: &CloudCreds, hub_id: &str) -> Result<Vec<Subdevi
         .collect())
 }
 
-async fn hub_sensor_all(
-    cfg: &MerossConfig,
-    creds: &CloudCreds,
-    hub: &DeviceInfo,
-) -> Result<Value> {
+async fn hub_sensor_all(cfg: &MerossConfig, creds: &CloudCreds, hub: &DeviceInfo) -> Result<Value> {
     for host in &cfg.hub_hosts {
-        match lan_command(host, creds, hub, "Appliance.Hub.Sensor.All", json!({ "all": [] })).await
+        match lan_command(
+            host,
+            creds,
+            hub,
+            "Appliance.Hub.Sensor.All",
+            json!({ "all": [] }),
+        )
+        .await
         {
             Ok(payload) => {
                 info!(hub = %hub.dev_name, host, "read Meross sensors over LAN");
@@ -408,7 +417,11 @@ async fn mqtt_command(
             }
         }
     }
-    bail!("no GETACK from hub {} within {:?}", hub.dev_name, MQTT_TIMEOUT)
+    bail!(
+        "no GETACK from hub {} within {:?}",
+        hub.dev_name,
+        MQTT_TIMEOUT
+    )
 }
 
 fn parse_ack(bytes: &[u8], message_id: &str) -> Result<Option<Value>> {
@@ -507,7 +520,9 @@ async fn cloud_post(url: &str, params: Value, creds: Option<&CloudCreds>) -> Res
     let status = resp.status();
     let body: CloudEnvelope = resp.json().await.context("decode Meross cloud JSON")?;
     match body.api_status {
-        0 => body.data.ok_or_else(|| anyhow!("Meross cloud reply had no data")),
+        0 => body
+            .data
+            .ok_or_else(|| anyhow!("Meross cloud reply had no data")),
         1030 => {
             let domain = body
                 .data
@@ -554,11 +569,7 @@ pub fn rooms_from_sensor_all(
                 id.clone()
             }
         });
-        let name = cfg
-            .labels
-            .get(&meross_name)
-            .cloned()
-            .unwrap_or(meross_name);
+        let name = cfg.labels.get(&meross_name).cloned().unwrap_or(meross_name);
         let online = entry
             .pointer("/online/status")
             .and_then(Value::as_i64)
@@ -650,7 +661,10 @@ fn json_string(v: &Value, keys: &[&str]) -> Option<String> {
 fn cached_creds(email: &str) -> Option<CloudCreds> {
     let guard = CREDS.lock().ok()?;
     let creds = guard.as_ref()?;
-    creds.email.eq_ignore_ascii_case(email.trim()).then(|| creds.clone())
+    creds
+        .email
+        .eq_ignore_ascii_case(email.trim())
+        .then(|| creds.clone())
 }
 
 fn store_creds(creds: CloudCreds) {

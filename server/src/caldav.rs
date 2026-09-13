@@ -48,7 +48,10 @@ impl CalDav {
 
     pub async fn list_calendars(&self) -> Result<Vec<CalendarRef>> {
         let principal = self
-            .discover_href("https://caldav.icloud.com/.well-known/caldav", "current-user-principal")
+            .discover_href(
+                "https://caldav.icloud.com/.well-known/caldav",
+                "current-user-principal",
+            )
             .await
             .context("CalDAV principal discovery")?;
         let home = self
@@ -293,7 +296,10 @@ pub fn match_named<'a>(cals: &'a [CalendarRef], names: &[String]) -> Vec<&'a Cal
     cals.iter()
         .filter(|c| {
             names.iter().any(|want| {
-                c.name.eq_ignore_ascii_case(want) || c.href.to_ascii_lowercase().contains(&want.to_ascii_lowercase())
+                c.name.eq_ignore_ascii_case(want)
+                    || c.href
+                        .to_ascii_lowercase()
+                        .contains(&want.to_ascii_lowercase())
             })
         })
         .collect()

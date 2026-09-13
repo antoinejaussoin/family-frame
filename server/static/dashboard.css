@@ -40,8 +40,8 @@ body {
   grid-template-areas:
     "mast mast"
     "weather weather"
-    "today todos"
-    "week rooms";
+    "events todos"
+    "events rooms";
   gap: 20px 40px;
 }
 
@@ -53,8 +53,16 @@ body {
   border-bottom: 8px solid var(--black);
   padding-bottom: 16px;
 }
-.today { grid-area: today; min-width: 0; }
-.week { grid-area: week; min-width: 0; }
+.events {
+  grid-area: events;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: 60px; /* one event row; model::SECTION_GAP_PX */
+}
+.today { flex: 0 0 auto; min-width: 0; }
+.coming { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
 .todos { grid-area: todos; min-width: 0; }
 .rooms { grid-area: rooms; min-width: 0; }
 .weather {
@@ -202,9 +210,9 @@ li {
 }
 
 .today ol,
-.week ol,
+.coming ol,
 .today li,
-.week li {
+.coming li {
   min-width: 0;
 }
 
@@ -216,8 +224,12 @@ li {
 
 .what { flex: 1 1 auto; min-width: 0; }
 
+.coming .when {
+  flex-basis: 210px;
+}
+
 .today .what,
-.week .what {
+.coming .what {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
