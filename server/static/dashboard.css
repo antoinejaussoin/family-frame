@@ -201,6 +201,13 @@ li {
   line-height: 1.2;
 }
 
+.today ol,
+.week ol,
+.today li,
+.week li {
+  min-width: 0;
+}
+
 .when {
   flex: 0 0 150px;
   font-weight: 700;
@@ -208,7 +215,13 @@ li {
 }
 
 .what { flex: 1 1 auto; min-width: 0; }
-.who,
+
+.today .what,
+.week .what {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .temp,
 .humidity {
   flex: 0 0 auto;

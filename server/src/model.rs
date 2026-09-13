@@ -10,6 +10,25 @@ pub struct CalendarEvent {
     pub day_label: String,
 }
 
+/// Today/week title column is ~830px (1600 panel − padding − 460px sidebar −
+/// 150px time − gaps) at 30px Noto Sans, ~15.5px per character → ~53 glyphs.
+/// 48 leaves room for wide letters and the ellipsis.
+pub const EVENT_TITLE_MAX_CHARS: usize = 48;
+
+pub fn truncate_event_title(title: &str) -> String {
+    let title = title.lines().next().unwrap_or("").trim();
+    if title.chars().count() <= EVENT_TITLE_MAX_CHARS {
+        return title.to_string();
+    }
+    let take = EVENT_TITLE_MAX_CHARS.saturating_sub(1);
+    let mut out: String = title.chars().take(take).collect();
+    while out.ends_with(' ') {
+        out.pop();
+    }
+    out.push('…');
+    out
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TodoItem {
     pub title: String,
@@ -95,5 +114,28 @@ pub struct FileTodo {
     pub title: String,
     #[serde(default)]
     pub done: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_title_is_unchanged() {
+        assert_eq!(truncate_event_title("Household Waste and Recycling Centre"), "Household Waste and Recycling Centre");
+    }
+
+    #[test]
+    fn long_title_is_one_line_with_ellipsis() {
+        let title = "Your event was created from an email that you received in Gmail. https://mail.google.com/mail?extsrc=cal&plid=ACUX6DC00";
+        let out = truncate_event_title(title);
+        assert_eq!(out.chars().count(), EVENT_TITLE_MAX_CHARS);
+        assert!(out.ends_with('…'));
+        assert!(!out.contains("https://"));
+        assert_eq!(
+            truncate_event_title("Line one is already far too long for the today column on this panel\nLine two"),
+            truncate_event_title("Line one is already far too long for the today column on this panel")
+        );
+    }
 }
 

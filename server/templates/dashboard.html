@@ -159,7 +159,6 @@
         <li>
           <span class="when">{% if ev.all_day %}All day{% else %}{{ ev.start }}{% endif %}</span>
           <span class="what">{{ ev.title }}</span>
-          {% if ev.who %}<span class="who">{{ ev.who }}</span>{% endif %}
         </li>
         {% endfor %}
       </ol>

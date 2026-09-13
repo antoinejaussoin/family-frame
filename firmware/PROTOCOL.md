@@ -43,6 +43,8 @@ exercises the checksum loop without hardware:
 cargo run --quiet -- pico-sim --url http://127.0.0.1:8765 --interval-secs 5
 ```
 
+New frames are saved as timestamped PNGs in `server/out/pico-sim/`.
+
 ## Power
 
 - LiPo → LiPo Amigo Pro → Pico **VSYS** + **GND** (3.0–4.2 V).

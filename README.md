@@ -67,6 +67,8 @@ Pretend to be the Pico:
 cargo run -- pico-sim --url http://127.0.0.1:8765 --interval-secs 5
 ```
 
+Each new frame is written as a timestamped PNG under `server/out/pico-sim/` (gitignored).
+
 ## Family iCloud calendar and lists
 
 Apple does not offer a public “Family Sharing API”. What works:

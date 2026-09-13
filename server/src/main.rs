@@ -31,8 +31,9 @@ enum Command {
         url: String,
         #[arg(long, default_value_t = 5)]
         interval_secs: u64,
+        /// Directory for timestamped PNGs of each new frame.
         #[arg(long)]
-        save: Option<PathBuf>,
+        out: Option<PathBuf>,
     },
 }
 
@@ -50,8 +51,8 @@ async fn main() -> Result<()> {
         Command::PicoSim {
             url,
             interval_secs,
-            save,
-        } => pico_sim(url, interval_secs, save).await,
+            out,
+        } => pico_sim(url, interval_secs, out).await,
     }
 }
 
@@ -82,7 +83,16 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
     Ok(())
 }
 
-async fn pico_sim(base: String, interval_secs: u64, save: Option<PathBuf>) -> Result<()> {
+async fn pico_sim(base: String, interval_secs: u64, out: Option<PathBuf>) -> Result<()> {
+    let out_dir = out.unwrap_or_else(|| {
+        eink_frame::config::asset_root()
+            .join("out")
+            .join("pico-sim")
+    });
+    std::fs::create_dir_all(&out_dir)
+        .with_context(|| format!("creating {}", out_dir.display()))?;
+    info!(dir = %out_dir.display(), "writing timestamped frame PNGs");
+
     let client = reqwest::Client::new();
     let mut checksum = String::new();
     loop {
@@ -108,13 +118,49 @@ async fn pico_sim(base: String, interval_secs: u64, save: Option<PathBuf>) -> Re
                 .to_string();
             let bytes = resp.bytes().await?;
             checksum = etag;
-            info!(checksum, bytes = bytes.len(), "200 new frame");
-            if let Some(path) = &save {
-                std::fs::write(path, &bytes)?;
-            }
+            let path = save_pico_frame(&out_dir, &checksum, &bytes)?;
+            info!(
+                checksum,
+                bytes = bytes.len(),
+                path = %path.display(),
+                "200 new frame"
+            );
         } else {
             warn!(%status, "frame request failed");
         }
         tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
+    }
+}
+
+fn save_pico_frame(dir: &std::path::Path, checksum: &str, bin: &[u8]) -> Result<PathBuf> {
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let short: String = checksum.chars().filter(|c| c.is_ascii_hexdigit()).take(8).collect();
+    let name = if short.is_empty() {
+        format!("frame-{stamp}.png")
+    } else {
+        format!("frame-{stamp}-{short}.png")
+    };
+    let path = dir.join(name);
+    let png = eink_frame::pack::unpack_preview_png(bin)
+        .with_context(|| "unpacking received frame.bin to PNG")?;
+    std::fs::write(&path, png).with_context(|| format!("writing {}", path.display()))?;
+    Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eink_frame::pack::PANEL_BYTES;
+
+    #[test]
+    fn writes_timestamped_png() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = vec![0x11; PANEL_BYTES];
+        let path = save_pico_frame(dir.path(), "abc123def456", &bin).unwrap();
+        let name = path.file_name().unwrap().to_str().unwrap();
+        assert!(name.starts_with("frame-"));
+        assert!(name.ends_with("-abc123de.png"));
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
     }
 }

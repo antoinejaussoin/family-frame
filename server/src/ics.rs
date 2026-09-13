@@ -32,19 +32,14 @@ pub fn parse_events(ics: &str, tz: Tz, from: NaiveDate, days: i64) -> anyhow::Re
         if local < start || local >= end {
             continue;
         }
-        let who = event
-            .get_description()
-            .or_else(|| event.property_value("LOCATION"))
-            .unwrap_or("")
-            .to_string();
         out.push(CalendarEvent {
             start: if all_day {
                 String::new()
             } else {
                 local.format("%H:%M").to_string()
             },
-            title,
-            who,
+            title: crate::model::truncate_event_title(&title),
+            who: String::new(),
             all_day,
             day_label: day_label(local.date_naive(), from),
         });
@@ -179,5 +174,28 @@ END:VCALENDAR
         let todos = parse_todos(SAMPLE).unwrap();
         assert_eq!(todos.len(), 1);
         assert_eq!(todos[0].title, "Buy stamps");
+    }
+
+    #[test]
+    fn long_gmail_invite_keeps_truncated_title_only() {
+        let ics = r#"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20260913T090000Z
+SUMMARY:Your event was created from an email that you received in Gmail. https://mail.google.com/mail?extsrc=cal&plid=ACUX6DC00
+DESCRIPTION:Book MOT\nPlease confirm the garage slot.\n\nhttps://mail.google.com/mail?extsrc=cal&plid=ACUX6DC00
+END:VEVENT
+END:VCALENDAR
+"#;
+        let tz: Tz = "UTC".parse().unwrap();
+        let day = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let events = parse_events(ics, tz, day, 1).unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(events[0].who.is_empty());
+        assert!(!events[0].title.contains("https://"));
+        assert!(!events[0].title.contains("Book MOT"));
+        assert!(events[0].title.ends_with('…'));
+        assert!(events[0].title.chars().count() <= crate::model::EVENT_TITLE_MAX_CHARS);
+        assert!(events[0].title.starts_with("Your event was created"));
     }
 }

@@ -205,7 +205,9 @@ async fn fetch_ics(url: &str) -> Result<String> {
 }
 
 fn merge_events(dash: &mut Dashboard, events: Vec<crate::model::CalendarEvent>) {
-    for ev in events {
+    for mut ev in events {
+        ev.title = crate::model::truncate_event_title(&ev.title);
+        ev.who.clear();
         if ev.day_label == "Today" {
             dash.events_today.push(ev);
         } else {
