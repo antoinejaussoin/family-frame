@@ -24,7 +24,7 @@ pub const EVENT_HORIZON_DAYS: i64 = 180;
 /// panel. Keep in sync with `dashboard.css` (`.panel` padding/gaps, `.mast`,
 /// `.weather`, `h2`, `li`, `.events { gap }`).
 pub const EVENTS_COLUMN_PX: i32 = 780;
-pub const SECTION_HEAD_PX: i32 = 66;
+pub const SECTION_HEAD_PX: i32 = 52;
 pub const EVENT_ROW_PX: i32 = 60;
 /// Minimum gap between Today and Coming next. Extra leftover space is
 /// absorbed above Coming next so that section sits on the column bottom.
@@ -184,11 +184,11 @@ mod tests {
 
     #[test]
     fn coming_next_fills_space_left_after_today() {
-        assert_eq!(coming_event_capacity(0), 8);
-        assert_eq!(coming_event_capacity(1), 8);
-        assert_eq!(coming_event_capacity(2), 7);
-        assert_eq!(coming_event_capacity(8), 1);
-        assert_eq!(max_today_events(), 8);
+        assert_eq!(coming_event_capacity(0), 9);
+        assert_eq!(coming_event_capacity(1), 9);
+        assert_eq!(coming_event_capacity(2), 8);
+        assert_eq!(coming_event_capacity(8), 2);
+        assert_eq!(max_today_events(), 9);
     }
 
     #[test]
@@ -201,9 +201,9 @@ mod tests {
             .collect();
         dash.fit_calendar_to_panel();
         assert_eq!(dash.events_today.len(), 1);
-        assert_eq!(dash.events_coming.len(), 8);
+        assert_eq!(dash.events_coming.len(), 9);
         assert_eq!(dash.events_coming[0].date, "2026-09-14");
-        assert_eq!(dash.events_coming[7].date, "2026-09-21");
+        assert_eq!(dash.events_coming[8].date, "2026-09-22");
     }
 
     fn event(date: NaiveDate, start: &str, title: &str) -> CalendarEvent {

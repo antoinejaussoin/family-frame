@@ -110,7 +110,7 @@ h2 {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 0 14px;
+  margin: 0;
   font-size: 26px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -222,6 +222,12 @@ li {
   line-height: 1.2;
 }
 
+/* Weather slots are also <li>; keep them fluid. */
+li:not(.slot) {
+  box-sizing: border-box;
+  height: 60px;
+}
+
 .today ol,
 .coming ol,
 .today li,
@@ -256,6 +262,7 @@ li {
 .temp {
   color: var(--red);
   font-size: 32px;
+  line-height: 1;
   min-width: 3.2ch;
   text-align: right;
 }
@@ -264,6 +271,10 @@ li {
   min-width: 3.4ch;
   text-align: right;
 }
+.rooms li {
+  align-items: center;
+}
+
 .rooms li.offline .what {
   color: var(--black);
 }
