@@ -1,0 +1,26 @@
+# Deploy the family-frame server on a Linux box.
+#
+#   mkdir -p data
+#   # put config.toml in data/ (copy from server/config.example.toml)
+#   docker compose up -d
+#
+# Pico and browsers on the LAN: http://<host>:8765/preview  and  /frame.bin
+
+name: family-frame
+
+services:
+  server:
+    image: antoinejaussoin/family-frame-server:latest
+    container_name: family-frame-server
+    restart: unless-stopped
+    init: true
+    shm_size: "1gb"
+    ports:
+      - "8765:8765"
+    environment:
+      TZ: Europe/London
+      RUST_LOG: eink_frame=info,tower_http=info
+      EINK_CONFIG: /data/config.toml
+    volumes:
+      # config.toml, meross-creds.json, weather-cache.json
+      - ./data:/data

@@ -63,13 +63,17 @@ Then open <http://127.0.0.1:8765/preview>.
 The image includes Google Chrome (amd64) or Chromium (arm64) so `/frame.bin` works.
 Dashboard HTML/CSS/JS is compiled into the binary — deploy only needs `config.toml`.
 
+On the Linux box, copy [`docker-compose.yml`](docker-compose.yml) and a `data/config.toml` (from [`server/config.example.toml`](server/config.example.toml)):
+
 ```bash
-cd server
-make docker-build   # antoinejaussoin/family-frame-server:local
-make docker-run     # http://127.0.0.1:8765 — mounts config.toml when present
+mkdir -p data
+# edit data/config.toml
+docker compose up -d
 ```
 
-`make docker` builds then runs. Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`, same as compta).
+Then <http://<host>:8765/preview>. Meross login and BBC weather caches stay in `data/` next to the config.
+
+Local one-off: `cd server && make docker-build && make docker-run`. Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`, same as compta).
 
 ## Pretend to be the Pico
 

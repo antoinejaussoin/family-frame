@@ -43,6 +43,8 @@ WORKDIR /app
 COPY --from=builder /src/target/release/eink-frame /usr/local/bin/eink-frame
 COPY fixtures /app/fixtures
 COPY config.example.toml /app/config.example.toml
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV EINK_HOME=/app
 ENV RUST_LOG=eink_frame=info,tower_http=info
@@ -52,4 +54,5 @@ EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
     CMD wget -qO- http://127.0.0.1:8765/health || exit 1
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["eink-frame"]
