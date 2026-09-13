@@ -26,6 +26,8 @@ pub const EVENT_HORIZON_DAYS: i64 = 180;
 pub const EVENTS_COLUMN_PX: i32 = 780;
 pub const SECTION_HEAD_PX: i32 = 66;
 pub const EVENT_ROW_PX: i32 = 60;
+/// Minimum gap between Today and Coming next. Extra leftover space is
+/// absorbed above Coming next so that section sits on the column bottom.
 pub const SECTION_GAP_PX: i32 = EVENT_ROW_PX;
 pub const EMPTY_SECTION_BODY_PX: i32 = 54;
 
