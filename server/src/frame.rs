@@ -72,12 +72,9 @@ impl FrameCache {
 
     pub fn layout_hash(&self, dash: &Dashboard) -> Result<String> {
         let html = self.templates.render_dashboard(dash)?;
-        let css_path =
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/dashboard.css");
-        let css = std::fs::read(css_path).unwrap_or_default();
         let mut bytes = dash.content_bytes();
         bytes.extend_from_slice(html.as_bytes());
-        bytes.extend_from_slice(&css);
+        bytes.extend_from_slice(crate::assets::DASHBOARD_CSS.as_bytes());
         Ok(sha256_hex(&bytes))
     }
 
@@ -141,7 +138,7 @@ impl FrameCache {
 
 #[cfg(debug_assertions)]
 fn dump_debug_images(png: &[u8], preview_png: &[u8]) {
-    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("out");
+    let dir = crate::config::asset_root().join("out");
     if let Err(err) = std::fs::create_dir_all(&dir) {
         tracing::warn!(%err, "could not create debug image dir");
         return;

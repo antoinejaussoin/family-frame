@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use serde::Deserialize;
-use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
+use crate::assets;
 use crate::frame::{checksum_matches, FrameCache};
 use crate::sources;
 
@@ -24,7 +24,6 @@ pub struct FrameQuery {
 }
 
 pub fn router(state: AppState) -> Router {
-    let static_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static");
     Router::new()
         .route("/", get(preview))
         .route("/preview", get(preview))
@@ -34,9 +33,24 @@ pub fn router(state: AppState) -> Router {
         .route("/frame-dither.png", get(frame_dither))
         .route("/frame.json", get(frame_json))
         .route("/health", get(health))
-        .nest_service("/static", ServeDir::new(static_dir))
+        .route("/static/{name}", get(static_asset))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+async fn static_asset(Path(name): Path<String>) -> Response {
+    let (body, content_type) = match name.as_str() {
+        "dashboard.css" => (assets::DASHBOARD_CSS, "text/css; charset=utf-8"),
+        "preview.css" => (assets::PREVIEW_CSS, "text/css; charset=utf-8"),
+        "preview.js" => (assets::PREVIEW_JS, "application/javascript; charset=utf-8"),
+        _ => {
+            return (StatusCode::NOT_FOUND, "not found\n").into_response();
+        }
+    };
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
+    headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+    (headers, body).into_response()
 }
 
 async fn preview(State(state): State<AppState>) -> impl IntoResponse {

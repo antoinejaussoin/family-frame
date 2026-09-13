@@ -121,6 +121,17 @@ impl Default for SourcesConfig {
     }
 }
 
+/// Directory that holds `templates/`, `static/`, and `fixtures/`.
+/// Set `EINK_HOME` in Docker so the binary does not depend on the compile-time crate path.
+pub fn asset_root() -> PathBuf {
+    std::env::var("EINK_HOME")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+}
+
 impl Config {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -136,22 +147,23 @@ impl Config {
     }
 
     pub fn load_or_default(path: Option<&Path>) -> Result<Self> {
-        match path {
-            Some(p) => Self::load(p),
-            None => {
-                for candidate in [
-                    Path::new("config.toml"),
-                    Path::new("server/config.toml"),
-                ] {
-                    if candidate.exists() {
-                        return Self::load(candidate);
-                    }
-                }
-                let mut cfg = Config::default();
-                cfg.config_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                Ok(cfg)
+        if let Some(p) = path {
+            return Self::load(p);
+        }
+        if let Ok(from_env) = std::env::var("EINK_CONFIG") {
+            let trimmed = from_env.trim();
+            if !trimmed.is_empty() {
+                return Self::load(Path::new(trimmed));
             }
         }
+        for candidate in [Path::new("config.toml"), Path::new("server/config.toml")] {
+            if candidate.exists() {
+                return Self::load(candidate);
+            }
+        }
+        let mut cfg = Config::default();
+        cfg.config_dir = asset_root();
+        Ok(cfg)
     }
 
     pub fn icloud_enabled(&self) -> bool {
@@ -187,6 +199,11 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn asset_root_defaults_to_crate_dir() {
+        assert_eq!(asset_root(), PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+    }
 
     #[test]
     fn example_config_parses() {

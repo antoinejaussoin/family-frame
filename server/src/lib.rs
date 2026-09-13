@@ -3,6 +3,7 @@
 //! The Pico is a dumb client: it GETs a packed Spectra 6 frame and skips
 //! the panel refresh when the checksum has not changed.
 
+pub mod assets;
 pub mod caldav;
 pub mod config;
 pub mod frame;

@@ -9,6 +9,10 @@ to-dos, house temperatures, and a BBC weather strip.
 
 Hardware to buy is in [`shopping.md`](shopping.md).
 
+## THIS IS A WORK IN PROGRESS
+
+This is being worked on, not working yet.
+
 ## What you get
 
 | Piece | Where |
@@ -43,6 +47,19 @@ cargo run -- serve
 ```
 
 Then open <http://127.0.0.1:8765/preview>.
+
+### Docker
+
+The image includes Google Chrome (amd64) or Chromium (arm64) so `/frame.bin` works.
+Dashboard HTML/CSS/JS is compiled into the binary — deploy only needs `config.toml`.
+
+```bash
+cd server
+make docker-build   # antoinejaussoin/family-frame-server:local
+make docker-run     # http://127.0.0.1:8765 — mounts config.toml when present
+```
+
+`make docker` builds then runs. Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`, same as compta).
 
 Pretend to be the Pico:
 

@@ -1,0 +1,30 @@
+name: PR Build Check
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup BuildX
+        id: buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build server
+        uses: docker/build-push-action@v7
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          file: server/Dockerfile
+          context: server
+          tags: family-frame-server:pr-${{ github.event.pull_request.number }}
+          platforms: linux/amd64
+          push: false
+          provenance: false
+          cache-from: type=gha,scope=family-frame-server
+          cache-to: type=gha,mode=max,scope=family-frame-server

@@ -1,0 +1,10 @@
+target
+config.toml
+meross-creds.json
+weather-cache.json
+out
+.DS_Store
+*.bin
+*.png
+!fixtures/**
+.git

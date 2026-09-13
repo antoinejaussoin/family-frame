@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
-use minijinja::{Environment, path_loader};
-use std::path::PathBuf;
+use minijinja::Environment;
 
+use crate::assets;
 use crate::model::Dashboard;
 
 pub struct Templates {
@@ -10,9 +10,11 @@ pub struct Templates {
 
 impl Templates {
     pub fn load() -> Result<Self> {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates");
         let mut env = Environment::new();
-        env.set_loader(path_loader(dir));
+        env.add_template("dashboard.html", assets::DASHBOARD_HTML)
+            .context("templates/dashboard.html")?;
+        env.add_template("preview.html", assets::PREVIEW_HTML)
+            .context("templates/preview.html")?;
         Ok(Self { env })
     }
 
