@@ -1,4 +1,4 @@
-//! Minimal CalDAV client aimed at iCloud Calendar / Reminders.
+//! Minimal CalDAV client aimed at iCloud Calendar.
 //!
 //! iCloud: `https://caldav.icloud.com` + Apple ID + app-specific password.
 //! Family Sharing calendars appear as ordinary named calendars after discovery.
@@ -171,19 +171,6 @@ pub fn event_report(start_utc: &str, end_utc: &str) -> String {
   </c:filter>
 </c:calendar-query>"#
     )
-}
-
-pub fn todo_report() -> String {
-    r#"<?xml version="1.0" encoding="utf-8" ?>
-<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
-  <d:prop><c:calendar-data/></d:prop>
-  <c:filter>
-    <c:comp-filter name="VCALENDAR">
-      <c:comp-filter name="VTODO"/>
-    </c:comp-filter>
-  </c:filter>
-</c:calendar-query>"#
-        .into()
 }
 
 fn local_name<'a>(e: roxmltree::Node<'a, 'a>) -> &'a str {

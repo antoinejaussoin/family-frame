@@ -84,7 +84,7 @@ cargo run -- --url http://127.0.0.1:8765 --interval-secs 5
 
 Each new frame is written as a timestamped PNG under `pico-sim/out/` (gitignored).
 
-## Family iCloud calendar and lists
+## Family calendar
 
 Apple does not offer a public “Family Sharing API”. What works:
 
@@ -92,16 +92,18 @@ Apple does not offer a public “Family Sharing API”. What works:
 2. Put the Apple ID and that password in `config.toml`.
 3. Set `calendars = ["Family"]` (or whatever the shared calendar is called
    in Calendar.app). Family Sharing calendars show up over CalDAV.
-4. `todo_list` and `shopping_list` are separate CalDAV reminder lists.
-   **Shopping is not the same list as to-dos.**
 
-If Reminders no longer appear over CalDAV on your account (Apple has been
-retiring that path), keep using:
+Or publish a read-only webcal URL in `sources.ics_urls`.
 
-- [`server/fixtures/shopping.json`](server/fixtures/shopping.json)
-- [`server/fixtures/todos.json`](server/fixtures/todos.json)
+## Family to-dos
 
-or publish a read-only webcal URL in `sources.ics_urls`.
+To-dos come from a shared [Todoist](https://todoist.com) project:
+
+1. Create a project (for example `Family`) and invite the household.
+2. Copy a **personal API token** from Todoist → Settings → Integrations → Developer.
+3. Put the token and project name in `config.toml` under `[todoist]`.
+
+Leave `todoist.token` empty to show the built-in demo list.
 
 The shopping column is now **house temperatures**. Meross MS100
 thermometer/hygrometers have no Wi-Fi of their own: they talk through the

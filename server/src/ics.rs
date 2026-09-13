@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use icalendar::{Calendar, CalendarComponent, CalendarDateTime, Component, DatePerhapsTime};
 
-use crate::model::{CalendarEvent, TodoItem};
+use crate::model::CalendarEvent;
 
 pub fn parse_events(
     ics: &str,
@@ -56,31 +56,6 @@ pub fn parse_events(
             .then(a.start.cmp(&b.start))
             .then(a.title.cmp(&b.title))
     });
-    Ok(out)
-}
-
-pub fn parse_todos(ics: &str) -> anyhow::Result<Vec<TodoItem>> {
-    let calendar: Calendar = ics
-        .parse()
-        .map_err(|e| anyhow::anyhow!("parsing ICS todos: {e}"))?;
-    let mut out = Vec::new();
-    for component in calendar.iter() {
-        let CalendarComponent::Todo(todo) = component else {
-            continue;
-        };
-        let Some(title) = todo.get_summary().map(str::to_string) else {
-            continue;
-        };
-        let status = todo
-            .property_value("STATUS")
-            .unwrap_or("")
-            .to_ascii_uppercase();
-        let done = status == "COMPLETED" || status == "CANCELLED";
-        if done {
-            continue;
-        }
-        out.push(TodoItem { title, done: false });
-    }
     Ok(out)
 }
 
@@ -165,19 +140,11 @@ BEGIN:VEVENT
 DTSTART;VALUE=DATE:20260913
 SUMMARY:Swim
 END:VEVENT
-BEGIN:VTODO
-SUMMARY:Buy stamps
-STATUS:NEEDS-ACTION
-END:VTODO
-BEGIN:VTODO
-SUMMARY:Done already
-STATUS:COMPLETED
-END:VTODO
 END:VCALENDAR
 "#;
 
     #[test]
-    fn parses_event_and_todo() {
+    fn parses_timed_and_all_day_events() {
         let tz: Tz = "UTC".parse().unwrap();
         let day = NaiveDate::from_ymd_opt(2026, 9, 12).unwrap();
         let events = parse_events(SAMPLE, tz, day, 7).unwrap();
@@ -185,10 +152,6 @@ END:VCALENDAR
         assert_eq!(events[0].start, "09:00");
         assert_eq!(events[1].title, "Swim");
         assert!(events[1].all_day);
-
-        let todos = parse_todos(SAMPLE).unwrap();
-        assert_eq!(todos.len(), 1);
-        assert_eq!(todos[0].title, "Buy stamps");
     }
 
     #[test]

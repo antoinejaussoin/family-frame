@@ -13,6 +13,7 @@ pub struct Config {
     pub refresh_minutes: u64,
     pub chrome_path: String,
     pub icloud: IcloudConfig,
+    pub todoist: TodoistConfig,
     pub meross: MerossConfig,
     pub weather: WeatherConfig,
     pub sources: SourcesConfig,
@@ -26,8 +27,15 @@ pub struct IcloudConfig {
     pub apple_id: String,
     pub app_password: String,
     pub calendars: Vec<String>,
-    pub todo_list: String,
-    pub shopping_list: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct TodoistConfig {
+    /// Personal API token from Todoist → Settings → Integrations → Developer.
+    pub token: String,
+    /// Shared project name or id. Invite the family to this project.
+    pub project: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -55,8 +63,6 @@ pub struct WeatherConfig {
 #[serde(default)]
 pub struct SourcesConfig {
     pub ics_urls: Vec<String>,
-    pub shopping_file: String,
-    pub todos_file: String,
 }
 
 impl Default for Config {
@@ -68,6 +74,7 @@ impl Default for Config {
             refresh_minutes: 60,
             chrome_path: String::new(),
             icloud: IcloudConfig::default(),
+            todoist: TodoistConfig::default(),
             meross: MerossConfig::default(),
             weather: WeatherConfig::default(),
             sources: SourcesConfig::default(),
@@ -82,8 +89,15 @@ impl Default for IcloudConfig {
             apple_id: String::new(),
             app_password: String::new(),
             calendars: vec!["Family".into()],
-            todo_list: "Family".into(),
-            shopping_list: "Shopping".into(),
+        }
+    }
+}
+
+impl Default for TodoistConfig {
+    fn default() -> Self {
+        Self {
+            token: String::new(),
+            project: "Family".into(),
         }
     }
 }
@@ -115,8 +129,6 @@ impl Default for SourcesConfig {
     fn default() -> Self {
         Self {
             ics_urls: Vec::new(),
-            shopping_file: "fixtures/shopping.json".into(),
-            todos_file: "fixtures/todos.json".into(),
         }
     }
 }
@@ -170,6 +182,10 @@ impl Config {
         !self.icloud.apple_id.trim().is_empty() && !self.icloud.app_password.trim().is_empty()
     }
 
+    pub fn todoist_enabled(&self) -> bool {
+        !self.todoist.token.trim().is_empty()
+    }
+
     pub fn meross_enabled(&self) -> bool {
         !self.meross.email.trim().is_empty() && !self.meross.password.trim().is_empty()
     }
@@ -184,15 +200,6 @@ impl Config {
 
     pub fn weather_cache_path(&self) -> PathBuf {
         self.config_dir.join("weather-cache.json")
-    }
-
-    pub fn resolve(&self, relative: &str) -> PathBuf {
-        let p = Path::new(relative);
-        if p.is_absolute() {
-            p.to_path_buf()
-        } else {
-            self.config_dir.join(p)
-        }
     }
 }
 
@@ -211,7 +218,8 @@ mod tests {
         let cfg = Config::load(path).unwrap();
         assert_eq!(cfg.family_name, "Family");
         assert_eq!(cfg.refresh_minutes, 60);
-        assert_eq!(cfg.icloud.shopping_list, "Shopping");
+        assert_eq!(cfg.todoist.project, "Family");
+        assert!(!cfg.todoist_enabled());
         assert_eq!(cfg.meross.api_base_url, "https://iotx-eu.meross.com");
         assert!(!cfg.meross_enabled());
         assert_eq!(cfg.weather.location_id, "2643743");

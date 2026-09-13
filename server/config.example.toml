@@ -14,14 +14,19 @@ chrome_path = ""
 [icloud]
 # Apple Account email + an *app-specific* password from
 # https://account.apple.com (not your normal Apple ID password).
-# Leave both empty to use the built-in demo calendar / lists.
+# Leave both empty to use the built-in demo calendar.
 apple_id = ""
 app_password = ""
-# Display names as they appear in Calendar.app / Reminders.
+# Display names as they appear in Calendar.app.
 # Family Sharing calendars show up over CalDAV like any other calendar.
 calendars = ["Family"]
-todo_list = "Family"
-shopping_list = "Shopping"
+
+[todoist]
+# Personal API token from Todoist → Settings → Integrations → Developer.
+# Leave empty to show the built-in demo to-do list.
+token = ""
+# Shared project name or id. Invite the family to this project.
+project = "Family"
 
 [meross]
 # Meross app email + password. The MS100 sensors report through the hub;
@@ -51,7 +56,3 @@ location_id = "2643743"
 # are fine — they are fetched as https://. Useful if you publish the
 # family calendar as a read-only link instead of using CalDAV.
 ics_urls = []
-# Local JSON fallbacks / overrides. Paths are relative to this file
-# unless they are absolute.
-shopping_file = "fixtures/shopping.json"
-todos_file = "fixtures/todos.json"

@@ -56,7 +56,10 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
     info!("dashboard only    http://{addr}/dashboard");
     info!("Pico endpoint     http://{addr}/frame.bin");
     if !cfg.icloud_enabled() {
-        warn!("no iCloud credentials — serving demo / local JSON lists");
+        warn!("no iCloud credentials — serving demo calendar unless ICS URLs are set");
+    }
+    if !cfg.todoist_enabled() {
+        warn!("no Todoist token — serving demo to-dos");
     }
     if !cfg.meross_enabled() {
         warn!("no Meross credentials — house temperatures will be demo rooms");

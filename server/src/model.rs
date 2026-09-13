@@ -163,13 +163,6 @@ pub struct FrameInfo {
     pub source_note: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct FileTodo {
-    pub title: String,
-    #[serde(default)]
-    pub done: bool,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

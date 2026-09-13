@@ -309,7 +309,7 @@ mod tests {
         ));
         assert!(should_trigger_reload(
             root(),
-            Path::new("/proj/fixtures/todos.json")
+            Path::new("/proj/fixtures/family.ics")
         ));
         assert!(should_trigger_reload(
             root(),

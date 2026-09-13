@@ -7,7 +7,8 @@ use crate::caldav::{self, CalDav};
 use crate::config::Config;
 use crate::ics;
 use crate::meross;
-use crate::model::{Dashboard, FileTodo, TodoItem};
+use crate::model::Dashboard;
+use crate::todoist;
 use crate::weather;
 
 pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
@@ -16,9 +17,21 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
     let mut dash = Dashboard::empty(&cfg.family_name, today);
     let mut notes: Vec<String> = Vec::new();
 
-    dash.todos = read_todo_file(&cfg.resolve(&cfg.sources.todos_file))?;
-    if !dash.todos.is_empty() {
-        notes.push("local todos".into());
+    if cfg.todoist_enabled() {
+        match todoist::load_todos(&cfg.todoist).await {
+            Ok(todos) => {
+                dash.todos = todos;
+                notes.push(format!("Todoist “{}”", cfg.todoist.project));
+            }
+            Err(err) => {
+                warn!(%err, "Todoist failed; using demo to-dos");
+                dash.todos = todoist::demo_todos();
+                notes.push("Todoist unavailable".into());
+            }
+        }
+    } else {
+        dash.todos = todoist::demo_todos();
+        notes.push("demo to-dos (no Todoist token)".into());
     }
     if cfg.meross_enabled() {
         match meross::load_rooms(&cfg.meross, &cfg.meross_creds_path()).await {
@@ -51,28 +64,22 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
 
     if cfg.icloud_enabled() {
         match load_icloud(cfg, tz, today).await {
-            Ok((events, todos, icloud_notes)) => {
+            Ok((events, icloud_notes)) => {
                 if !events.is_empty() {
                     dash.events_today.clear();
                     dash.events_coming.clear();
                     merge_events(&mut dash, events);
                 }
-                if !todos.is_empty() {
-                    dash.todos = todos;
-                }
                 notes.extend(icloud_notes);
             }
             Err(err) => {
-                warn!(%err, "iCloud CalDAV failed; keeping local/demo data");
-                notes.push("iCloud unavailable — using local lists".into());
+                warn!(%err, "iCloud CalDAV failed; keeping ICS/demo calendar");
+                notes.push("iCloud unavailable".into());
             }
         }
     } else if dash.events_today.is_empty() && dash.events_coming.is_empty() {
         merge_events(&mut dash, demo_events(today));
-        if dash.todos.is_empty() {
-            dash.todos = demo_todos();
-        }
-        notes.push("demo data (no iCloud credentials)".into());
+        notes.push("demo calendar (no iCloud credentials)".into());
     }
 
     if dash.rooms.is_empty() && !cfg.meross_enabled() {
@@ -111,7 +118,7 @@ async fn load_icloud(
     cfg: &Config,
     tz: Tz,
     today: chrono::NaiveDate,
-) -> Result<(Vec<crate::model::CalendarEvent>, Vec<TodoItem>, Vec<String>)> {
+) -> Result<(Vec<crate::model::CalendarEvent>, Vec<String>)> {
     let client = CalDav::new(&cfg.icloud)?;
     let calendars = client.list_calendars().await?;
     let start = tz
@@ -147,33 +154,7 @@ async fn load_icloud(
         notes.push(format!("iCloud calendar “{}”", cal.name));
     }
 
-    let todos = fetch_named_todos(&client, &calendars, &cfg.icloud.todo_list).await?;
-    if !todos.is_empty() {
-        notes.push(format!("iCloud list “{}”", cfg.icloud.todo_list));
-    }
-
-    Ok((events, todos, notes))
-}
-
-async fn fetch_named_todos(
-    client: &CalDav,
-    calendars: &[caldav::CalendarRef],
-    name: &str,
-) -> Result<Vec<TodoItem>> {
-    let mut out = Vec::new();
-    for cal in caldav::match_named(calendars, &[name.to_string()]) {
-        if !cal.supports_todos && cal.name.eq_ignore_ascii_case(name) {
-            // Some iCloud reminder lists omit the component-set flag.
-        }
-        match client
-            .fetch_calendar_data(&cal.href, &caldav::todo_report())
-            .await
-        {
-            Ok(ics) => out.extend(ics::parse_todos(&ics)?),
-            Err(err) => warn!(list = name, %err, "VTODO fetch failed"),
-        }
-    }
-    Ok(out)
+    Ok((events, notes))
 }
 
 /// Calendar.app copies `webcal://…`. That is just HTTPS with a scheme
@@ -213,21 +194,6 @@ fn merge_events(dash: &mut Dashboard, events: Vec<crate::model::CalendarEvent>) 
     }
 }
 
-fn read_todo_file(path: &std::path::Path) -> Result<Vec<TodoItem>> {
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let text = std::fs::read_to_string(path)?;
-    let items: Vec<FileTodo> = serde_json::from_str(&text)?;
-    Ok(items
-        .into_iter()
-        .map(|t| TodoItem {
-            title: t.title,
-            done: t.done,
-        })
-        .collect())
-}
-
 fn demo_events(today: chrono::NaiveDate) -> Vec<crate::model::CalendarEvent> {
     use crate::model::CalendarEvent;
 
@@ -254,23 +220,6 @@ fn demo_events(today: chrono::NaiveDate) -> Vec<crate::model::CalendarEvent> {
         ev(18, "10:00", "Football club", false),
         ev(25, "19:00", "Book club", false),
         ev(40, "15:00", "Granny’s birthday", false),
-    ]
-}
-
-fn demo_todos() -> Vec<TodoItem> {
-    vec![
-        TodoItem {
-            title: "Email the school office".into(),
-            done: false,
-        },
-        TodoItem {
-            title: "Book MOT".into(),
-            done: false,
-        },
-        TodoItem {
-            title: "Return library books".into(),
-            done: false,
-        },
     ]
 }
 
