@@ -31,6 +31,17 @@ pub const EVENT_ROW_PX: i32 = 60;
 pub const SECTION_GAP_PX: i32 = EVENT_ROW_PX;
 pub const EMPTY_SECTION_BODY_PX: i32 = 54;
 
+/// Sidebar column (same grid row as events). Keep in sync with
+/// `dashboard.css` (`.panel` padding/gaps, `.mast`, `.sidebar { gap }`,
+/// `h2`, `.todos li`, `.tube-line`, `.rooms li`, `.todos-more`).
+pub const SIDEBAR_PX: i32 = 1008;
+pub const SIDEBAR_GAP_PX: i32 = 28;
+pub const TUBE_ROW_PX: i32 = 44;
+pub const ROOM_ROW_PX: i32 = EVENT_ROW_PX;
+pub const TODO_ROW_PX: i32 = EVENT_ROW_PX;
+/// Compact “+ N other todos” line under the list (margin + height).
+pub const TODOS_MORE_PX: i32 = 36;
+
 /// How many Coming next rows fit under Today on the 13.3″ panel.
 pub fn coming_event_capacity(today_count: usize) -> usize {
     let today_body = if today_count == 0 {
@@ -127,6 +138,9 @@ pub struct Dashboard {
     pub events_today: Vec<CalendarEvent>,
     pub events_coming: Vec<CalendarEvent>,
     pub todos: Vec<TodoItem>,
+    /// Open tasks that did not fit under Tube + House. Shown as “+ N other todos”.
+    #[serde(default)]
+    pub todos_more: usize,
     pub rooms: Vec<RoomClimate>,
     pub weather: Weather,
     pub tube: Vec<TubeLine>,
@@ -143,6 +157,7 @@ impl Dashboard {
             events_today: Vec::new(),
             events_coming: Vec::new(),
             todos: Vec::new(),
+            todos_more: 0,
             rooms: Vec::new(),
             weather: Weather::default(),
             tube: Vec::new(),
@@ -170,6 +185,51 @@ impl Dashboard {
         let cap = coming_event_capacity(self.events_today.len());
         self.events_coming.truncate(cap);
     }
+
+    /// Keep Tube and House in full; fill leftover sidebar height with to-dos.
+    pub fn fit_sidebar_to_panel(&mut self) {
+        let remaining = SIDEBAR_PX
+            - sidebar_block_px(self.tube.len(), TUBE_ROW_PX)
+            - sidebar_block_px(self.rooms.len(), ROOM_ROW_PX)
+            - SIDEBAR_GAP_PX * 2;
+        let total = self.todos.len();
+        if total == 0 {
+            self.todos_more = 0;
+            return;
+        }
+        if todos_block_px(total, 0) <= remaining {
+            self.todos_more = 0;
+            return;
+        }
+        let row_budget = remaining - SECTION_HEAD_PX - TODOS_MORE_PX;
+        let shown = if row_budget < TODO_ROW_PX {
+            0
+        } else {
+            ((row_budget / TODO_ROW_PX) as usize).min(total.saturating_sub(1))
+        };
+        self.todos_more = total - shown;
+        self.todos.truncate(shown);
+    }
+
+    pub fn fit_to_panel(&mut self) {
+        self.fit_calendar_to_panel();
+        self.fit_sidebar_to_panel();
+    }
+}
+
+fn sidebar_block_px(rows: usize, row_px: i32) -> i32 {
+    SECTION_HEAD_PX
+        + if rows == 0 {
+            EMPTY_SECTION_BODY_PX
+        } else {
+            (rows as i32).saturating_mul(row_px)
+        }
+}
+
+fn todos_block_px(shown: usize, more: usize) -> i32 {
+    SECTION_HEAD_PX
+        + (shown as i32).saturating_mul(TODO_ROW_PX)
+        + if more > 0 { TODOS_MORE_PX } else { 0 }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -215,6 +275,74 @@ mod tests {
         assert_eq!(dash.events_coming.len(), 12);
         assert_eq!(dash.events_coming[0].date, "2026-09-14");
         assert_eq!(dash.events_coming[11].date, "2026-09-25");
+    }
+
+    fn todo(title: &str) -> TodoItem {
+        TodoItem {
+            title: title.into(),
+            done: false,
+        }
+    }
+
+    fn room(name: &str) -> RoomClimate {
+        RoomClimate {
+            name: name.into(),
+            temperature: "20°".into(),
+            humidity: "50%".into(),
+            online: true,
+        }
+    }
+
+    fn tube_lines(n: usize) -> Vec<TubeLine> {
+        (0..n)
+            .map(|i| TubeLine {
+                id: format!("l{i}"),
+                name: format!("Line {i}"),
+                status: "Good service".into(),
+                severity: "good".into(),
+                colour: "black".into(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn sidebar_keeps_tube_and_house_and_trims_todos() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = ["A", "B", "C", "D", "E"].into_iter().map(room).collect();
+        dash.todos = (0..10).map(|i| todo(&format!("Task {i}"))).collect();
+        dash.fit_sidebar_to_panel();
+        assert_eq!(dash.tube.len(), 4);
+        assert_eq!(dash.rooms.len(), 5);
+        assert_eq!(dash.todos.len(), 4);
+        assert_eq!(dash.todos_more, 6);
+    }
+
+    #[test]
+    fn sidebar_shows_only_more_line_when_no_todo_row_fits() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = (0..12).map(|i| room(&format!("R{i}"))).collect();
+        dash.todos = (0..5).map(|i| todo(&format!("Task {i}"))).collect();
+        dash.fit_sidebar_to_panel();
+        assert_eq!(dash.rooms.len(), 12);
+        assert_eq!(dash.tube.len(), 4);
+        assert!(dash.todos.is_empty());
+        assert_eq!(dash.todos_more, 5);
+    }
+
+    #[test]
+    fn sidebar_keeps_all_todos_when_they_fit() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.todos = vec![todo("One"), todo("Two")];
+        dash.fit_sidebar_to_panel();
+        assert_eq!(dash.todos.len(), 2);
+        assert_eq!(dash.todos_more, 0);
     }
 
     fn event(date: NaiveDate, start: &str, title: &str) -> CalendarEvent {

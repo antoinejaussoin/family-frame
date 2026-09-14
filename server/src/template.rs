@@ -64,4 +64,18 @@ mod tests {
         assert!(!html.contains("aria-label=\"Forecast\""));
         assert!(!html.contains("class=\"weather\""));
     }
+
+    #[test]
+    fn dashboard_shows_other_todos_count() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 12).unwrap());
+        dash.todos = vec![crate::model::TodoItem {
+            title: "Buy milk".into(),
+            done: false,
+        }];
+        dash.todos_more = 4;
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("Buy milk"));
+        assert!(html.contains("+ 4 other todos"));
+        assert!(!html.contains("No open family tasks"));
+    }
 }

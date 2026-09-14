@@ -127,7 +127,7 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
         }
     }
 
-    dash.fit_calendar_to_panel();
+    dash.fit_to_panel();
     dash.source_note = notes.join(" · ");
     Ok(dash)
 }

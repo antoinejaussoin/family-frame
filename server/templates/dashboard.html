@@ -271,8 +271,11 @@
           <li class="{% if item.done %}done{% endif %}">{{ item.title }}</li>
           {% endfor %}
         </ul>
-        {% else %}
+        {% elif todos_more == 0 %}
         <p class="empty">No open family tasks.</p>
+        {% endif %}
+        {% if todos_more > 0 %}
+        <p class="todos-more">+ {{ todos_more }} other todo{% if todos_more != 1 %}s{% endif %}</p>
         {% endif %}
       </section>
 

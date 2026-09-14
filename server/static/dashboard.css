@@ -72,6 +72,7 @@ body {
 .todos,
 .tube,
 .rooms { flex: 0 0 auto; min-width: 0; }
+.todos { overflow: hidden; }
 .coming {
   flex: 0 1 auto;
   margin-top: auto;
@@ -358,6 +359,12 @@ li:not(.tube-line) {
   padding: 2px 8px;
 }
 
+.todos li {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
 .todos li::before {
   content: "□ ";
   color: var(--blue);
@@ -365,6 +372,14 @@ li:not(.tube-line) {
 }
 
 .todos li.done { text-decoration: line-through; }
+
+.todos-more {
+  margin: 8px 0 0;
+  height: 28px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 28px;
+}
 
 .empty {
   font-size: 28px;
