@@ -110,13 +110,15 @@ To-dos come from a shared [Todoist](https://todoist.com) project:
 Leave `todoist.token` empty to show the built-in demo list.
 
 The shopping column is now **house temperatures**. Meross MS100
-thermometer/hygrometers have no Wi-Fi of their own: they talk through the
-Meross hub. Local HTTP to that hub is signed with the account key, so put
-the Meross app email and password in `config.toml` (`[meross]`). The
-server logs in once, caches `meross-creds.json`, and reads
-`Appliance.Hub.Sensor.All` over MQTT (or LAN if you set `hub_hosts`).
-Temperatures are rounded to the nearest degree and humidity to the
-nearest 5% so the panel does not twitch every hour.
+thermometer/hygrometers talk through the hub; MTS200 wall thermostats are
+Wi-Fi devices on the same account. Local HTTP is signed with the account
+key, so put the Meross app email and password in `config.toml` (`[meross]`).
+The server logs in once, caches `meross-creds.json`, and reads
+`Appliance.Hub.Sensor.All` (sensors), `Appliance.Control.Thermostat.Mode`
+(MTS200), and `Appliance.Hub.Mts100.All` (hub TRVs) over MQTT — or LAN if
+you set `hub_hosts`. A device named “Kitchen Thermostat” shows as Kitchen
+(no humidity). Temperatures are rounded to the nearest degree and humidity
+to the nearest 5% so the panel does not twitch every hour.
 
 Never commit `config.toml` or `meross-creds.json` — they are gitignored.
 

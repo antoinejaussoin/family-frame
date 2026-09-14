@@ -280,26 +280,27 @@ li:not(.tube-line) {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.temp,
-.humidity {
-  flex: 0 0 auto;
-  font-size: 22px;
-  font-weight: 700;
+.rooms li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 60px;
+  align-items: center;
+  column-gap: 10px;
 }
-.temp {
+.rooms .temp,
+.rooms .humidity {
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+}
+.rooms .temp {
   color: var(--red);
   font-size: 32px;
-  line-height: 1;
-  min-width: 2.6ch;
-  text-align: right;
 }
-.humidity {
+.rooms .humidity {
   color: var(--blue);
-  min-width: 3.2ch;
-  text-align: right;
-}
-.rooms li {
-  align-items: center;
+  font-size: 22px;
 }
 
 .rooms li.offline .what {

@@ -29,8 +29,8 @@ token = ""
 project = "Family"
 
 [meross]
-# Meross app email + password. The MS100 sensors report through the hub;
-# the server signs in to get the account key, then reads temperatures.
+# Meross app email + password. MS100 sensors report through the hub;
+# MTS200 wall thermostats are Wi-Fi devices on the same account.
 email = ""
 password = ""
 # Leave empty unless the Meross app asks for a one-time code.
@@ -39,11 +39,13 @@ api_base_url = "https://iotx-eu.meross.com"
 country_code = "GB"
 # Optional LAN IPs of the hub (tried before MQTT).
 hub_hosts = []
-# Optional display order / filter (Meross name or label). Empty = all sensors.
+# Optional display order / filter (Meross name or label). Empty = all rooms.
 rooms = []
 
+# “Kitchen Thermostat” is shortened to Kitchen. Override other names here:
 # [meross.labels]
 # "Sensor living room" = "Living room"
+# "Hall TRV" = "Hall"
 
 [weather]
 # GeoNames id from the BBC Weather page URL:

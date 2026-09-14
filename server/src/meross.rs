@@ -1,9 +1,10 @@
-//! Meross cloud + hub client for MS100 thermometer / hygrometer sensors.
+//! Meross cloud + hub client for house temperatures.
 //!
-//! The sensors themselves have no Wi-Fi; they report through a Meross hub.
-//! Local HTTP to that hub is signed with the account key from `/v1/Auth/signIn`.
-//! Live readings then come from `Appliance.Hub.Sensor.All` over MQTT (or LAN
-//! HTTP when `hub_hosts` are set).
+//! MS100 thermometer / hygrometers report through a Meross hub. MTS200-class
+//! wall thermostats are Wi-Fi devices on the same account. Hub TRVs
+//! (MTS100 / MTS150) use `Appliance.Hub.Mts100.All`. Local HTTP is signed with
+//! the account key from `/v1/Auth/signIn`; live readings otherwise come over
+//! MQTT (or LAN HTTP when `hub_hosts` are set).
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -49,7 +50,7 @@ struct CloudEnvelope {
     data: Option<Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct DeviceInfo {
     uuid: String,
     #[serde(default, rename = "devName")]
@@ -182,26 +183,63 @@ fn parse_creds(email: &str, data: Value) -> Result<CloudCreds> {
 
 async fn fetch_rooms(cfg: &MerossConfig, creds: &CloudCreds) -> Result<Vec<RoomClimate>> {
     let devices = list_devices(creds).await?;
+    for d in &devices {
+        info!(
+            name = %d.dev_name,
+            device_type = %d.device_type,
+            "Meross device"
+        );
+    }
     let hubs: Vec<&DeviceInfo> = devices.iter().filter(|d| is_hub(&d.device_type)).collect();
     if hubs.is_empty() {
         bail!("no Meross hub on this account (looked for msh*)");
     }
 
     let mut names: HashMap<String, String> = HashMap::new();
+    let mut has_hub_thermostat = false;
     for hub in &hubs {
         match list_subdevices(creds, &hub.uuid).await {
             Ok(subs) => {
                 for sub in subs {
-                    if sub.id.is_empty() || !is_temp_sensor(&sub.device_type) {
+                    if sub.id.is_empty() {
                         continue;
                     }
-                    let label = cfg.labels.get(&sub.name).cloned().unwrap_or_else(|| {
-                        if sub.name.is_empty() {
-                            sub.id.clone()
-                        } else {
-                            sub.name.clone()
-                        }
-                    });
+                    if !is_climate_subdevice(&sub.device_type) {
+                        info!(
+                            hub = %hub.dev_name,
+                            id = %sub.id,
+                            name = %sub.name,
+                            device_type = %sub.device_type,
+                            "skipping Meross subdevice"
+                        );
+                        continue;
+                    }
+                    let raw = if sub.name.is_empty() {
+                        sub.id.clone()
+                    } else {
+                        sub.name.clone()
+                    };
+                    let thermostat = is_hub_thermostat(&sub.device_type);
+                    if thermostat {
+                        has_hub_thermostat = true;
+                    }
+                    let label = if thermostat {
+                        thermostat_display_name(&raw, &sub.id, cfg)
+                    } else {
+                        cfg.labels
+                            .get(&sub.name)
+                            .or_else(|| cfg.labels.get(&sub.id))
+                            .cloned()
+                            .unwrap_or(raw)
+                    };
+                    info!(
+                        hub = %hub.dev_name,
+                        id = %sub.id,
+                        name = %sub.name,
+                        device_type = %sub.device_type,
+                        label = %label,
+                        "Meross climate subdevice"
+                    );
                     names.insert(sub.id, label);
                 }
             }
@@ -209,12 +247,48 @@ async fn fetch_rooms(cfg: &MerossConfig, creds: &CloudCreds) -> Result<Vec<RoomC
         }
     }
 
+    let wifi_devices: Vec<DeviceInfo> = devices
+        .iter()
+        .filter(|d| is_wifi_thermostat(&d.device_type))
+        .cloned()
+        .collect();
+
     let mut rooms = Vec::new();
     for hub in hubs {
-        match hub_sensor_all(cfg, creds, hub).await {
+        match hub_get(
+            cfg,
+            creds,
+            hub,
+            "Appliance.Hub.Sensor.All",
+            json!({ "all": [] }),
+        )
+        .await
+        {
             Ok(payload) => rooms.extend(rooms_from_sensor_all(&payload, &names, cfg)),
             Err(err) => warn!(hub = %hub.dev_name, %err, "hub sensor poll failed"),
         }
+        if !has_hub_thermostat {
+            continue;
+        }
+        match hub_get(
+            cfg,
+            creds,
+            hub,
+            "Appliance.Hub.Mts100.All",
+            json!({ "all": [] }),
+        )
+        .await
+        {
+            Ok(payload) => {
+                for room in rooms_from_mts100_all(&payload, &names, cfg) {
+                    push_unique_room(&mut rooms, room);
+                }
+            }
+            Err(err) => warn!(hub = %hub.dev_name, %err, "hub thermostat poll failed"),
+        }
+    }
+    for room in poll_wifi_thermostats(cfg, creds, &wifi_devices).await {
+        push_unique_room(&mut rooms, room);
     }
 
     rooms.sort_by(|a, b| a.name.cmp(&b.name));
@@ -260,33 +334,97 @@ async fn list_subdevices(creds: &CloudCreds, hub_id: &str) -> Result<Vec<Subdevi
         .collect())
 }
 
-async fn hub_sensor_all(cfg: &MerossConfig, creds: &CloudCreds, hub: &DeviceInfo) -> Result<Value> {
-    for host in &cfg.hub_hosts {
-        match lan_command(
-            host,
-            creds,
-            hub,
-            "Appliance.Hub.Sensor.All",
-            json!({ "all": [] }),
-        )
-        .await
-        {
-            Ok(payload) => {
-                info!(hub = %hub.dev_name, host, "read Meross sensors over LAN");
-                return Ok(payload);
+async fn hub_get(
+    cfg: &MerossConfig,
+    creds: &CloudCreds,
+    hub: &DeviceInfo,
+    namespace: &str,
+    payload: Value,
+) -> Result<Value> {
+    if is_hub(&hub.device_type) {
+        for host in &cfg.hub_hosts {
+            match lan_command(host, creds, hub, namespace, payload.clone()).await {
+                Ok(reply) => {
+                    info!(hub = %hub.dev_name, host, namespace, "read Meross over LAN");
+                    return Ok(reply);
+                }
+                Err(err) => {
+                    warn!(hub = %hub.dev_name, host, namespace, %err, "LAN Meross poll failed")
+                }
             }
-            Err(err) => warn!(hub = %hub.dev_name, host, %err, "LAN Meross poll failed"),
         }
     }
 
-    mqtt_command(
-        creds,
-        hub,
-        "GET",
-        "Appliance.Hub.Sensor.All",
-        json!({ "all": [] }),
-    )
-    .await
+    mqtt_command(creds, hub, "GET", namespace, payload).await
+}
+
+async fn poll_wifi_thermostats(
+    cfg: &MerossConfig,
+    creds: &CloudCreds,
+    devices: &[DeviceInfo],
+) -> Vec<RoomClimate> {
+    let mut rooms = Vec::new();
+    for dev in devices {
+        let attempts = [
+            ("Appliance.System.All", json!({})),
+            (
+                "Appliance.Control.Thermostat.Mode",
+                json!({ "mode": [{ "channel": 0 }] }),
+            ),
+            ("Appliance.Control.Sensor.Latest", json!({ "latest": [] })),
+        ];
+        let mut got = None;
+        for (namespace, command) in attempts {
+            match hub_get(cfg, creds, dev, namespace, command).await {
+                Ok(payload) => {
+                    if let Some(room) = room_from_wifi_thermostat(&payload, &dev.dev_name, cfg) {
+                        info!(
+                            name = %dev.dev_name,
+                            label = %room.name,
+                            temp = %room.temperature,
+                            namespace,
+                            "read Meross wifi thermostat"
+                        );
+                        got = Some(room);
+                        break;
+                    }
+                    warn!(
+                        name = %dev.dev_name,
+                        namespace,
+                        payload = %truncate_json(&payload, 800),
+                        "wifi thermostat reply had no currentTemp"
+                    );
+                }
+                Err(err) => {
+                    warn!(name = %dev.dev_name, namespace, %err, "wifi thermostat command failed")
+                }
+            }
+        }
+        match got {
+            Some(room) => push_unique_room(&mut rooms, room),
+            None => warn!(name = %dev.dev_name, "could not read wifi thermostat temperature"),
+        }
+    }
+    rooms
+}
+
+fn truncate_json(v: &Value, max: usize) -> String {
+    let s = v.to_string();
+    if s.chars().count() <= max {
+        s
+    } else {
+        format!("{}…", s.chars().take(max).collect::<String>())
+    }
+}
+
+fn push_unique_room(rooms: &mut Vec<RoomClimate>, room: RoomClimate) {
+    if rooms
+        .iter()
+        .any(|existing| existing.name.eq_ignore_ascii_case(&room.name))
+    {
+        return;
+    }
+    rooms.push(room);
 }
 
 async fn lan_command(
@@ -386,9 +524,10 @@ async fn mqtt_command(
     let mut subacks = 0u8;
 
     while Instant::now() < deadline {
-        let ev = timeout(Duration::from_millis(400), eventloop.poll())
-            .await
-            .map_err(|_| anyhow!("MQTT timeout talking to {}", hub.dev_name))?;
+        let ev = match timeout(Duration::from_millis(500), eventloop.poll()).await {
+            Ok(ev) => ev,
+            Err(_) => continue,
+        };
         match ev {
             Ok(Event::Incoming(Incoming::SubAck(_))) => {
                 subacks += 1;
@@ -585,6 +724,107 @@ pub fn rooms_from_sensor_all(
     out
 }
 
+pub fn rooms_from_mts100_all(
+    payload: &Value,
+    names: &HashMap<String, String>,
+    cfg: &MerossConfig,
+) -> Vec<RoomClimate> {
+    let Some(all) = payload.get("all").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for entry in all {
+        let id = entry
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let temp = thermostat_temp(entry);
+        if temp.is_none() {
+            continue;
+        }
+        let meross_name = names.get(&id).cloned().unwrap_or_default();
+        let name = thermostat_display_name(&meross_name, &id, cfg);
+        let online = entry
+            .pointer("/online/status")
+            .and_then(Value::as_i64)
+            .unwrap_or(1)
+            == 1;
+        out.push(RoomClimate {
+            name,
+            temperature: temp.map(format_temp).unwrap_or_else(|| "—".into()),
+            humidity: "—".into(),
+            online,
+        });
+    }
+    out
+}
+
+pub fn room_from_wifi_thermostat(
+    payload: &Value,
+    meross_name: &str,
+    cfg: &MerossConfig,
+) -> Option<RoomClimate> {
+    let (temp, online) = wifi_thermostat_reading(payload)?;
+    Some(RoomClimate {
+        name: thermostat_display_name(meross_name, "", cfg),
+        temperature: format_temp(temp),
+        humidity: "—".into(),
+        online,
+    })
+}
+
+fn wifi_thermostat_reading(payload: &Value) -> Option<(f64, bool)> {
+    if let Some(entry) = thermostat_mode_entry(payload) {
+        if let Some(temp) = tenths(
+            entry
+                .get("currentTemp")
+                .or_else(|| entry.get("currentTemperature"))
+                .or_else(|| entry.pointer("/temperature/currentTemp"))
+                .or_else(|| entry.pointer("/temperature/room"))
+                .or_else(|| entry.get("room")),
+        ) {
+            let online = entry.get("onoff").and_then(Value::as_i64).unwrap_or(1) != 0;
+            return Some((temp, online));
+        }
+    }
+    let latest = payload.get("latest").and_then(Value::as_array)?.first()?;
+    let value = match latest.get("value") {
+        Some(Value::Array(a)) => a.first(),
+        other => other,
+    };
+    let temp = tenths(value.or_else(|| latest.get("temperature")))?;
+    Some((temp, true))
+}
+
+fn thermostat_mode_entry(payload: &Value) -> Option<&Value> {
+    for key in ["mode", "modeB"] {
+        if let Some(mode) = payload.get(key) {
+            if let Some(first) = mode.as_array().and_then(|a| a.first()) {
+                return Some(first);
+            }
+            if mode.is_object() && !mode.as_object()?.is_empty() {
+                return Some(mode);
+            }
+        }
+    }
+    for pointer in [
+        "/all/digest/thermostat/mode",
+        "/all/digest/thermostat/modeB",
+        "/digest/thermostat/mode",
+        "/digest/thermostat/modeB",
+    ] {
+        if let Some(first) = payload
+            .pointer(pointer)
+            .and_then(Value::as_array)
+            .and_then(|a| a.first())
+        {
+            return Some(first);
+        }
+    }
+    None
+}
+
 fn reading(entry: &Value) -> (Option<f64>, Option<f64>) {
     let temp = tenths(
         entry
@@ -597,6 +837,17 @@ fn reading(entry: &Value) -> (Option<f64>, Option<f64>) {
             .or_else(|| entry.get("latestHumidity")),
     );
     (temp, humidity)
+}
+
+fn thermostat_temp(entry: &Value) -> Option<f64> {
+    tenths(
+        entry
+            .pointer("/temperature/room")
+            .or_else(|| entry.pointer("/temperature/current"))
+            .or_else(|| entry.pointer("/temperature/latest"))
+            .or_else(|| entry.get("currentTemp"))
+            .or_else(|| entry.get("room")),
+    )
 }
 
 fn tenths(v: Option<&Value>) -> Option<f64> {
@@ -621,9 +872,54 @@ fn is_hub(device_type: &str) -> bool {
     device_type.to_ascii_lowercase().starts_with("msh")
 }
 
+fn is_climate_subdevice(device_type: &str) -> bool {
+    is_temp_sensor(device_type) || is_hub_thermostat(device_type)
+}
+
 fn is_temp_sensor(device_type: &str) -> bool {
     let t = device_type.to_ascii_lowercase();
     t.is_empty() || t.starts_with("ms100") || t.contains("temp") || t.contains("hum")
+}
+
+fn is_hub_thermostat(device_type: &str) -> bool {
+    let t = device_type.to_ascii_lowercase();
+    t.starts_with("mts") || t.contains("thermostat")
+}
+
+fn is_wifi_thermostat(device_type: &str) -> bool {
+    device_type.to_ascii_lowercase().starts_with("mts")
+}
+
+fn thermostat_display_name(raw: &str, id: &str, cfg: &MerossConfig) -> String {
+    if let Some(label) = cfg
+        .labels
+        .get(raw)
+        .or_else(|| cfg.labels.get(id).filter(|_| !id.is_empty()))
+    {
+        return label.clone();
+    }
+    let stripped = strip_thermostat_suffix(raw);
+    if stripped.is_empty() || looks_like_thermostat_model(&stripped) {
+        "Kitchen".into()
+    } else {
+        stripped
+    }
+}
+
+fn strip_thermostat_suffix(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    for suffix in [" thermostat", " trv", " valve"] {
+        if let Some(rest) = lower.strip_suffix(suffix) {
+            return trimmed[..rest.len()].trim().to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
+fn looks_like_thermostat_model(name: &str) -> bool {
+    let n = name.trim().to_ascii_lowercase();
+    n.is_empty() || n.starts_with("mts") || n == "thermostat"
 }
 
 fn mqtt_host(domain: &str) -> (String, u16) {
@@ -733,6 +1029,102 @@ mod tests {
         assert_eq!(rooms[0].temperature, "21°");
         assert_eq!(rooms[0].humidity, "50%");
         assert!(rooms[0].online);
+    }
+
+    #[test]
+    fn parses_mts100_room_temp() {
+        let payload = json!({
+            "all": [{
+                "id": "010031F6",
+                "online": {"status": 1},
+                "temperature": {
+                    "room": 205,
+                    "currentSet": 200,
+                    "heating": 0
+                }
+            }]
+        });
+        let mut names = HashMap::new();
+        names.insert("010031F6".into(), "Kitchen".into());
+        let rooms = rooms_from_mts100_all(&payload, &names, &MerossConfig::default());
+        assert_eq!(rooms.len(), 1);
+        assert_eq!(rooms[0].name, "Kitchen");
+        assert_eq!(rooms[0].temperature, "21°");
+        assert_eq!(rooms[0].humidity, "—");
+        assert!(rooms[0].online);
+    }
+
+    #[test]
+    fn unlabeled_thermostat_defaults_to_kitchen() {
+        let payload = json!({
+            "all": [{
+                "id": "0300A3EA",
+                "online": {"status": 1},
+                "temperature": {"room": 198}
+            }]
+        });
+        let rooms = rooms_from_mts100_all(&payload, &HashMap::new(), &MerossConfig::default());
+        assert_eq!(rooms[0].name, "Kitchen");
+        assert_eq!(rooms[0].temperature, "20°");
+    }
+
+    #[test]
+    fn kitchen_thermostat_wifi_name() {
+        let payload = json!({
+            "mode": [{
+                "channel": 0,
+                "onoff": 1,
+                "currentTemp": 214,
+                "heatTemp": 200
+            }]
+        });
+        let room = room_from_wifi_thermostat(&payload, "Kitchen Thermostat", &MerossConfig::default())
+            .unwrap();
+        assert_eq!(room.name, "Kitchen");
+        assert_eq!(room.temperature, "21°");
+        assert_eq!(room.humidity, "—");
+        assert!(room.online);
+    }
+
+    #[test]
+    fn parses_mts200_system_all_digest() {
+        let payload = json!({
+            "all": {
+                "digest": {
+                    "thermostat": {
+                        "mode": [{
+                            "channel": 0,
+                            "onoff": 1,
+                            "currentTemp": 193
+                        }]
+                    }
+                }
+            }
+        });
+        let room =
+            room_from_wifi_thermostat(&payload, "Kitchen Thermostat", &MerossConfig::default())
+                .unwrap();
+        assert_eq!(room.name, "Kitchen");
+        assert_eq!(room.temperature, "19°");
+    }
+
+    #[test]
+    fn thermostat_label_overrides_kitchen() {
+        let payload = json!({
+            "all": [{
+                "id": "010031F6",
+                "temperature": {"room": 221}
+            }]
+        });
+        let mut names = HashMap::new();
+        names.insert("010031F6".into(), "Hall TRV".into());
+        let cfg = MerossConfig {
+            labels: HashMap::from([("Hall TRV".into(), "Hall".into())]),
+            ..MerossConfig::default()
+        };
+        let rooms = rooms_from_mts100_all(&payload, &names, &cfg);
+        assert_eq!(rooms[0].name, "Hall");
+        assert_eq!(rooms[0].temperature, "22°");
     }
 
     #[test]
