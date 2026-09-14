@@ -609,11 +609,12 @@ fn tenths(v: Option<&Value>) -> Option<f64> {
 }
 
 fn format_temp(c: f64) -> String {
-    format!("{c:.1}°")
+    format!("{}°", c.round() as i32)
 }
 
 fn format_humidity(h: f64) -> String {
-    format!("{:.0}%", h.round())
+    let rounded = ((h / 5.0).round() as i32) * 5;
+    format!("{rounded}%")
 }
 
 fn is_hub(device_type: &str) -> bool {
@@ -690,20 +691,20 @@ pub fn demo_rooms() -> Vec<RoomClimate> {
     vec![
         RoomClimate {
             name: "Kitchen".into(),
-            temperature: "21.4°".into(),
-            humidity: "48%".into(),
+            temperature: "21°".into(),
+            humidity: "50%".into(),
             online: true,
         },
         RoomClimate {
             name: "Studio".into(),
-            temperature: "20.1°".into(),
-            humidity: "51%".into(),
+            temperature: "20°".into(),
+            humidity: "50%".into(),
             online: true,
         },
         RoomClimate {
             name: "Bedroom".into(),
-            temperature: "19.8°".into(),
-            humidity: "53%".into(),
+            temperature: "20°".into(),
+            humidity: "55%".into(),
             online: true,
         },
     ]
@@ -729,8 +730,8 @@ mod tests {
         let rooms = rooms_from_sensor_all(&payload, &names, &MerossConfig::default());
         assert_eq!(rooms.len(), 1);
         assert_eq!(rooms[0].name, "Kitchen");
-        assert_eq!(rooms[0].temperature, "21.4°");
-        assert_eq!(rooms[0].humidity, "48%");
+        assert_eq!(rooms[0].temperature, "21°");
+        assert_eq!(rooms[0].humidity, "50%");
         assert!(rooms[0].online);
     }
 
@@ -752,8 +753,11 @@ mod tests {
         let rooms = rooms_from_sensor_all(&payload, &names, &cfg);
         assert_eq!(rooms.len(), 2);
         assert_eq!(rooms[0].name, "Hall");
-        assert_eq!(rooms[0].temperature, "20.0°");
+        assert_eq!(rooms[0].temperature, "20°");
+        assert_eq!(rooms[0].humidity, "40%");
         assert_eq!(rooms[1].name, "Sensor B");
+        assert_eq!(rooms[1].temperature, "18°");
+        assert_eq!(rooms[1].humidity, "55%");
     }
 
     #[test]

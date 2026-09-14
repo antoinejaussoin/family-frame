@@ -22,8 +22,8 @@ pub const EVENT_HORIZON_DAYS: i64 = 180;
 
 /// Pixel budget for the stacked Today + Coming next column on the 1600×1200
 /// panel. Keep in sync with `dashboard.css` (`.panel` padding/gaps, `.mast`,
-/// `.weather`, `h2`, `li`, `.events { gap }`).
-pub const EVENTS_COLUMN_PX: i32 = 780;
+/// `h2`, `li`, `.events { gap }`). Weather sits in the section headers.
+pub const EVENTS_COLUMN_PX: i32 = 990;
 pub const SECTION_HEAD_PX: i32 = 52;
 pub const EVENT_ROW_PX: i32 = 60;
 /// Minimum gap between Today and Coming next. Extra leftover space is
@@ -94,12 +94,28 @@ pub struct WeatherSlot {
 pub struct WeatherDay {
     pub label: String,
     pub slots: Vec<WeatherSlot>,
+    pub sunrise: String,
+    pub sunset: String,
+    pub pollen: String,
+    /// CSS class: `low`, `moderate`, `high`, or empty when unknown.
+    pub pollen_level: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct Weather {
     pub location: String,
     pub days: Vec<WeatherDay>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TubeLine {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    /// CSS class: `good`, `delay`, or `severe`.
+    pub severity: String,
+    /// Spectra 6 colour class: `black`, `yellow`, `green`, or `blue`.
+    pub colour: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -113,6 +129,7 @@ pub struct Dashboard {
     pub todos: Vec<TodoItem>,
     pub rooms: Vec<RoomClimate>,
     pub weather: Weather,
+    pub tube: Vec<TubeLine>,
     pub source_note: String,
 }
 
@@ -128,6 +145,7 @@ impl Dashboard {
             todos: Vec::new(),
             rooms: Vec::new(),
             weather: Weather::default(),
+            tube: Vec::new(),
             source_note: String::new(),
         }
     }
@@ -177,11 +195,11 @@ mod tests {
 
     #[test]
     fn coming_next_fills_space_left_after_today() {
-        assert_eq!(coming_event_capacity(0), 9);
-        assert_eq!(coming_event_capacity(1), 9);
-        assert_eq!(coming_event_capacity(2), 8);
-        assert_eq!(coming_event_capacity(8), 2);
-        assert_eq!(max_today_events(), 9);
+        assert_eq!(coming_event_capacity(0), 12);
+        assert_eq!(coming_event_capacity(1), 12);
+        assert_eq!(coming_event_capacity(2), 11);
+        assert_eq!(coming_event_capacity(8), 5);
+        assert_eq!(max_today_events(), 12);
     }
 
     #[test]
@@ -194,9 +212,9 @@ mod tests {
             .collect();
         dash.fit_calendar_to_panel();
         assert_eq!(dash.events_today.len(), 1);
-        assert_eq!(dash.events_coming.len(), 9);
+        assert_eq!(dash.events_coming.len(), 12);
         assert_eq!(dash.events_coming[0].date, "2026-09-14");
-        assert_eq!(dash.events_coming[8].date, "2026-09-22");
+        assert_eq!(dash.events_coming[11].date, "2026-09-25");
     }
 
     fn event(date: NaiveDate, start: &str, title: &str) -> CalendarEvent {

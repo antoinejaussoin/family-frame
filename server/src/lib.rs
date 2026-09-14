@@ -15,6 +15,7 @@ pub mod pack;
 pub mod screenshot;
 pub mod sources;
 pub mod template;
+pub mod tfl;
 pub mod todoist;
 pub mod weather;
 

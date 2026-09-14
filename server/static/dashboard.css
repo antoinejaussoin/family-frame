@@ -36,10 +36,9 @@ body {
   padding: 44px 52px 36px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 460px;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto 1fr;
   grid-template-areas:
     "mast mast"
-    "weather weather"
     "events sidebar";
   gap: 20px 40px;
 }
@@ -66,10 +65,11 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  gap: 60px;
+  gap: 28px;
 }
 .today,
-.todos { flex: 0 0 auto; min-width: 0; }
+.todos,
+.tube { flex: 0 0 auto; min-width: 0; }
 .coming,
 .rooms {
   flex: 0 1 auto;
@@ -77,11 +77,6 @@ body {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
-.weather {
-  grid-area: weather;
-  min-width: 0;
-  position: relative;
 }
 
 .kicker {
@@ -109,13 +104,21 @@ h1 {
 h2 {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
   font-size: 26px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   border-bottom: 4px solid var(--black);
   padding-bottom: 8px;
+  min-height: 40px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
 }
 
 .section-icon {
@@ -126,7 +129,8 @@ h2 {
 }
 
 .rooms h2,
-.todos h2 {
+.todos h2,
+.tube h2 {
   color: var(--black);
   border-bottom-color: var(--black);
 }
@@ -140,69 +144,93 @@ h2 {
   pointer-events: none;
 }
 
-.weather-days {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0 36px;
-}
-
-.weather-day + .weather-day {
-  border-left: 4px solid var(--black);
-  padding-left: 36px;
-}
-
-.weather-day h3 {
+.day-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 0 0 4px;
-  font-size: 22px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.weather-day .section-icon {
-  width: 34px;
-  height: 34px;
-  flex-basis: 34px;
+  gap: 14px;
+  margin-left: auto;
+  min-width: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 700;
 }
 
 .slots {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .slot {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 2px;
-  padding: 8px 0 4px;
-  border-bottom: 0;
-  font-size: inherit;
+  gap: 4px;
   line-height: 1;
-}
-
-.slot .period {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .wx-icon {
-  width: 96px;
-  height: 96px;
+  width: 40px;
+  height: 40px;
   display: block;
+  flex: 0 0 40px;
 }
 
 .slot .degrees {
-  font-size: 40px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--red);
   line-height: 1;
+  min-width: 2.4ch;
+}
+
+.sun-times {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sun-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sun-icon {
+  width: 28px;
+  height: 28px;
+  display: block;
+  flex: 0 0 28px;
+}
+
+.pollen {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.pollen-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+  flex: 0 0 22px;
+}
+
+.pollen-moderate {
+  background: var(--yellow);
+  color: var(--black);
+}
+
+.pollen-high {
+  background: var(--red);
+  color: var(--white);
 }
 
 ol,
@@ -222,8 +250,7 @@ li {
   line-height: 1.2;
 }
 
-/* Weather slots are also <li>; keep them fluid. */
-li:not(.slot) {
+li:not(.tube-line) {
   box-sizing: border-box;
   height: 60px;
 }
@@ -263,12 +290,12 @@ li:not(.slot) {
   color: var(--red);
   font-size: 32px;
   line-height: 1;
-  min-width: 3.2ch;
+  min-width: 2.6ch;
   text-align: right;
 }
 .humidity {
   color: var(--blue);
-  min-width: 3.4ch;
+  min-width: 3.2ch;
   text-align: right;
 }
 .rooms li {
@@ -281,6 +308,52 @@ li:not(.slot) {
 .rooms li.offline .temp,
 .rooms li.offline .humidity {
   color: var(--black);
+}
+
+.tube li.tube-line {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 44px;
+  padding: 6px 0;
+  align-items: center;
+  font-size: 24px;
+  gap: 0;
+}
+
+.line-name {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: left;
+  min-width: 0;
+}
+
+.line-name.colour-black { color: var(--black); }
+.line-name.colour-yellow { color: var(--yellow); }
+.line-name.colour-green { color: var(--green); }
+.line-name.colour-blue { color: var(--blue); }
+
+.line-status {
+  justify-self: center;
+  text-align: center;
+  font-weight: 700;
+  font-size: 22px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.severity-good .line-status { color: var(--black); }
+.severity-delay .line-status {
+  background: var(--yellow);
+  color: var(--black);
+  padding: 2px 8px;
+}
+.severity-severe .line-status {
+  background: var(--red);
+  color: var(--white);
+  padding: 2px 8px;
 }
 
 .todos li::before {

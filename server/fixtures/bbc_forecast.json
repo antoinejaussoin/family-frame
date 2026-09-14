@@ -5,6 +5,19 @@
   },
   "forecasts": [
     {
+      "summary": {
+        "report": {
+          "localDate": "2026-09-12",
+          "weatherType": 1,
+          "weatherTypeText": "Sunny",
+          "minTempC": 15,
+          "maxTempC": 21,
+          "sunrise": "06:33",
+          "sunset": "19:18",
+          "pollenIndexText": "Low",
+          "pollenIndexBand": "LOW"
+        }
+      },
       "detailed": {
         "reports": [
           {
@@ -46,6 +59,19 @@
       }
     },
     {
+      "summary": {
+        "report": {
+          "localDate": "2026-09-13",
+          "weatherType": 8,
+          "weatherTypeText": "Thick Cloud",
+          "minTempC": 13,
+          "maxTempC": 17,
+          "sunrise": "06:35",
+          "sunset": "19:16",
+          "pollenIndexText": "Moderate",
+          "pollenIndexBand": "MODERATE"
+        }
+      },
       "detailed": {
         "reports": [
           {

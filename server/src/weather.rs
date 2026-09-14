@@ -65,6 +65,10 @@ struct DaySummary {
     temperature_max: Option<i32>,
     weather_type: i64,
     weather_text: String,
+    sunrise: String,
+    sunset: String,
+    pollen: String,
+    pollen_level: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -120,6 +124,14 @@ struct SummaryReport {
     min_temp_c: Option<i64>,
     #[serde(rename = "maxTempC")]
     max_temp_c: Option<i64>,
+    #[serde(default)]
+    sunrise: Option<String>,
+    #[serde(default)]
+    sunset: Option<String>,
+    #[serde(rename = "pollenIndexText", default)]
+    pollen_index_text: Option<String>,
+    #[serde(rename = "pollenIndexBand", default)]
+    pollen_index_band: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -195,12 +207,23 @@ fn forecast_from_json(json: &str, today: NaiveDate, cache: &mut SlotCache) -> Re
     let tomorrow = today + ChronoDuration::days(1);
     let days = [("Today", today), ("Tomorrow", tomorrow)]
         .into_iter()
-        .map(|(label, date)| WeatherDay {
-            label: label.into(),
-            slots: PERIODS
-                .iter()
-                .map(|period| slot_for(date, period, &hours, &summaries, cache))
-                .collect(),
+        .map(|(label, date)| {
+            let summary = summaries.get(&date);
+            WeatherDay {
+                label: label.into(),
+                slots: PERIODS
+                    .iter()
+                    .map(|period| slot_for(date, period, &hours, &summaries, cache))
+                    .collect(),
+                sunrise: summary
+                    .map(|s| s.sunrise.clone())
+                    .unwrap_or_default(),
+                sunset: summary.map(|s| s.sunset.clone()).unwrap_or_default(),
+                pollen: summary.map(|s| s.pollen.clone()).unwrap_or_default(),
+                pollen_level: summary
+                    .map(|s| s.pollen_level.clone())
+                    .unwrap_or_default(),
+            }
         })
         .collect();
 
@@ -219,6 +242,10 @@ pub fn demo_weather() -> Weather {
                     demo_slot("Afternoon", "partly-cloudy", "21°", "Sunny intervals"),
                     demo_slot("Evening", "rain", "16°", "Light rain"),
                 ],
+                sunrise: "06:33".into(),
+                sunset: "19:18".into(),
+                pollen: "Low".into(),
+                pollen_level: "low".into(),
             },
             WeatherDay {
                 label: "Tomorrow".into(),
@@ -227,6 +254,10 @@ pub fn demo_weather() -> Weather {
                     demo_slot("Afternoon", "storm", "17°", "Thundery showers"),
                     demo_slot("Evening", "moon", "13°", "Clear sky"),
                 ],
+                sunrise: "06:35".into(),
+                sunset: "19:16".into(),
+                pollen: "Moderate".into(),
+                pollen_level: "moderate".into(),
             },
         ],
     }
@@ -359,6 +390,7 @@ fn collect_summaries(parsed: &Aggregated) -> HashMap<NaiveDate, DaySummary> {
         .filter_map(|day| {
             let report = day.summary.report.as_ref()?;
             let date = NaiveDate::parse_from_str(report.local_date.as_deref()?, "%Y-%m-%d").ok()?;
+            let (pollen, pollen_level) = pollen_from_report(report);
             Some((
                 date,
                 DaySummary {
@@ -366,10 +398,47 @@ fn collect_summaries(parsed: &Aggregated) -> HashMap<NaiveDate, DaySummary> {
                     temperature_max: report.max_temp_c.map(|t| t as i32),
                     weather_type: report.weather_type.unwrap_or(-1),
                     weather_text: report.weather_type_text.clone().unwrap_or_default(),
+                    sunrise: report.sunrise.clone().unwrap_or_default(),
+                    sunset: report.sunset.clone().unwrap_or_default(),
+                    pollen,
+                    pollen_level,
                 },
             ))
         })
         .collect()
+}
+
+fn pollen_from_report(report: &SummaryReport) -> (String, String) {
+    let text = report
+        .pollen_index_text
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let band = report
+        .pollen_index_band
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let level = match band.as_str() {
+        "low" => "low",
+        "moderate" | "medium" => "moderate",
+        "high" | "very high" | "veryhigh" => "high",
+        _ => {
+            let t = text.to_ascii_lowercase();
+            if t.contains("very high") || t == "high" {
+                "high"
+            } else if t.contains("moderate") || t.contains("medium") {
+                "moderate"
+            } else if t.contains("low") {
+                "low"
+            } else {
+                ""
+            }
+        }
+    };
+    (text, level.into())
 }
 
 fn slot_from_parts(period: &str, temperature_c: i32, weather_type: i64, text: &str) -> WeatherSlot {
@@ -484,6 +553,14 @@ mod tests {
         assert_eq!(tomorrow[1].temperature, "17°");
         assert_eq!(tomorrow[2].icon, "moon");
         assert_eq!(tomorrow[2].temperature, "13°");
+
+        assert_eq!(weather.days[0].sunrise, "06:33");
+        assert_eq!(weather.days[0].sunset, "19:18");
+        assert_eq!(weather.days[0].pollen, "Low");
+        assert_eq!(weather.days[0].pollen_level, "low");
+        assert_eq!(weather.days[1].sunrise, "06:35");
+        assert_eq!(weather.days[1].pollen, "Moderate");
+        assert_eq!(weather.days[1].pollen_level, "moderate");
     }
 
     #[test]

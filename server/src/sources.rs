@@ -8,6 +8,7 @@ use crate::config::Config;
 use crate::ics;
 use crate::meross;
 use crate::model::Dashboard;
+use crate::tfl;
 use crate::todoist;
 use crate::weather;
 
@@ -107,6 +108,23 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
     } else {
         dash.weather = weather::demo_weather();
         notes.push("demo weather (no BBC location)".into());
+    }
+
+    match tfl::load_tube().await {
+        Ok(lines) if !lines.is_empty() => {
+            dash.tube = lines;
+            notes.push("TfL tube".into());
+        }
+        Ok(_) => {
+            warn!("TfL returned no lines");
+            dash.tube = tfl::demo_tube();
+            notes.push("TfL empty — demo tube".into());
+        }
+        Err(err) => {
+            warn!(%err, "TfL failed; using demo tube");
+            dash.tube = tfl::demo_tube();
+            notes.push("TfL unavailable".into());
+        }
     }
 
     dash.fit_calendar_to_panel();

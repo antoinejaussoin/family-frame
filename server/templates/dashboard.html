@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>{{ family_name }} frame</title>
-  <link rel="stylesheet" href="/static/dashboard.css?v=house-row-height">
+  <link rel="stylesheet" href="/static/dashboard.css?v=tube-split-pollen">
 </head>
 <body>
   <main class="panel">
@@ -45,14 +45,39 @@
           <rect x="8" y="36" width="16" height="16" rx="3" fill="#000000"/>
           <rect x="30" y="40" width="26" height="8" rx="2" fill="#000000"/>
         </symbol>
+        <symbol id="icon-tube" viewBox="0 0 64 64">
+          <circle cx="32" cy="32" r="22" fill="none" stroke="#ff0000" stroke-width="8"/>
+          <rect x="6" y="26" width="52" height="12" rx="2" fill="#0000ff"/>
+        </symbol>
         <symbol id="icon-house" viewBox="0 0 64 64">
           <polygon points="32,6 60,32 4,32" fill="#000000"/>
           <rect x="12" y="30" width="40" height="28" fill="#000000"/>
           <rect x="26" y="38" width="12" height="20" fill="#ffff00"/>
         </symbol>
-        <symbol id="icon-weather" viewBox="0 0 64 64">
-          <circle cx="22" cy="22" r="10" fill="#ffff00"/>
-          <path fill="#000000" d="M20 52h30a12 12 0 0 0 1-23 14 14 0 0 0-26-5A12 12 0 0 0 20 52z"/>
+        <symbol id="icon-sunrise" viewBox="0 0 64 64">
+          <circle cx="32" cy="36" r="10" fill="#000000"/>
+          <rect x="29" y="8" width="6" height="10" rx="3" fill="#000000"/>
+          <rect x="29" y="8" width="6" height="10" rx="3" fill="#000000" transform="rotate(40 32 36)"/>
+          <rect x="29" y="8" width="6" height="10" rx="3" fill="#000000" transform="rotate(-40 32 36)"/>
+          <rect x="8" y="48" width="48" height="6" rx="2" fill="#000000"/>
+        </symbol>
+        <symbol id="icon-sunset" viewBox="0 0 64 64">
+          <path fill="#000000" d="M22 44a14 14 0 0 1 20 0H22z"/>
+          <rect x="29" y="18" width="6" height="10" rx="3" fill="#000000"/>
+          <rect x="29" y="18" width="6" height="10" rx="3" fill="#000000" transform="rotate(45 32 40)"/>
+          <rect x="29" y="18" width="6" height="10" rx="3" fill="#000000" transform="rotate(-45 32 40)"/>
+          <rect x="8" y="48" width="48" height="6" rx="2" fill="#000000"/>
+        </symbol>
+        <symbol id="icon-pollen" viewBox="0 0 64 64">
+          <circle cx="32" cy="32" r="8" fill="currentColor"/>
+          <circle cx="32" cy="12" r="7" fill="currentColor"/>
+          <circle cx="32" cy="52" r="7" fill="currentColor"/>
+          <circle cx="12" cy="32" r="7" fill="currentColor"/>
+          <circle cx="52" cy="32" r="7" fill="currentColor"/>
+          <circle cx="18" cy="18" r="6" fill="currentColor"/>
+          <circle cx="46" cy="18" r="6" fill="currentColor"/>
+          <circle cx="18" cy="46" r="6" fill="currentColor"/>
+          <circle cx="46" cy="46" r="6" fill="currentColor"/>
         </symbol>
         <symbol id="wx-sun" viewBox="0 0 64 64">
             <g fill="#ffff00">
@@ -120,39 +145,48 @@
         </defs>
     </svg>
 
-    <section class="weather" aria-label="Forecast">
-      {% if weather.days %}
-      <div class="weather-days">
-        {% for day in weather.days %}
-        <div class="weather-day">
-          <h3>
-            <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-weather"/></svg>
-            {{ day.label }}
-          </h3>
-          <ol class="slots">
-            {% for slot in day.slots %}
-            <li class="slot">
-              <span class="period">{{ slot.period }}</span>
-              <svg class="wx-icon" viewBox="0 0 64 64" role="img" aria-label="{{ slot.summary or slot.period }}">
-                <use href="#wx-{{ slot.icon }}"/>
-              </svg>
-              <span class="degrees">{{ slot.temperature }}</span>
-            </li>
-            {% endfor %}
-          </ol>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}
-      <p class="empty">No forecast yet.</p>
-      {% endif %}
-    </section>
-
     <div class="events">
       <section class="today">
         <h2>
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-today"/></svg>
-          Today
+          <span class="section-title">
+            <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-today"/></svg>
+            Today
+          </span>
+          {% if weather.days and weather.days|length > 0 %}
+          {% set day = weather.days[0] %}
+          <span class="day-meta" aria-label="Today’s weather">
+            <span class="slots">
+              {% for slot in day.slots %}
+              <span class="slot" aria-label="{{ slot.period }}: {{ slot.summary or slot.temperature }}">
+                <svg class="wx-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#wx-{{ slot.icon }}"/></svg>
+                <span class="degrees">{{ slot.temperature }}</span>
+              </span>
+              {% endfor %}
+            </span>
+            {% if day.sunrise or day.sunset %}
+            <span class="sun-times">
+              {% if day.sunrise %}
+              <span class="sun-time" aria-label="Sunrise {{ day.sunrise }}">
+                <svg class="sun-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-sunrise"/></svg>
+                {{ day.sunrise }}
+              </span>
+              {% endif %}
+              {% if day.sunset %}
+              <span class="sun-time" aria-label="Sunset {{ day.sunset }}">
+                <svg class="sun-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-sunset"/></svg>
+                {{ day.sunset }}
+              </span>
+              {% endif %}
+            </span>
+            {% endif %}
+            {% if day.pollen %}
+            <span class="pollen pollen-{{ day.pollen_level }}" aria-label="Pollen {{ day.pollen }}">
+              <svg class="pollen-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-pollen"/></svg>
+              {{ day.pollen }}
+            </span>
+            {% endif %}
+          </span>
+          {% endif %}
         </h2>
         {% if events_today %}
         <ol>
@@ -170,8 +204,45 @@
 
       <section class="coming">
         <h2>
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-week"/></svg>
-          Coming next
+          <span class="section-title">
+            <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-week"/></svg>
+            Coming next
+          </span>
+          {% if weather.days and weather.days|length > 1 %}
+          {% set day = weather.days[1] %}
+          <span class="day-meta" aria-label="Tomorrow’s weather">
+            <span class="slots">
+              {% for slot in day.slots %}
+              <span class="slot" aria-label="{{ slot.period }}: {{ slot.summary or slot.temperature }}">
+                <svg class="wx-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#wx-{{ slot.icon }}"/></svg>
+                <span class="degrees">{{ slot.temperature }}</span>
+              </span>
+              {% endfor %}
+            </span>
+            {% if day.sunrise or day.sunset %}
+            <span class="sun-times">
+              {% if day.sunrise %}
+              <span class="sun-time" aria-label="Sunrise {{ day.sunrise }}">
+                <svg class="sun-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-sunrise"/></svg>
+                {{ day.sunrise }}
+              </span>
+              {% endif %}
+              {% if day.sunset %}
+              <span class="sun-time" aria-label="Sunset {{ day.sunset }}">
+                <svg class="sun-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-sunset"/></svg>
+                {{ day.sunset }}
+              </span>
+              {% endif %}
+            </span>
+            {% endif %}
+            {% if day.pollen %}
+            <span class="pollen pollen-{{ day.pollen_level }}" aria-label="Pollen {{ day.pollen }}">
+              <svg class="pollen-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-pollen"/></svg>
+              {{ day.pollen }}
+            </span>
+            {% endif %}
+          </span>
+          {% endif %}
         </h2>
         {% if events_coming %}
         <ol>
@@ -202,6 +273,25 @@
         </ul>
         {% else %}
         <p class="empty">No open family tasks.</p>
+        {% endif %}
+      </section>
+
+      <section class="tube">
+        <h2>
+          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-tube"/></svg>
+          Tube
+        </h2>
+        {% if tube %}
+        <ul>
+          {% for line in tube %}
+          <li class="tube-line severity-{{ line.severity }}">
+            <span class="line-name colour-{{ line.colour }}">{{ line.name }}</span>
+            <span class="line-status">{{ line.status }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty">No Tube status yet.</p>
         {% endif %}
       </section>
 

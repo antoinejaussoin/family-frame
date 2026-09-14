@@ -46,15 +46,22 @@ mod tests {
     fn dashboard_includes_weather_slots() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 12).unwrap());
         dash.weather = weather::demo_weather();
+        dash.tube = crate::tfl::demo_tube();
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
-        assert!(html.contains("Morning"));
-        assert!(html.contains("Afternoon"));
-        assert!(html.contains("Evening"));
         assert!(html.contains("wx-sun"));
         assert!(html.contains("18°"));
-        assert!(html.contains("Tomorrow"));
-        assert!(html.contains("icon-house"));
-        assert!(html.contains("icon-today"));
+        assert!(html.contains("06:33"));
+        assert!(html.contains("19:18"));
+        assert!(html.contains("pollen-low"));
         assert!(html.contains("Coming next"));
+        assert!(html.contains("icon-today"));
+        assert!(html.contains("icon-house"));
+        assert!(html.contains("Northern"));
+        assert!(html.contains("Circle"));
+        assert!(html.contains("District"));
+        assert!(html.contains("Victoria"));
+        assert!(html.contains("day-meta"));
+        assert!(!html.contains("aria-label=\"Forecast\""));
+        assert!(!html.contains("class=\"weather\""));
     }
 }
