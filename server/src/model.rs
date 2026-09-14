@@ -10,6 +10,9 @@ pub struct CalendarEvent {
     pub day_label: String,
     /// Local `YYYY-MM-DD` so Today / Coming next stay in chronological order.
     pub date: String,
+    /// Config birthdays, merged into Today / Coming next.
+    #[serde(default)]
+    pub birthday: bool,
 }
 
 /// Today/week title column is ~830px (1600 panel − padding − 460px sidebar −
@@ -19,6 +22,9 @@ pub const EVENT_TITLE_MAX_CHARS: usize = 48;
 
 /// How far ahead to pull events for Coming next. Today stays in Today.
 pub const EVENT_HORIZON_DAYS: i64 = 180;
+
+/// Config birthdays are merged into the calendar this far ahead (inclusive).
+pub const BIRTHDAY_HORIZON_DAYS: i64 = 14;
 
 /// Pixel budget for the stacked Today + Coming next column on the 1600×1200
 /// panel. Keep in sync with `dashboard.css` (`.panel` padding/gaps, `.mast`,
@@ -398,6 +404,7 @@ mod tests {
             all_day: false,
             day_label: date.format("%a %-d").to_string(),
             date: date.format("%Y-%m-%d").to_string(),
+            birthday: false,
         }
     }
 

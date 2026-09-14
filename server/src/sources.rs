@@ -127,6 +127,11 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
         }
     }
 
+    merge_events(
+        &mut dash,
+        crate::birthdays::upcoming_events(&cfg.birthdays, today),
+    );
+
     dash.fit_to_panel();
     dash.source_note = notes.join(" · ");
     Ok(dash)
@@ -224,6 +229,7 @@ fn demo_events(today: chrono::NaiveDate) -> Vec<crate::model::CalendarEvent> {
             all_day,
             day_label: ics::day_label(date, today),
             date: date.format("%Y-%m-%d").to_string(),
+            birthday: false,
         }
     };
 

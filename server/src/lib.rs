@@ -4,6 +4,7 @@
 //! the panel refresh when the checksum has not changed.
 
 pub mod assets;
+pub mod birthdays;
 pub mod caldav;
 pub mod config;
 pub mod frame;

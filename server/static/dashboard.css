@@ -264,6 +264,11 @@ li:not(.tube-line):not(.todo-pill) {
   min-width: 0;
 }
 
+.today li,
+.coming li {
+  align-items: center;
+}
+
 .when {
   flex: 0 0 150px;
   font-weight: 700;
@@ -278,9 +283,25 @@ li:not(.tube-line):not(.todo-pill) {
 
 .today .what,
 .coming .what {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.what-text {
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.present-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: block;
 }
 .rooms li {
   display: grid;

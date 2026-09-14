@@ -48,6 +48,7 @@ pub fn parse_events(
             all_day,
             day_label: day_label(local.date_naive(), from),
             date: local.date_naive().format("%Y-%m-%d").to_string(),
+            birthday: false,
         });
     }
     out.sort_by(|a, b| {

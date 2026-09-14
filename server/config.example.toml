@@ -3,6 +3,9 @@
 bind = "0.0.0.0:8765"
 timezone = "Europe/London"
 family_name = "Family"
+# Birthdays live here, not on a calendar. Each entry is `Name,YYYY-MM-DD`.
+# Merged into Today / Coming next up to two weeks ahead as “Name turns N”.
+birthdays = ["Maya,2018-03-15", "Sam,2015-11-02"]
 # How often the Pico should poll. The server re-renders when data changes
 # or this interval has elapsed since the last successful render.
 refresh_minutes = 60

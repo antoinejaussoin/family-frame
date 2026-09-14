@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>{{ family_name }} frame</title>
-  <link rel="stylesheet" href="/static/dashboard.css?v=tube-split-pollen">
+  <link rel="stylesheet" href="/static/dashboard.css?v=present">
 </head>
 <body>
   <main class="panel">
@@ -78,6 +78,14 @@
           <circle cx="46" cy="18" r="6" fill="currentColor"/>
           <circle cx="18" cy="46" r="6" fill="currentColor"/>
           <circle cx="46" cy="46" r="6" fill="currentColor"/>
+        </symbol>
+        <symbol id="icon-present" viewBox="0 0 64 64">
+          <rect x="8" y="26" width="48" height="30" rx="4" fill="#ff0000"/>
+          <rect x="6" y="18" width="52" height="12" rx="3" fill="#ffff00"/>
+          <rect x="28" y="18" width="8" height="38" fill="#0000ff"/>
+          <rect x="14" y="6" width="16" height="14" rx="7" fill="#0000ff"/>
+          <rect x="34" y="6" width="16" height="14" rx="7" fill="#0000ff"/>
+          <rect x="28" y="8" width="8" height="12" rx="2" fill="#ff0000"/>
         </symbol>
         <symbol id="wx-sun" viewBox="0 0 64 64">
             <g fill="#ffff00">
@@ -191,9 +199,14 @@
         {% if events_today %}
         <ol>
           {% for ev in events_today %}
-          <li>
-            <span class="when">{% if ev.all_day %}All day{% else %}{{ ev.start }}{% endif %}</span>
-            <span class="what">{{ ev.title }}</span>
+          <li{% if ev.birthday %} class="birthday"{% endif %}>
+            <span class="when">{% if ev.birthday %}Birthday{% elif ev.all_day %}All day{% else %}{{ ev.start }}{% endif %}</span>
+            <span class="what">
+              {% if ev.birthday %}
+              <svg class="present-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-present"/></svg>
+              {% endif %}
+              <span class="what-text">{{ ev.title }}</span>
+            </span>
           </li>
           {% endfor %}
         </ol>
@@ -247,9 +260,14 @@
         {% if events_coming %}
         <ol>
           {% for ev in events_coming %}
-          <li>
+          <li{% if ev.birthday %} class="birthday"{% endif %}>
             <span class="when">{{ ev.day_label }}{% if ev.start %} {{ ev.start }}{% endif %}</span>
-            <span class="what">{{ ev.title }}</span>
+            <span class="what">
+              {% if ev.birthday %}
+              <svg class="present-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-present"/></svg>
+              {% endif %}
+              <span class="what-text">{{ ev.title }}</span>
+            </span>
           </li>
           {% endfor %}
         </ol>

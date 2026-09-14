@@ -66,6 +66,37 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_shows_birthday_name_and_age() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 14).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.events_today.push(crate::model::CalendarEvent {
+            start: String::new(),
+            title: "Maya turns 8".into(),
+            who: String::new(),
+            all_day: true,
+            day_label: "Today".into(),
+            date: "2026-09-14".into(),
+            birthday: true,
+        });
+        dash.events_coming.push(crate::model::CalendarEvent {
+            start: String::new(),
+            title: "Sam turns 11".into(),
+            who: String::new(),
+            all_day: true,
+            day_label: "Mon 28".into(),
+            date: "2026-09-28".into(),
+            birthday: true,
+        });
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("class=\"birthday\""));
+        assert!(html.contains("icon-present"));
+        assert!(html.contains("Maya turns 8"));
+        assert!(html.contains("Sam turns 11"));
+        assert!(html.contains("Birthday"));
+        assert!(html.contains("Mon 28"));
+    }
+
+    #[test]
     fn dashboard_shows_other_todos_count() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 12).unwrap());
         dash.todos = vec![crate::model::TodoItem {

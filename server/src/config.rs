@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use chrono::NaiveDate;
+use serde::{Deserialize, Deserializer};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -17,8 +18,44 @@ pub struct Config {
     pub meross: MerossConfig,
     pub weather: WeatherConfig,
     pub sources: SourcesConfig,
+    /// `"Name,YYYY-MM-DD"` entries, merged into the calendar up to two weeks ahead.
+    pub birthdays: Vec<Birthday>,
     #[serde(skip)]
     pub config_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Birthday {
+    pub name: String,
+    pub dob: NaiveDate,
+}
+
+impl Birthday {
+    /// Parse `Name,YYYY-MM-DD`. The date is the last comma-separated field
+    /// so names may contain commas.
+    pub fn parse(entry: &str) -> Result<Self, String> {
+        let entry = entry.trim();
+        let Some((name, dob)) = entry.rsplit_once(',') else {
+            return Err(format!(
+                "birthday `{entry}` should be `Name,YYYY-MM-DD`"
+            ));
+        };
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return Err(format!("birthday `{entry}` is missing a name"));
+        }
+        let dob = NaiveDate::parse_from_str(dob.trim(), "%Y-%m-%d").map_err(|_| {
+            format!("birthday `{entry}` has an invalid date (use YYYY-MM-DD)")
+        })?;
+        Ok(Self { name, dob })
+    }
+}
+
+impl<'de> Deserialize<'de> for Birthday {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Birthday::parse(&s).map_err(serde::de::Error::custom)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -78,6 +115,7 @@ impl Default for Config {
             meross: MerossConfig::default(),
             weather: WeatherConfig::default(),
             sources: SourcesConfig::default(),
+            birthdays: Vec::new(),
             config_dir: PathBuf::from("."),
         }
     }
@@ -224,5 +262,46 @@ mod tests {
         assert!(!cfg.meross_enabled());
         assert_eq!(cfg.weather.location_id, "2643743");
         assert!(cfg.weather_enabled());
+        assert_eq!(cfg.birthdays.len(), 2);
+        assert_eq!(cfg.birthdays[0].name, "Maya");
+        assert_eq!(
+            cfg.birthdays[0].dob,
+            NaiveDate::from_ymd_opt(2018, 3, 15).unwrap()
+        );
+        assert_eq!(cfg.birthdays[1].name, "Sam");
+    }
+
+    #[test]
+    fn birthdays_parse_from_name_date_strings() {
+        let cfg: Config = toml::from_str(
+            r#"
+            birthdays = ["Maya,2018-03-15", "Bob, 2020-01-02"]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(cfg.birthdays[0].name, "Maya");
+        assert_eq!(
+            cfg.birthdays[0].dob,
+            NaiveDate::from_ymd_opt(2018, 3, 15).unwrap()
+        );
+        assert_eq!(cfg.birthdays[1].name, "Bob");
+        assert_eq!(
+            cfg.birthdays[1].dob,
+            NaiveDate::from_ymd_opt(2020, 1, 2).unwrap()
+        );
+    }
+
+    #[test]
+    fn birthday_string_allows_comma_in_name() {
+        let b = Birthday::parse("Maya Jane, Jr.,2018-03-15").unwrap();
+        assert_eq!(b.name, "Maya Jane, Jr.");
+        assert_eq!(b.dob, NaiveDate::from_ymd_opt(2018, 3, 15).unwrap());
+    }
+
+    #[test]
+    fn birthday_string_rejects_bad_entries() {
+        assert!(Birthday::parse("Maya").is_err());
+        assert!(Birthday::parse(",2018-03-15").is_err());
+        assert!(Birthday::parse("Maya,14-09-2018").is_err());
     }
 }

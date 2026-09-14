@@ -99,6 +99,18 @@ Apple does not offer a public “Family Sharing API”. What works:
 
 Or publish a read-only webcal URL in `sources.ics_urls`.
 
+## Birthdays
+
+Birthdays are not read from a calendar. In `config.toml`:
+
+```toml
+birthdays = ["Maya,2018-03-15", "Sam,2015-11-02"]
+```
+
+Anyone whose next birthday is today or within two weeks is merged into
+**Today** / **Coming next** as “Name turns N”, with a present icon.
+Leap-day birthdays show on 28 February in non-leap years.
+
 ## Family to-dos
 
 To-dos come from a shared [Todoist](https://todoist.com) project:
