@@ -63,15 +63,16 @@ body {
   grid-area: sidebar;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   min-width: 0;
   min-height: 0;
   gap: 28px;
 }
 .today,
 .todos,
-.tube { flex: 0 0 auto; min-width: 0; }
-.coming,
-.rooms {
+.tube,
+.rooms { flex: 0 0 auto; min-width: 0; }
+.coming {
   flex: 0 1 auto;
   margin-top: auto;
   min-width: 0;
