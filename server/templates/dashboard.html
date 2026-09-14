@@ -268,7 +268,7 @@
         {% if todos %}
         <ul>
           {% for item in todos %}
-          <li class="{% if item.done %}done{% endif %}">{{ item.title }}</li>
+          <li class="todo-pill{% if item.done %} done{% endif %}">{{ item.title }}</li>
           {% endfor %}
         </ul>
         {% elif todos_more == 0 %}

@@ -38,9 +38,17 @@ pub const SIDEBAR_PX: i32 = 1008;
 pub const SIDEBAR_GAP_PX: i32 = 28;
 pub const TUBE_ROW_PX: i32 = 44;
 pub const ROOM_ROW_PX: i32 = EVENT_ROW_PX;
-pub const TODO_ROW_PX: i32 = EVENT_ROW_PX;
-/// Compact “+ N other todos” line under the list (margin + height).
+/// Compact “+ N other todos” line under the pills (margin + height).
 pub const TODOS_MORE_PX: i32 = 36;
+/// Sidebar inner width (`.panel` `460px` column).
+pub const TODO_PILL_MAX_PX: i32 = 460;
+pub const TODO_PILL_PAD_X: i32 = 24;
+pub const TODO_PILL_BORDER_X: i32 = 4;
+/// Conservative Noto Sans width at 22px (same ~0.55em as event titles).
+pub const TODO_PILL_CHAR_PX: i32 = 12;
+pub const TODO_PILL_ROW_PX: i32 = 40;
+pub const TODO_PILL_GAP_PX: i32 = 8;
+pub const TODO_PILL_TOP_PX: i32 = 10;
 
 /// How many Coming next rows fit under Today on the 13.3″ panel.
 pub fn coming_event_capacity(today_count: usize) -> usize {
@@ -186,7 +194,7 @@ impl Dashboard {
         self.events_coming.truncate(cap);
     }
 
-    /// Keep Tube and House in full; fill leftover sidebar height with to-dos.
+    /// Keep Tube and House in full; fill leftover sidebar height with to-do pills.
     pub fn fit_sidebar_to_panel(&mut self) {
         let remaining = SIDEBAR_PX
             - sidebar_block_px(self.tube.len(), TUBE_ROW_PX)
@@ -197,16 +205,12 @@ impl Dashboard {
             self.todos_more = 0;
             return;
         }
-        if todos_block_px(total, 0) <= remaining {
+        let body = remaining - SECTION_HEAD_PX;
+        if todos_fitting_in(&self.todos, body) == total {
             self.todos_more = 0;
             return;
         }
-        let row_budget = remaining - SECTION_HEAD_PX - TODOS_MORE_PX;
-        let shown = if row_budget < TODO_ROW_PX {
-            0
-        } else {
-            ((row_budget / TODO_ROW_PX) as usize).min(total.saturating_sub(1))
-        };
+        let shown = todos_fitting_in(&self.todos, body - TODOS_MORE_PX).min(total.saturating_sub(1));
         self.todos_more = total - shown;
         self.todos.truncate(shown);
     }
@@ -226,10 +230,38 @@ fn sidebar_block_px(rows: usize, row_px: i32) -> i32 {
         }
 }
 
-fn todos_block_px(shown: usize, more: usize) -> i32 {
-    SECTION_HEAD_PX
-        + (shown as i32).saturating_mul(TODO_ROW_PX)
-        + if more > 0 { TODOS_MORE_PX } else { 0 }
+fn todo_pill_width(title: &str) -> i32 {
+    let text = (title.chars().count() as i32).saturating_mul(TODO_PILL_CHAR_PX);
+    (TODO_PILL_PAD_X + TODO_PILL_BORDER_X + text).clamp(1, TODO_PILL_MAX_PX)
+}
+
+/// How many leading to-dos wrap into `body_px` below the section heading.
+fn todos_fitting_in(todos: &[TodoItem], body_px: i32) -> usize {
+    if body_px < TODO_PILL_TOP_PX + TODO_PILL_ROW_PX {
+        return 0;
+    }
+    let mut rows = 0i32;
+    let mut x = 0i32;
+    let mut shown = 0usize;
+    for todo in todos {
+        let w = todo_pill_width(&todo.title);
+        let new_row = rows == 0 || x + TODO_PILL_GAP_PX + w > TODO_PILL_MAX_PX;
+        if new_row {
+            let next_rows = rows + 1;
+            let height = TODO_PILL_TOP_PX
+                + next_rows * TODO_PILL_ROW_PX
+                + rows * TODO_PILL_GAP_PX;
+            if height > body_px {
+                break;
+            }
+            rows = next_rows;
+            x = w;
+        } else {
+            x += TODO_PILL_GAP_PX + w;
+        }
+        shown += 1;
+    }
+    shown
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -306,17 +338,30 @@ mod tests {
     }
 
     #[test]
-    fn sidebar_keeps_tube_and_house_and_trims_todos() {
+    fn sidebar_keeps_tube_and_house_and_trims_todo_pills() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
         let mut dash = Dashboard::empty("Family", today);
         dash.tube = tube_lines(4);
         dash.rooms = ["A", "B", "C", "D", "E"].into_iter().map(room).collect();
-        dash.todos = (0..10).map(|i| todo(&format!("Task {i}"))).collect();
+        dash.todos = (0..50).map(|_| todo("Milk")).collect();
         dash.fit_sidebar_to_panel();
         assert_eq!(dash.tube.len(), 4);
         assert_eq!(dash.rooms.len(), 5);
-        assert_eq!(dash.todos.len(), 4);
-        assert_eq!(dash.todos_more, 6);
+        assert!(dash.todos.len() > 4, "pills should beat one-per-line packing");
+        assert!(dash.todos_more > 0);
+        assert_eq!(dash.todos.len() + dash.todos_more, 50);
+    }
+
+    #[test]
+    fn sidebar_short_todos_share_a_row() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.todos = (0..8).map(|_| todo("Ok")).collect();
+        dash.fit_sidebar_to_panel();
+        assert_eq!(dash.todos.len(), 8);
+        assert_eq!(dash.todos_more, 0);
     }
 
     #[test]

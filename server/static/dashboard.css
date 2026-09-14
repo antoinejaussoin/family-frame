@@ -252,7 +252,7 @@ li {
   line-height: 1.2;
 }
 
-li:not(.tube-line) {
+li:not(.tube-line):not(.todo-pill) {
   box-sizing: border-box;
   height: 60px;
 }
@@ -359,19 +359,36 @@ li:not(.tube-line) {
   padding: 2px 8px;
 }
 
-.todos li {
+.todos ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 0 0;
+}
+.todos li.todo-pill {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  height: auto;
+  max-width: 100%;
+  gap: 0;
+  margin: 0;
+  padding: 5px 12px;
+  border: 2px solid var(--black);
+  border-radius: 999px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.15;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  min-width: 0;
 }
-.todos li::before {
-  content: "□ ";
-  color: var(--blue);
-  font-weight: 700;
+.todos li.todo-pill.done {
+  text-decoration: line-through;
 }
-
-.todos li.done { text-decoration: line-through; }
 
 .todos-more {
   margin: 8px 0 0;

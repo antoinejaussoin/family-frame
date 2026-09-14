@@ -74,6 +74,7 @@ mod tests {
         }];
         dash.todos_more = 4;
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("todo-pill"));
         assert!(html.contains("Buy milk"));
         assert!(html.contains("+ 4 other todos"));
         assert!(!html.contains("No open family tasks"));
