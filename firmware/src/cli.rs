@@ -118,7 +118,7 @@ async fn handle_line(
                  psk <password>   (empty = open network)\r\n\
                  server <host:port>\r\n\
                    e.g. 192.168.0.251:8765\r\n\
-                 sleep <seconds>  (0 = stay awake, poll every 60s; default 3600)\r\n\
+                 sleep <seconds>  (0 = poll every 60s; dormant between polls)\r\n\
                  save             write flash and join Wi-Fi\r\n\
                  show\r\n\
                  forget           drop last frame checksum (force next paint)\r\n\
@@ -183,7 +183,7 @@ async fn handle_line(
             let mut msg = String::<384>::new();
             let _ = write!(
                 msg,
-                "ssid: {}\r\npsk:  {}\r\nurl:  {}\r\nsleep: {} s\r\nchecksum: {}\r\n{}\r\nbattery: {} mV ~{}%\r\nleds: {}\r\n",
+                "ssid: {}\r\npsk:  {}\r\nurl:  {}\r\nsleep: {} s\r\nchecksum: {}\r\n{}\r\nbattery: {} mV ~{}%\r\nleds: {}\r\nwake: {}\r\n",
                 cfg.ssid,
                 if cfg.psk.is_empty() {
                     "(none)"
@@ -204,6 +204,11 @@ async fn handle_line(
                     "USB host (user LED on)"
                 } else {
                     "battery (user LED off)"
+                },
+                if power::woke_from_sleep() {
+                    "POWMAN timer"
+                } else {
+                    "cold"
                 }
             );
             let _ = write_text(class, msg.as_str()).await;

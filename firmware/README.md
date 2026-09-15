@@ -8,7 +8,7 @@ binary:
 2. `GET /frame.bin?checksum=<last>` (and `If-None-Match`).
 3. **304** → leave the glass alone.
 4. **200** → `show_frame()` the 960 000-byte body, store the checksum.
-5. Waits `sleep` seconds (default 3600) and repeats.
+5. Powers the switched-core down for `sleep` seconds (default 3600) and repeats.
 
 Wi-Fi / server provisioning is the same USB CDC CLI as the laser-tag
 temperature-display and IR-capture nodes: type `wifi`, `psk`, `server`,
@@ -40,9 +40,9 @@ save
 | `wifi <ssid>` | 2.4 GHz SSID (max 32) |
 | `psk <password>` | WPA2 PSK, or empty for an open network |
 | `server <host:port>` | Family-frame HTTP origin. `GET /frame.bin` is appended |
-| `sleep <seconds>` | Interval between polls. `0` = stay awake, poll every 60 s |
+| `sleep <seconds>` | Interval between polls. `0` = poll every 60 s. POWMAN-dormant between polls |
 | `save` | Write the last flash sector and join Wi-Fi |
-| `show` | SSID, URL, sleep, checksum, Wi-Fi / frame status, battery |
+| `show` | SSID, URL, sleep, checksum, Wi-Fi / frame status, battery, wake reason |
 | `forget` | Drop the last checksum so the next poll paints |
 | `clear` | Erase saved settings |
 | `help` | Command list |
@@ -142,10 +142,13 @@ make flash-oled
 
 USB CLI is unchanged (`wifi` / `psk` / `server` / `save`). For a fast
 poll while you watch the OLED, `sleep 0` then `save` (wakes every 60 s).
+The glass and radio go dark between polls; the CDC port drops until the
+next wake, so type `show` during the fetch window or tap reset.
 
 The OLED shows PSRAM bring-up, VSYS battery, on-die chip temperature,
 Wi-Fi, and the last `/frame.bin` result. Cold-boot e-ink colour fills
-still run; with no panel they just waste a few seconds of SPI.
+run once per power-on, not after a timer wake. With no panel they just
+waste a few seconds of SPI.
 
 This module is the Pi Hut 0.96″ 128×64. The listing says SSD1306; the
 laser-tag firmware talks to it as SH1106. If the yellow band is readable
@@ -153,8 +156,8 @@ and the blue area is noise, in `src/oled.rs` switch
 `OledConfig::sh1106_128x64()` to `OledConfig::ssd1306_128x64()` and flash
 again. Address `0x3C` (try `0x3D` if the glass stays black).
 
-The first Rust port stays in Embassy and polls (`sleep` seconds, radio in
-PowerSave). POWMAN power-gating can follow once the panel path is
-verified on hardware.
+Between polls both binaries power-down the switched-core (AON LPOSC
+alarm wake, `WL_REG_ON` held low, OLED `display_off`). Until Wi-Fi and
+server are saved, the node stays awake for the USB CLI.
 
 Without hardware, [`pico-sim`](../pico-sim/) speaks the same HTTP loop.

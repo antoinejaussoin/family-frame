@@ -49,10 +49,17 @@ impl DebugOled {
         }
     }
 
+    pub fn off(&mut self) {
+        if let Some(screen) = self.screen.as_mut() {
+            let _ = screen.display.display_off();
+        }
+    }
+
     pub fn paint(&mut self, bat: &mut Battery<'_>, extra: &str) {
         let Some(screen) = self.screen.as_mut() else {
             return;
         };
+        let _ = screen.display.display_on();
         let (mv, pct) = crate::battery::last();
         screen.show(
             self.psram.as_str(),

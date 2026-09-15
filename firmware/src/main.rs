@@ -91,6 +91,7 @@ async fn main(spawner: Spawner) {
     let _ = bat.sample();
     ui.paint(&mut bat, "booting radio");
 
+    power::release_radio_hold();
     let stack = wifi::start(
         spawner, p.PIN_23, p.PIN_25, p.PIN_24, p.PIN_29, p.PIO0, p.DMA_CH0,
     )
@@ -111,7 +112,7 @@ async fn main(spawner: Spawner) {
         Output::new(p.PIN_16, Level::High),
     );
 
-    let mut cold = true;
+    let mut cold = !power::woke_from_sleep();
     let mut painted_diag = false;
     let mut fails: u32 = 0;
 
@@ -261,9 +262,18 @@ struct DebugUi {
 
 impl DebugUi {
     fn new(
-        #[cfg(feature = "oled-debug")] i2c1: embassy_rp::Peri<'static, embassy_rp::peripherals::I2C1>,
-        #[cfg(feature = "oled-debug")] scl: embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_19>,
-        #[cfg(feature = "oled-debug")] sda: embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_18>,
+        #[cfg(feature = "oled-debug")] i2c1: embassy_rp::Peri<
+            'static,
+            embassy_rp::peripherals::I2C1,
+        >,
+        #[cfg(feature = "oled-debug")] scl: embassy_rp::Peri<
+            'static,
+            embassy_rp::peripherals::PIN_19,
+        >,
+        #[cfg(feature = "oled-debug")] sda: embassy_rp::Peri<
+            'static,
+            embassy_rp::peripherals::PIN_18,
+        >,
         #[cfg(feature = "oled-debug")] psram: Option<&embassy_rp::psram::Psram<'static>>,
     ) -> Self {
         #[cfg(feature = "oled-debug")]
@@ -285,27 +295,16 @@ impl DebugUi {
         #[cfg(not(feature = "oled-debug"))]
         let _ = (bat, extra);
     }
+
+    fn sleep_display(&mut self) {
+        #[cfg(feature = "oled-debug")]
+        self.oled.off();
+    }
 }
 
 async fn nap_with_ui(ui: &mut DebugUi, bat: &mut battery::Battery<'_>, nap: u32) {
-    #[cfg(feature = "oled-debug")]
-    {
-        use core::fmt::Write as _;
-        let mut left = nap;
-        while left > 0 {
-            let mut extra = heapless::String::<20>::new();
-            let _ = write!(extra, "nap {left}s");
-            let _ = bat.sample();
-            ui.paint(bat, extra.as_str());
-            let chunk = left.min(2);
-            Timer::after_secs(u64::from(chunk)).await;
-            left -= chunk;
-        }
-    }
-    #[cfg(not(feature = "oled-debug"))]
-    {
-        let _ = ui;
-        let _ = bat;
-        Timer::after_secs(u64::from(nap)).await;
-    }
+    let _ = bat.sample();
+    ui.paint(bat, "dormant");
+    ui.sleep_display();
+    power::sleep_secs(nap).await;
 }

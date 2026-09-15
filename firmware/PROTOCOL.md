@@ -50,7 +50,6 @@ New frames are saved as timestamped PNGs in `pico-sim/out/`.
 - User LED (RM2 `WL_GPIO0`) is on only while a USB host is sending SOFs.
   The white power LED is hardwired to 3V3; cut the rear LED trace to kill it.
 - Inky 3.3 V and SPI ride the 40-pin header.
-- The first Rust port polls in Embassy PowerSave (`sleep` seconds, default
-  3600). Shut the CYW43439 and POWMAN-sleep once that path is verified,
-  or you will not get weeks.
+- Between polls the switched-core is powered down (AON timer wake,
+  CYW43439 `WL_REG_ON` held low). Default interval is 3600 s.
 - 2.4 GHz only. Reserved DHCP or a static IP keeps the wake under ~45 s.
