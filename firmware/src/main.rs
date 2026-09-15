@@ -34,6 +34,8 @@ use crate::settings::{ConfigFlash, SharedFlash};
 
 const FAIL_SLEEP_S: u32 = 120;
 const AWAKE_POLL_S: u32 = 60;
+/// Long enough for a missed handshake plus one retry (join + link + DHCP).
+const WIFI_WAIT_S: u64 = 90;
 
 #[unsafe(link_section = ".start_block")]
 #[used]
@@ -126,7 +128,7 @@ async fn main(spawner: Spawner) {
         }
 
         let waited = Instant::now();
-        while !wifi::is_up() && waited.elapsed() < Duration::from_secs(35) {
+        while !wifi::is_up() && waited.elapsed() < Duration::from_secs(WIFI_WAIT_S) {
             ui.paint(&mut bat, "joining wifi");
             Timer::after_millis(200).await;
         }

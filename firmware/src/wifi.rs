@@ -3,7 +3,7 @@
 //! Same Embassy / PIO wiring as the laser-tag temperature and IR-capture nodes.
 
 use core::sync::atomic::{AtomicU8, Ordering};
-use cyw43::JoinOptions;
+use cyw43::{JoinAuth, JoinError, JoinOptions, PowerManagementMode};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
@@ -14,7 +14,7 @@ use embassy_rp::dma;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::{DMA_CH0, PIN_23, PIN_24, PIN_25, PIN_29, PIO0};
 use embassy_rp::pio::Pio;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Timer, with_timeout};
 use static_cell::StaticCell;
 
 use crate::board::Irqs;
@@ -22,6 +22,12 @@ use crate::settings;
 
 static WIFI_STATUS: AtomicU8 = AtomicU8::new(WifiStatus::Setup as u8);
 static FRAME_STATUS: AtomicU8 = AtomicU8::new(FrameStatus::None as u8);
+
+/// `join()` either errors quickly or hangs waiting for a handshake event.
+const JOIN_TIMEOUT: Duration = Duration::from_secs(12);
+/// cyw43 0.7 can return `Ok` from `join` before it reports link-up.
+const LINK_TIMEOUT: Duration = Duration::from_secs(5);
+const DHCP_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -121,8 +127,9 @@ pub async fn start(
         cyw43::new(STATE.init(cyw43::State::new()), pwr, spi, fw, nvram).await;
     spawner.spawn(cyw43_task(runner).unwrap());
     control.init(clm.as_ref()).await;
+    // PowerSave during associate drops handshake events on this chip.
     control
-        .set_power_management(cyw43::PowerManagementMode::PowerSave)
+        .set_power_management(PowerManagementMode::None)
         .await;
 
     let mut rng = RoscRng;
@@ -152,52 +159,113 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
 
 #[embassy_executor::task]
 async fn wifi_task(mut control: cyw43::Control<'static>, stack: Stack<'static>) -> ! {
+    let mut backoff_s = 1u64;
     loop {
         let cfg = settings::snapshot().await;
         if cfg.ssid.is_empty() {
             WifiStatus::Setup.store();
             control.gpio_set(0, false).await;
             settings::wait_rejoin().await;
+            backoff_s = 1;
             continue;
         }
 
         WifiStatus::Joining.store();
         FrameStatus::None.store();
-        control.leave().await;
-        Timer::after_millis(200).await;
 
-        let up = embassy_time::with_timeout(Duration::from_secs(30), async {
-            let join = if cfg.psk.is_empty() {
-                control
-                    .join(cfg.ssid.as_str(), JoinOptions::new_open())
-                    .await
-            } else {
-                control
-                    .join(cfg.ssid.as_str(), JoinOptions::new(cfg.psk.as_bytes()))
-                    .await
-            };
-            match join {
-                Ok(()) => {
-                    stack.wait_config_up().await;
-                    true
-                }
-                Err(_) => false,
-            }
-        })
-        .await
-        .unwrap_or(false);
-
-        if up {
+        if associate(&mut control, stack, &cfg).await {
+            backoff_s = 1;
             WifiStatus::Up.store();
             control.gpio_set(0, true).await;
-            settings::wait_rejoin().await;
-        } else {
-            WifiStatus::Fail.store();
-            control.gpio_set(0, false).await;
-            control.leave().await;
-            match select(settings::wait_rejoin(), Timer::after_secs(2)).await {
+            control
+                .set_power_management(PowerManagementMode::PowerSave)
+                .await;
+            match select(settings::wait_rejoin(), stack.wait_link_down()).await {
                 Either::First(()) | Either::Second(()) => {}
             }
+            WifiStatus::Joining.store();
+            control.gpio_set(0, false).await;
+            continue;
         }
+
+        control.gpio_set(0, false).await;
+        match select(settings::wait_rejoin(), Timer::after_secs(backoff_s)).await {
+            Either::First(()) | Either::Second(()) => {}
+        }
+        backoff_s = (backoff_s.saturating_mul(2)).min(8);
     }
+}
+
+/// Associate, wait until the driver reports link-up, then DHCP.
+///
+/// Default `JoinOptions` use WPA2+WPA3/SAE. On a WPA2 AP that handshake
+/// often fails (or `join` returns `Ok` while link stays down). WPA2-only
+/// first, WPA2+WPA3 only if the AP rejects WPA2. Power management stays
+/// off until DHCP succeeds so assoc/4-way events are not missed.
+async fn associate(
+    control: &mut cyw43::Control<'static>,
+    stack: Stack<'static>,
+    cfg: &settings::NetConfig,
+) -> bool {
+    control
+        .set_power_management(PowerManagementMode::None)
+        .await;
+    control.leave().await;
+    let _ = with_timeout(Duration::from_millis(500), stack.wait_link_down()).await;
+    Timer::after_millis(250).await;
+
+    if !join_ssid(control, cfg).await {
+        control.leave().await;
+        return false;
+    }
+
+    if with_timeout(LINK_TIMEOUT, stack.wait_link_up())
+        .await
+        .is_err()
+    {
+        control.leave().await;
+        return false;
+    }
+
+    if with_timeout(DHCP_TIMEOUT, stack.wait_config_up())
+        .await
+        .is_err()
+    {
+        control.leave().await;
+        false
+    } else {
+        true
+    }
+}
+
+async fn join_ssid(control: &mut cyw43::Control<'static>, cfg: &settings::NetConfig) -> bool {
+    let ssid = cfg.ssid.as_str();
+    if cfg.psk.is_empty() {
+        return join_once(control, ssid, JoinOptions::new_open()).await;
+    }
+
+    let mut wpa2 = JoinOptions::new(cfg.psk.as_bytes());
+    wpa2.auth = JoinAuth::Wpa2;
+    match with_timeout(JOIN_TIMEOUT, control.join(ssid, wpa2)).await {
+        Ok(Ok(())) => true,
+        Ok(Err(JoinError::AuthenticationFailure)) => {
+            control.leave().await;
+            Timer::after_millis(250).await;
+            let mut mixed = JoinOptions::new(cfg.psk.as_bytes());
+            mixed.auth = JoinAuth::Wpa2Wpa3;
+            join_once(control, ssid, mixed).await
+        }
+        _ => false,
+    }
+}
+
+async fn join_once(
+    control: &mut cyw43::Control<'static>,
+    ssid: &str,
+    options: JoinOptions<'_>,
+) -> bool {
+    matches!(
+        with_timeout(JOIN_TIMEOUT, control.join(ssid, options)).await,
+        Ok(Ok(()))
+    )
 }
