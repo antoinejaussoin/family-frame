@@ -107,8 +107,12 @@ swaps SCLK and MOSI — meter it, do not trust the vendor PDF.
 | OLED SDA (`family-frame-oled` only) | 18 |
 | OLED SCL (`family-frame-oled` only) | 19 |
 
-Cut the rear **power-LED** trace for weeks of sleep. Solder **`+1A Mode`**
-only if a refresh browns out and the cell can deliver it.
+The **user LED** (next to USB-C, RM2 `WL_GPIO0`) is on only while a USB
+host is actually talking (SOF frames). Unplugging the cable turns it off
+within ~100 ms even if the board was previously enumerated. The white
+**power LED** is hardwired to 3V3 — firmware cannot switch it. Cut the
+rear LED-symbol trace for weeks of sleep. Solder **`+1A Mode`** only if a
+refresh browns out and the cell can deliver it.
 
 ## OLED debug
 

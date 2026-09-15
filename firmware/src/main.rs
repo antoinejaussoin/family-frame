@@ -11,6 +11,7 @@ mod epd;
 mod http;
 #[cfg(feature = "oled-debug")]
 mod oled;
+mod power;
 mod settings;
 mod wifi;
 
@@ -95,6 +96,7 @@ async fn main(spawner: Spawner) {
     )
     .await;
     cli::start(spawner, p.USB, flash);
+    power::start(spawner);
     ui.paint(&mut bat, "radio up");
 
     let mut spi_cfg = SpiConfig::default();

@@ -14,6 +14,7 @@ use static_cell::StaticCell;
 
 use crate::battery;
 use crate::board::Irqs;
+use crate::power;
 use crate::settings::{self, SharedFlash};
 use crate::wifi;
 
@@ -182,7 +183,7 @@ async fn handle_line(
             let mut msg = String::<384>::new();
             let _ = write!(
                 msg,
-                "ssid: {}\r\npsk:  {}\r\nurl:  {}\r\nsleep: {} s\r\nchecksum: {}\r\n{}\r\nbattery: {} mV ~{}%\r\n",
+                "ssid: {}\r\npsk:  {}\r\nurl:  {}\r\nsleep: {} s\r\nchecksum: {}\r\n{}\r\nbattery: {} mV ~{}%\r\nleds: {}\r\n",
                 cfg.ssid,
                 if cfg.psk.is_empty() {
                     "(none)"
@@ -198,7 +199,12 @@ async fn handle_line(
                 },
                 wifi::status_line(),
                 mv,
-                pct
+                pct,
+                if power::on_usb() {
+                    "USB host (user LED on)"
+                } else {
+                    "battery (user LED off)"
+                }
             );
             let _ = write_text(class, msg.as_str()).await;
         }

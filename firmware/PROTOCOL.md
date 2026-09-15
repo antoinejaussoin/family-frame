@@ -47,6 +47,8 @@ New frames are saved as timestamped PNGs in `pico-sim/out/`.
 
 - LiPo → Pico LiPo 2 XL W **JST-PH** (onboard MCP73831; 3.0–4.2 V).
 - USB-C flashes and charges. Do not feed **VBUS**.
+- User LED (RM2 `WL_GPIO0`) is on only while a USB host is sending SOFs.
+  The white power LED is hardwired to 3V3; cut the rear LED trace to kill it.
 - Inky 3.3 V and SPI ride the 40-pin header.
 - The first Rust port polls in Embassy PowerSave (`sleep` seconds, default
   3600). Shut the CYW43439 and POWMAN-sleep once that path is verified,

@@ -127,6 +127,7 @@ pub async fn start(
         cyw43::new(STATE.init(cyw43::State::new()), pwr, spi, fw, nvram).await;
     spawner.spawn(cyw43_task(runner).unwrap());
     control.init(clm.as_ref()).await;
+    control.gpio_set(0, false).await;
     // PowerSave during associate drops handshake events on this chip.
     control
         .set_power_management(PowerManagementMode::None)
@@ -161,11 +162,11 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
 async fn wifi_task(mut control: cyw43::Control<'static>, stack: Stack<'static>) -> ! {
     let mut backoff_s = 1u64;
     loop {
+        apply_user_led(&mut control).await;
         let cfg = settings::snapshot().await;
         if cfg.ssid.is_empty() {
             WifiStatus::Setup.store();
-            control.gpio_set(0, false).await;
-            settings::wait_rejoin().await;
+            wait_while_updating_led(&mut control, settings::wait_rejoin()).await;
             backoff_s = 1;
             continue;
         }
@@ -176,23 +177,45 @@ async fn wifi_task(mut control: cyw43::Control<'static>, stack: Stack<'static>) 
         if associate(&mut control, stack, &cfg).await {
             backoff_s = 1;
             WifiStatus::Up.store();
-            control.gpio_set(0, true).await;
             control
                 .set_power_management(PowerManagementMode::PowerSave)
                 .await;
-            match select(settings::wait_rejoin(), stack.wait_link_down()).await {
-                Either::First(()) | Either::Second(()) => {}
-            }
+            wait_while_updating_led(&mut control, async {
+                match select(settings::wait_rejoin(), stack.wait_link_down()).await {
+                    Either::First(()) | Either::Second(()) => {}
+                }
+            })
+            .await;
             WifiStatus::Joining.store();
-            control.gpio_set(0, false).await;
             continue;
         }
 
-        control.gpio_set(0, false).await;
-        match select(settings::wait_rejoin(), Timer::after_secs(backoff_s)).await {
-            Either::First(()) | Either::Second(()) => {}
-        }
+        wait_while_updating_led(&mut control, async {
+            match select(settings::wait_rejoin(), Timer::after_secs(backoff_s)).await {
+                Either::First(()) | Either::Second(()) => {}
+            }
+        })
+        .await;
         backoff_s = (backoff_s.saturating_mul(2)).min(8);
+    }
+}
+
+/// User LED on only while a USB host is sending SOFs. Off on battery.
+async fn apply_user_led(control: &mut cyw43::Control<'_>) {
+    control.gpio_set(0, crate::power::on_usb()).await;
+}
+
+async fn wait_while_updating_led<F, T>(control: &mut cyw43::Control<'_>, fut: F) -> T
+where
+    F: core::future::Future<Output = T>,
+{
+    let mut fut = core::pin::pin!(fut);
+    loop {
+        apply_user_led(control).await;
+        match select(fut.as_mut(), crate::power::wait_usb_change()).await {
+            Either::First(v) => return v,
+            Either::Second(()) => {}
+        }
     }
 }
 
