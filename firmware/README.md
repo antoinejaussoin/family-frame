@@ -8,7 +8,8 @@ binary:
 2. `POST /frame.bin` with battery diagnostics and `If-None-Match`.
 3. **204** → leave the glass alone.
 4. **200** → `show_frame()` the 960 000-byte body, store the checksum.
-5. Powers the switched-core down for `sleep` seconds (default 3600) and repeats.
+5. Powers the switched-core down for `sleep` seconds (default 3600) and
+   repeats. A USB host keeps the chip awake so the CDC serial port stays up.
 
 Wi-Fi / server provisioning is the same USB CDC CLI as the laser-tag
 temperature-display and IR-capture nodes: type `wifi`, `psk`, `server`,
@@ -40,7 +41,7 @@ save
 | `wifi <ssid>` | 2.4 GHz SSID (max 32) |
 | `psk <password>` | WPA2 PSK, or empty for an open network |
 | `server <host:port>` | Family-frame HTTP origin. `POST /frame.bin` is appended |
-| `sleep <seconds>` | Interval between polls. `0` = poll every 60 s. POWMAN-dormant between polls |
+| `sleep <seconds>` | Interval between polls. `0` = poll every 60 s. POWMAN-dormant between polls unless a USB host is plugged |
 | `save` | Write the last flash sector and join Wi-Fi |
 | `show` | SSID, URL, sleep, checksum, Wi-Fi / frame status, battery, wake reason |
 | `forget` | Drop the last checksum so the next poll paints |
@@ -142,8 +143,9 @@ make flash-oled
 
 USB CLI is unchanged (`wifi` / `psk` / `server` / `save`). For a fast
 poll while you watch the OLED, `sleep 0` then `save` (wakes every 60 s).
-The glass and radio go dark between polls; the CDC port drops until the
-next wake, so type `show` during the fetch window or tap reset.
+On battery the glass and radio go dark between polls and the CDC port
+drops until the next wake. Leave USB-C plugged into a host (not a
+charge-only cable) and the board stays awake so `screen` keeps working.
 
 The OLED shows PSRAM bring-up, VSYS battery, on-die chip temperature,
 Wi-Fi, and the last `/frame.bin` result. Cold-boot e-ink colour fills
@@ -157,7 +159,8 @@ and the blue area is noise, in `src/oled.rs` switch
 again. Address `0x3C` (try `0x3D` if the glass stays black).
 
 Between polls both binaries power-down the switched-core (AON LPOSC
-alarm wake, `WL_REG_ON` held low, OLED `display_off`). Until Wi-Fi and
-server are saved, the node stays awake for the USB CLI.
+alarm wake, `WL_REG_ON` held low, OLED `display_off`) **unless a USB
+host is sending SOFs**. Until Wi-Fi and server are saved, or while USB
+serial is plugged in, the node stays awake for the USB CLI.
 
 Without hardware, [`pico-sim`](../pico-sim/) speaks the same HTTP loop.

@@ -6,9 +6,10 @@ hour it:
 1. Wakes, joins 2.4 GHz Wi-Fi.
 2. `POST /frame.bin` with battery diagnostics in the body and
    `If-None-Match: <last checksum>` when it has one.
-3. **204** (or **304**) → leave the panel alone, go back to sleep.
+3. **204** (or **304**) → leave the panel alone, then sleep (or stay
+   awake if USB-C is plugged into a host).
 4. **200** → write the 960 000-byte body to the Inky, store
-   `X-Frame-Checksum` / `ETag`, sleep.
+   `X-Frame-Checksum` / `ETag`, then sleep unless USB is plugged.
 
 Browsers still `GET /frame.bin` to download the packed file; those hits
 are not logged. Only POSTs from the Pico (or [`pico-sim`](../pico-sim/))
@@ -82,5 +83,7 @@ lowers the fake battery each poll so `/debug` can plot a slope.
   The white power LED is hardwired to 3V3; cut the rear LED trace to kill it.
 - Inky 3.3 V and SPI ride the 40-pin header.
 - Between polls the switched-core is powered down (AON timer wake,
-  CYW43439 `WL_REG_ON` held low). Default interval is 3600 s.
+  CYW43439 `WL_REG_ON` held low) unless a USB host is sending SOFs.
+  A plugged USB-C data cable keeps the CDC CLI enumerated. Default
+  interval is 3600 s.
 - 2.4 GHz only. Reserved DHCP or a static IP keeps the wake under ~45 s.

@@ -304,7 +304,11 @@ impl DebugUi {
 
 async fn nap_with_ui(ui: &mut DebugUi, bat: &mut battery::Battery<'_>, nap: u32) {
     let _ = bat.sample();
-    ui.paint(bat, "dormant");
-    ui.sleep_display();
+    if power::plugged_usb().await {
+        ui.paint(bat, "USB stay awake");
+    } else {
+        ui.paint(bat, "dormant");
+        ui.sleep_display();
+    }
     power::sleep_secs(nap).await;
 }

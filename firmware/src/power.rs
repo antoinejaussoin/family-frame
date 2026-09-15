@@ -10,14 +10,16 @@
 //! disconnect signal.
 //!
 //! Between `/frame.bin` polls the switched-core is powered down (AON LPOSC
-//! alarm wake). That resets the CPUs, so `main` runs again. cyw43 cannot be
-//! restarted in-place; reboot is the clean way to kill the radio.
+//! alarm wake) unless a USB host is sending SOFs. POWMAN resets the CPUs, so
+//! `main` runs again. cyw43 cannot be restarted in-place; reboot is the
+//! clean way to kill the radio. A USB host keeps the core up so CDC serial
+//! stays connected.
 
 use core::sync::atomic::{AtomicBool, Ordering, compiler_fence};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
-use embassy_time::Timer;
+use embassy_time::{Duration, Instant, Timer};
 
 static USB_HOST: AtomicBool = AtomicBool::new(false);
 static USB_HOST_CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -75,6 +77,16 @@ pub fn on_usb() -> bool {
     USB_HOST.load(Ordering::Relaxed)
 }
 
+/// [`on_usb`], after one SOF-watch tick if the last sample was unplugged.
+///
+/// A cable seated during the fetch is then visible before POWMAN sleep.
+pub async fn plugged_usb() -> bool {
+    if !on_usb() {
+        Timer::after_millis(120).await;
+    }
+    on_usb()
+}
+
 /// True when this boot is a wake from [`sleep_secs`] (skip cold e-ink diags).
 pub fn woke_from_sleep() -> bool {
     WOKE_FROM_SLEEP.load(Ordering::Relaxed)
@@ -100,14 +112,25 @@ pub fn release_radio_hold() {
     powman_write(OFF_EXT_CTRL0, EXT_GPIO_DISABLE);
 }
 
-/// OLED off, radio off, switched-core powered down until `secs` have passed.
+/// Between polls: POWMAN sleep, unless a USB host is present.
 ///
-/// Wake is a full `main` restart. Returns only if POWMAN refused the request
-/// (then we busy-wait with Embassy so the poll loop still runs).
+/// A USB host (SOF every 1 ms) keeps the switched-core up so the CDC CLI
+/// stays enumerated. Unplug to allow sleep. Charge-only cables do not send
+/// SOFs and still sleep.
+///
+/// POWMAN wake is a full `main` restart. Returns only if a USB host is
+/// plugged, or if POWMAN refused (Embassy wait, radio stays up).
 pub async fn sleep_secs(secs: u32) {
     let secs = secs.max(1);
+    let deadline = Instant::now() + Duration::from_secs(u64::from(secs));
+    wait_while_usb(deadline).await;
+
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.as_ticks() == 0 {
+        return;
+    }
     powman_write(OFF_SCRATCH0, SLEEP_MAGIC);
-    if arm_lposc_alarm_ms(u64::from(secs) * 1000) && request_swcore_down() {
+    if arm_lposc_alarm_ms(remaining.as_millis().max(1)) && request_swcore_down() {
         // Radio comes down only after POWMAN has accepted the request, so a
         // refused sleep still has a working cyw43 for the Embassy fallback.
         hold_radio_off();
@@ -115,7 +138,20 @@ pub async fn sleep_secs(secs: u32) {
         halt_for_powerdown();
     }
     powman_write(OFF_SCRATCH0, 0);
-    Timer::after_secs(u64::from(secs)).await;
+    Timer::after(remaining).await;
+}
+
+/// Stay running while a USB host is present. Poll SOF so an unplug can
+/// still drop into POWMAN for the rest of the interval.
+async fn wait_while_usb(deadline: Instant) {
+    const SLICE: Duration = Duration::from_millis(250);
+    while on_usb() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.as_ticks() == 0 {
+            return;
+        }
+        Timer::after(remaining.min(SLICE)).await;
+    }
 }
 
 fn note_wake_reason() {

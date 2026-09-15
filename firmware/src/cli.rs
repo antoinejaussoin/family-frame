@@ -118,7 +118,7 @@ async fn handle_line(
                  psk <password>   (empty = open network)\r\n\
                  server <host:port>\r\n\
                    e.g. 192.168.0.251:8765\r\n\
-                 sleep <seconds>  (0 = poll every 60s; dormant between polls)\r\n\
+                 sleep <seconds>  (0 = poll every 60s; dormant unless USB)\r\n\
                  save             write flash and join Wi-Fi\r\n\
                  show\r\n\
                  forget           drop last frame checksum (force next paint)\r\n\
