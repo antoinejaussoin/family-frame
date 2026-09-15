@@ -12,6 +12,8 @@ static LAST_PCT: AtomicU16 = AtomicU16::new(0);
 pub struct Battery<'d> {
     adc: Adc<'d, Blocking>,
     vsys: Channel<'d>,
+    #[cfg(feature = "oled-debug")]
+    temp: Option<Channel<'d>>,
 }
 
 impl<'d> Battery<'d> {
@@ -19,7 +21,27 @@ impl<'d> Battery<'d> {
         Self {
             adc: Adc::new_blocking(adc, Config::default()),
             vsys: Channel::new_pin(pin_43, Pull::None),
+            #[cfg(feature = "oled-debug")]
+            temp: None,
         }
+    }
+
+    #[cfg(feature = "oled-debug")]
+    pub fn with_chip_temp(
+        mut self,
+        sensor: Peri<'d, embassy_rp::peripherals::ADC_TEMP_SENSOR>,
+    ) -> Self {
+        self.temp = Some(Channel::new_temp_sensor(sensor));
+        self
+    }
+
+    /// On-die temperature in tenths of a degree C, or `None` if unused.
+    #[cfg(feature = "oled-debug")]
+    pub fn sample_chip_tenths(&mut self) -> Option<i16> {
+        let ch = self.temp.as_mut()?;
+        let raw = self.adc.blocking_read(ch).ok()?;
+        let celsius = 27.0 - (raw as f32 * 3.3 / 4096.0 - 0.706) / 0.001721;
+        Some((celsius * 10.0) as i16)
     }
 
     pub fn sample(&mut self) -> (u32, u16) {

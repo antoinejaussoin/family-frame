@@ -62,6 +62,7 @@ cd firmware
 make test    # host check of /frame.bin URL shaping
 make build
 make uf2     # writes family-frame.uf2
+make uf2-oled  # writes family-frame-oled.uf2 (SSD1306/SH1106 status)
 ```
 
 ## Flash
@@ -73,6 +74,8 @@ double-tap reset. The drive is `RP2350`.
 make flash
 # or: cp family-frame.uf2 /Volumes/RP2350/
 ```
+
+No e-ink ribbon yet: flash the OLED debug variant instead (`make flash-oled`). Same Wi-Fi / HTTP / PSRAM / e-ink code, plus a 0.96″ status panel. See **OLED debug** below.
 
 ## What you should see
 
@@ -101,9 +104,50 @@ swaps SCLK and MOSI — meter it, do not trust the vendor PDF.
 | BUSY | 17 (active low) |
 | CS_M (left, cols 0–599) | 26 |
 | CS_S (right, cols 600–1199) | 16 |
+| OLED SDA (`family-frame-oled` only) | 18 |
+| OLED SCL (`family-frame-oled` only) | 19 |
 
 Cut the rear **power-LED** trace for weeks of sleep. Solder **`+1A Mode`**
 only if a refresh browns out and the cell can deliver it.
+
+## OLED debug
+
+A second binary, `family-frame-oled`, is the same client (Wi-Fi, PSRAM,
+`GET /frame.bin`, Inky driver still compiled in) plus a 0.96″ I²C status
+panel. Use it until the e-ink ribbon arrives.
+
+The laser-tag temperature-display node used **GP16 / GP17**. Do **not**
+do that here: those pins are Inky `CS_S` and `BUSY`. Use I²C1 on **GP18 /
+GP19** on the **right** side (USB-end headers you already soldered).
+
+| OLED pin | XL W | Physical pin (USB-C at the top) |
+|---|---|---:|
+| `VCC` | `3V3` | 36 (fifth down the **right** side) |
+| `GND` | `GND` | 23 (right side, immediately below GP18) |
+| `SDA` | **GP18** | 24 |
+| `SCL` | **GP19** | 25 |
+
+Power the OLED from **3.3 V only**. Do not use `VBUS` (pin 40).
+
+Hold BOOTSEL, plug USB-C, then:
+
+```bash
+cd firmware
+make flash-oled
+```
+
+USB CLI is unchanged (`wifi` / `psk` / `server` / `save`). For a fast
+poll while you watch the OLED, `sleep 0` then `save` (wakes every 60 s).
+
+The OLED shows PSRAM bring-up, VSYS battery, on-die chip temperature,
+Wi-Fi, and the last `/frame.bin` result. Cold-boot e-ink colour fills
+still run; with no panel they just waste a few seconds of SPI.
+
+This module is the Pi Hut 0.96″ 128×64. The listing says SSD1306; the
+laser-tag firmware talks to it as SH1106. If the yellow band is readable
+and the blue area is noise, in `src/oled.rs` switch
+`OledConfig::sh1106_128x64()` to `OledConfig::ssd1306_128x64()` and flash
+again. Address `0x3C` (try `0x3D` if the glass stays black).
 
 The first Rust port stays in Embassy and polls (`sleep` seconds, radio in
 PowerSave). POWMAN power-gating can follow once the panel path is
