@@ -12,8 +12,7 @@ use tracing::{info, warn};
 
 use crate::model::TubeLine;
 
-const STATUS_URL: &str =
-    "https://api.tfl.gov.uk/Line/northern,circle,district,victoria/Status";
+const STATUS_URL: &str = "https://api.tfl.gov.uk/Line/northern,circle,district,victoria/Status";
 const FETCH_TTL: Duration = Duration::from_secs(15 * 60);
 
 /// Display order on the panel.

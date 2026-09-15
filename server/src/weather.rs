@@ -215,14 +215,10 @@ fn forecast_from_json(json: &str, today: NaiveDate, cache: &mut SlotCache) -> Re
                     .iter()
                     .map(|period| slot_for(date, period, &hours, &summaries, cache))
                     .collect(),
-                sunrise: summary
-                    .map(|s| s.sunrise.clone())
-                    .unwrap_or_default(),
+                sunrise: summary.map(|s| s.sunrise.clone()).unwrap_or_default(),
                 sunset: summary.map(|s| s.sunset.clone()).unwrap_or_default(),
                 pollen: summary.map(|s| s.pollen.clone()).unwrap_or_default(),
-                pollen_level: summary
-                    .map(|s| s.pollen_level.clone())
-                    .unwrap_or_default(),
+                pollen_level: summary.map(|s| s.pollen_level.clone()).unwrap_or_default(),
             }
         })
         .collect();

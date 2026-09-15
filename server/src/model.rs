@@ -216,7 +216,8 @@ impl Dashboard {
             self.todos_more = 0;
             return;
         }
-        let shown = todos_fitting_in(&self.todos, body - TODOS_MORE_PX).min(total.saturating_sub(1));
+        let shown =
+            todos_fitting_in(&self.todos, body - TODOS_MORE_PX).min(total.saturating_sub(1));
         self.todos_more = total - shown;
         self.todos.truncate(shown);
     }
@@ -254,9 +255,7 @@ fn todos_fitting_in(todos: &[TodoItem], body_px: i32) -> usize {
         let new_row = rows == 0 || x + TODO_PILL_GAP_PX + w > TODO_PILL_MAX_PX;
         if new_row {
             let next_rows = rows + 1;
-            let height = TODO_PILL_TOP_PX
-                + next_rows * TODO_PILL_ROW_PX
-                + rows * TODO_PILL_GAP_PX;
+            let height = TODO_PILL_TOP_PX + next_rows * TODO_PILL_ROW_PX + rows * TODO_PILL_GAP_PX;
             if height > body_px {
                 break;
             }
@@ -353,7 +352,10 @@ mod tests {
         dash.fit_sidebar_to_panel();
         assert_eq!(dash.tube.len(), 4);
         assert_eq!(dash.rooms.len(), 5);
-        assert!(dash.todos.len() > 4, "pills should beat one-per-line packing");
+        assert!(
+            dash.todos.len() > 4,
+            "pills should beat one-per-line packing"
+        );
         assert!(dash.todos_more > 0);
         assert_eq!(dash.todos.len() + dash.todos_more, 50);
     }

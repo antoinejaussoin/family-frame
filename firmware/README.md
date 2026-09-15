@@ -5,8 +5,8 @@ Impression 13.3″. Family data and HTML stay on the LAN server. This
 binary:
 
 1. Joins 2.4 GHz Wi-Fi (SSID and password from USB, not compiled in).
-2. `GET /frame.bin?checksum=<last>` (and `If-None-Match`).
-3. **304** → leave the glass alone.
+2. `POST /frame.bin` with battery diagnostics and `If-None-Match`.
+3. **204** → leave the glass alone.
 4. **200** → `show_frame()` the 960 000-byte body, store the checksum.
 5. Powers the switched-core down for `sleep` seconds (default 3600) and repeats.
 
@@ -39,7 +39,7 @@ save
 |---|---|
 | `wifi <ssid>` | 2.4 GHz SSID (max 32) |
 | `psk <password>` | WPA2 PSK, or empty for an open network |
-| `server <host:port>` | Family-frame HTTP origin. `GET /frame.bin` is appended |
+| `server <host:port>` | Family-frame HTTP origin. `POST /frame.bin` is appended |
 | `sleep <seconds>` | Interval between polls. `0` = poll every 60 s. POWMAN-dormant between polls |
 | `save` | Write the last flash sector and join Wi-Fi |
 | `show` | SSID, URL, sleep, checksum, Wi-Fi / frame status, battery, wake reason |
@@ -79,7 +79,7 @@ No e-ink ribbon yet: flash the OLED debug variant instead (`make flash-oled`). S
 
 ## What you should see
 
-After `save`, `show` reports `wifi ok` then `frame 200` or `frame 304`.
+After `save`, `show` reports `wifi ok` then `frame 200` or `frame 204`.
 A later poll with an unchanged dashboard skips the 35 s refresh.
 
 Cold-boot diagnostics (one full refresh):
@@ -117,7 +117,7 @@ refresh browns out and the cell can deliver it.
 ## OLED debug
 
 A second binary, `family-frame-oled`, is the same client (Wi-Fi, PSRAM,
-`GET /frame.bin`, Inky driver still compiled in) plus a 0.96″ I²C status
+`POST /frame.bin`, Inky driver still compiled in) plus a 0.96″ I²C status
 panel. Use it until the e-ink ribbon arrives.
 
 The laser-tag temperature-display node used **GP16 / GP17**. Do **not**

@@ -3,6 +3,7 @@
 /meross-creds.json
 /weather-cache.json
 /out
+/debug
 .DS_Store
 *.bin
 *.png

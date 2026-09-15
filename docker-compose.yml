@@ -4,7 +4,7 @@
 #   # put config.toml in data/ (copy from server/config.example.toml)
 #   docker compose up -d
 #
-# Pico and browsers on the LAN: http://<host>:8765/preview  and  /frame.bin
+# Pico and browsers on the LAN: http://<host>:8765/preview  /debug  and  /frame.bin
 
 name: family-frame
 
@@ -22,5 +22,5 @@ services:
       RUST_LOG: eink_frame=info,tower_http=info
       EINK_CONFIG: /data/config.toml
     volumes:
-      # config.toml, meross-creds.json, weather-cache.json
+      # config.toml, meross-creds.json, weather-cache.json, debug/
       - ./data:/data

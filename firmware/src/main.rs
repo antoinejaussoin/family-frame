@@ -1,4 +1,4 @@
-//! Pico LiPo 2 XL W: USB-provisioned Wi-Fi, GET /frame.bin, Inky Impression 13.3″.
+//! Pico LiPo 2 XL W: USB-provisioned Wi-Fi, POST /frame.bin, Inky Impression 13.3″.
 
 #![no_std]
 #![no_main]
@@ -52,7 +52,7 @@ static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
     embassy_rp::binary_info::rp_cargo_version!(),
     #[cfg(not(feature = "oled-debug"))]
     embassy_rp::binary_info::rp_program_description!(
-        c"Pico LiPo 2 XL W family frame: GET /frame.bin + Inky 13.3"
+        c"Pico LiPo 2 XL W family frame: POST /frame.bin + Inky 13.3"
     ),
     #[cfg(feature = "oled-debug")]
     embassy_rp::binary_info::rp_program_description!(
@@ -212,13 +212,13 @@ async fn run_cycle(
         return false;
     }
 
-    ui.paint(bat, "GET /frame.bin");
+    ui.paint(bat, "POST /frame.bin");
     let (status, _got, etag) = http::get_frame(stack, frame).await;
     compiler_fence(Ordering::SeqCst);
 
     match status {
         FrameResult::NotModified => {
-            ui.paint(bat, "frame 304 skip");
+            ui.paint(bat, "frame 204 skip");
             true
         }
         FrameResult::Ok => {
@@ -241,7 +241,7 @@ async fn run_cycle(
             true
         }
         FrameResult::Err => {
-            ui.paint(bat, "frame GET fail");
+            ui.paint(bat, "frame POST fail");
             let cfg = settings::snapshot().await;
             if paint_diag && cfg.last_checksum.is_empty() {
                 el133::show_solid(epd, BLUE).await;

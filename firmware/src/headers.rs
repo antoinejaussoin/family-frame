@@ -132,7 +132,18 @@ mod tests {
     fn status_200_and_304() {
         assert_eq!(parse_status("HTTP/1.1 200 OK\r\n"), Some(200));
         assert_eq!(parse_status("HTTP/1.0 304 Not Modified\r\n"), Some(304));
+        assert_eq!(parse_status("HTTP/1.1 204 No Content\r\n"), Some(204));
         assert_eq!(parse_status("broken"), None);
+    }
+
+    #[test]
+    fn empty_204_body() {
+        let raw = response("204 No Content", "X-Frame-Checksum: abc\r\n", b"");
+        let mut dest = [0u8; 8];
+        let (status, n, etag) = parse_response(&raw, &mut dest).expect("parse");
+        assert_eq!(status, 204);
+        assert_eq!(n, 0);
+        assert_eq!(etag.as_str(), "abc");
     }
 
     #[test]

@@ -1,12 +1,13 @@
 //! Family e-ink frame server library.
 //!
-//! The Pico is a dumb client: it GETs a packed Spectra 6 frame and skips
-//! the panel refresh when the checksum has not changed.
+//! The Pico is a dumb client: it POSTs a packed Spectra 6 frame request
+//! (with battery diagnostics) and skips the panel refresh when unchanged.
 
 pub mod assets;
 pub mod birthdays;
 pub mod caldav;
 pub mod config;
+pub mod debug;
 pub mod frame;
 pub mod http;
 pub mod ics;

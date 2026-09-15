@@ -86,7 +86,7 @@ pub fn status_line() -> &'static str {
         WifiStatus::Joining => "wifi: joining",
         WifiStatus::Up => match FrameStatus::load() {
             FrameStatus::Ok => "wifi ok  frame 200",
-            FrameStatus::NotModified => "wifi ok  frame 304",
+            FrameStatus::NotModified => "wifi ok  frame 204",
             FrameStatus::Fail => "wifi ok  frame fail",
             FrameStatus::None => "wifi ok",
         },

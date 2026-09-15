@@ -1078,8 +1078,9 @@ mod tests {
                 "heatTemp": 200
             }]
         });
-        let room = room_from_wifi_thermostat(&payload, "Kitchen Thermostat", &MerossConfig::default())
-            .unwrap();
+        let room =
+            room_from_wifi_thermostat(&payload, "Kitchen Thermostat", &MerossConfig::default())
+                .unwrap();
         assert_eq!(room.name, "Kitchen");
         assert_eq!(room.temperature, "21°");
         assert_eq!(room.humidity, "—");

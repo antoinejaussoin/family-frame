@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Parser;
 use eink_frame::config::Config;
+use eink_frame::debug::DebugLog;
 use eink_frame::frame::FrameCache;
 use eink_frame::http::{self, AppState};
 use tokio::net::TcpListener;
@@ -48,13 +49,15 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
     }
     let addr: SocketAddr = cfg.bind.parse().context("bind address")?;
     let cache = FrameCache::new(cfg.clone(), addr.port())?;
-    let app = http::router(AppState { cache });
+    let debug = DebugLog::open(&cfg.config_dir)?;
+    let app = http::router(AppState { cache, debug });
 
     let listener = TcpListener::bind(addr).await?;
     info!(%addr, "eink-frame listening");
     info!("layout simulator  http://{addr}/preview");
+    info!("debug dashboard   http://{addr}/debug");
     info!("dashboard only    http://{addr}/dashboard");
-    info!("Pico endpoint     http://{addr}/frame.bin");
+    info!("Pico endpoint     POST http://{addr}/frame.bin");
     if !cfg.icloud_enabled() {
         warn!("no iCloud credentials — serving demo calendar unless ICS URLs are set");
     }

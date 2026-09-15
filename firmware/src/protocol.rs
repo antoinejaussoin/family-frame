@@ -1,5 +1,6 @@
 //! Server URL shaping: same `host:port/path` form as the laser-tag nodes,
-//! then append `/frame.bin` the way the C client did.
+//! then append `/frame.bin`. Checksum rides on `If-None-Match`; battery
+//! diagnostics ride on the POST body.
 
 use core::fmt::Write as _;
 use heapless::String;
@@ -59,8 +60,8 @@ fn split_host_port(hostport: &str) -> Option<(&str, u16)> {
     Some((hostport, 80))
 }
 
-/// `http://host:port/frame.bin[?checksum=hex]`, trailing slashes stripped.
-pub fn frame_url<const N: usize>(base: &str, checksum: &str) -> Option<String<N>> {
+/// `http://host:port/frame.bin`, trailing slashes stripped.
+pub fn frame_url<const N: usize>(base: &str) -> Option<String<N>> {
     let mut s = base.trim();
     while s.ends_with('/') {
         s = &s[..s.len() - 1];
@@ -69,53 +70,76 @@ pub fn frame_url<const N: usize>(base: &str, checksum: &str) -> Option<String<N>
         return None;
     }
     let mut out = String::new();
-    if checksum.is_empty() {
-        write!(out, "{s}/frame.bin").ok()?;
-    } else {
-        write!(out, "{s}/frame.bin?checksum={checksum}").ok()?;
-    }
+    write!(out, "{s}/frame.bin").ok()?;
     Some(out)
 }
 
-/// GET target after appending `/frame.bin` to the provisioned server string.
-pub fn frame_target(server: &str, checksum: &str) -> Option<ServerTarget> {
-    let url = frame_url::<192>(server, checksum)?;
+/// POST target after appending `/frame.bin` to the provisioned server string.
+pub fn frame_target(server: &str) -> Option<ServerTarget> {
+    let url = frame_url::<192>(server)?;
     parse_server(url.as_str())
+}
+
+pub fn wake_label(from_sleep: bool) -> &'static str {
+    if from_sleep { "timer" } else { "cold" }
+}
+
+/// `application/x-www-form-urlencoded` body for a Pico poll.
+pub fn telemetry_form(mv: u32, pct: u16, usb: bool, from_sleep: bool) -> String<64> {
+    let mut body = String::new();
+    let usb_n = if usb { 1 } else { 0 };
+    let wake = wake_label(from_sleep);
+    let _ = write!(body, "mv={mv}&pct={pct}&usb={usb_n}&wake={wake}");
+    body
+}
+
+/// Raw HTTP/1.1 POST for `/frame.bin` with telemetry in the body.
+pub fn post_frame_request<const N: usize>(
+    host: &str,
+    port: u16,
+    path: &str,
+    checksum: &str,
+    body: &str,
+) -> Option<String<N>> {
+    let mut req = String::new();
+    if port == 80 {
+        write!(req, "POST {path} HTTP/1.1\r\nHost: {host}\r\n").ok()?;
+    } else {
+        write!(req, "POST {path} HTTP/1.1\r\nHost: {host}:{port}\r\n").ok()?;
+    }
+    write!(req, "Connection: close\r\n").ok()?;
+    if !checksum.is_empty() {
+        write!(req, "If-None-Match: {checksum}\r\n").ok()?;
+    }
+    write!(
+        req,
+        "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{}",
+        body.len(),
+        body
+    )
+    .ok()?;
+    Some(req)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn expect_url(base: &str, checksum: &str, want: &str) {
-        let got = frame_url::<256>(base, checksum).expect("url");
+    fn expect_url(base: &str, want: &str) {
+        let got = frame_url::<256>(base).expect("url");
         assert_eq!(got.as_str(), want);
     }
 
     #[test]
-    fn empty_checksum_strips_slash() {
-        expect_url(
-            "http://127.0.0.1:8765/",
-            "",
-            "http://127.0.0.1:8765/frame.bin",
-        );
-    }
-
-    #[test]
-    fn checksum_query() {
-        expect_url(
-            "http://127.0.0.1:8765",
-            "abc",
-            "http://127.0.0.1:8765/frame.bin?checksum=abc",
-        );
+    fn strips_trailing_slash() {
+        expect_url("http://127.0.0.1:8765/", "http://127.0.0.1:8765/frame.bin");
     }
 
     #[test]
     fn lan_host() {
         expect_url(
             "http://192.168.0.251:8765/",
-            "deadbeef",
-            "http://192.168.0.251:8765/frame.bin?checksum=deadbeef",
+            "http://192.168.0.251:8765/frame.bin",
         );
     }
 
@@ -128,10 +152,48 @@ mod tests {
     }
 
     #[test]
-    fn frame_target_appends_bin() {
-        let t = frame_target("192.168.0.251:8765", "abc").unwrap();
+    fn frame_target_appends_bin_without_checksum() {
+        let t = frame_target("192.168.0.251:8765").unwrap();
         assert_eq!(t.host.as_str(), "192.168.0.251");
         assert_eq!(t.port, 8765);
-        assert_eq!(t.path.as_str(), "/frame.bin?checksum=abc");
+        assert_eq!(t.path.as_str(), "/frame.bin");
+    }
+
+    #[test]
+    fn telemetry_form_encodes_fields() {
+        assert_eq!(
+            telemetry_form(3850, 72, false, true).as_str(),
+            "mv=3850&pct=72&usb=0&wake=timer"
+        );
+        assert_eq!(
+            telemetry_form(4200, 100, true, false).as_str(),
+            "mv=4200&pct=100&usb=1&wake=cold"
+        );
+    }
+
+    #[test]
+    fn post_request_keeps_checksum_on_if_none_match() {
+        let body = telemetry_form(3850, 72, false, true);
+        let req =
+            post_frame_request::<384>("192.168.0.251", 8765, "/frame.bin", "abc123", body.as_str())
+                .unwrap();
+        let s = req.as_str();
+        assert!(s.starts_with("POST /frame.bin HTTP/1.1\r\n"));
+        assert!(s.contains("Host: 192.168.0.251:8765\r\n"));
+        assert!(s.contains("If-None-Match: abc123\r\n"));
+        assert!(s.contains("Content-Type: application/x-www-form-urlencoded\r\n"));
+        assert!(s.contains(&format!("Content-Length: {}\r\n", body.len())));
+        assert!(s.ends_with("\r\n\r\nmv=3850&pct=72&usb=0&wake=timer"));
+        assert!(!s.contains("checksum="));
+    }
+
+    #[test]
+    fn post_request_omits_if_none_match_when_empty() {
+        let body = "mv=1&pct=0&usb=0&wake=cold";
+        let req = post_frame_request::<384>("127.0.0.1", 80, "/frame.bin", "", body).unwrap();
+        let s = req.as_str();
+        assert!(s.starts_with("POST /frame.bin HTTP/1.1\r\nHost: 127.0.0.1\r\n"));
+        assert!(!s.contains("If-None-Match"));
+        assert!(s.contains(&format!("Content-Length: {}\r\n", body.len())));
     }
 }

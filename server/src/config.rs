@@ -36,17 +36,14 @@ impl Birthday {
     pub fn parse(entry: &str) -> Result<Self, String> {
         let entry = entry.trim();
         let Some((name, dob)) = entry.rsplit_once(',') else {
-            return Err(format!(
-                "birthday `{entry}` should be `Name,YYYY-MM-DD`"
-            ));
+            return Err(format!("birthday `{entry}` should be `Name,YYYY-MM-DD`"));
         };
         let name = name.trim().to_string();
         if name.is_empty() {
             return Err(format!("birthday `{entry}` is missing a name"));
         }
-        let dob = NaiveDate::parse_from_str(dob.trim(), "%Y-%m-%d").map_err(|_| {
-            format!("birthday `{entry}` has an invalid date (use YYYY-MM-DD)")
-        })?;
+        let dob = NaiveDate::parse_from_str(dob.trim(), "%Y-%m-%d")
+            .map_err(|_| format!("birthday `{entry}` has an invalid date (use YYYY-MM-DD)"))?;
         Ok(Self { name, dob })
     }
 }

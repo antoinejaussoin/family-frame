@@ -1,13 +1,12 @@
-//! Streaming HTTP/1.1 GET for `/frame.bin` into PSRAM.
+//! Streaming HTTP/1.1 POST for `/frame.bin` into PSRAM.
 
-use core::fmt::Write as _;
 use embassy_net::dns::DnsQueryType;
 use embassy_net::tcp::TcpSocket;
 use embassy_net::{IpEndpoint, Stack};
 use embassy_time::Duration;
 use embedded_io_async::Write;
 use family_frame_fw::headers::ResponseReader;
-use family_frame_fw::protocol::frame_target;
+use family_frame_fw::protocol::{frame_target, post_frame_request, telemetry_form};
 use heapless::String;
 
 use crate::el133::FRAME_BYTES;
@@ -35,7 +34,7 @@ pub async fn get_frame(stack: Stack<'static>, dest: &mut [u8]) -> (FrameResult, 
     }
 
     let cfg = settings::snapshot().await;
-    let Some(target) = frame_target(cfg.server.as_str(), cfg.last_checksum.as_str()) else {
+    let Some(target) = frame_target(cfg.server.as_str()) else {
         FrameStatus::Fail.store();
         return (FrameResult::Err, 0, empty);
     };
@@ -49,24 +48,23 @@ pub async fn get_frame(stack: Stack<'static>, dest: &mut [u8]) -> (FrameResult, 
     };
     let ip = ips[0];
 
-    let mut req: String<384> = String::new();
-    if target.port == 80 {
-        let _ = write!(
-            req,
-            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n",
-            target.path, target.host
-        );
-    } else {
-        let _ = write!(
-            req,
-            "GET {} HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\n",
-            target.path, target.host, target.port
-        );
-    }
-    if !cfg.last_checksum.is_empty() {
-        let _ = write!(req, "If-None-Match: {}\r\n", cfg.last_checksum);
-    }
-    let _ = req.push_str("\r\n");
+    let (mv, pct) = crate::battery::last();
+    let body = telemetry_form(
+        mv,
+        pct,
+        crate::power::on_usb(),
+        crate::power::woke_from_sleep(),
+    );
+    let Some(req) = post_frame_request::<384>(
+        target.host.as_str(),
+        target.port,
+        target.path.as_str(),
+        cfg.last_checksum.as_str(),
+        body.as_str(),
+    ) else {
+        FrameStatus::Fail.store();
+        return (FrameResult::Err, 0, empty);
+    };
 
     let mut rx = [0u8; 4096];
     let mut tx = [0u8; 512];
@@ -85,7 +83,7 @@ pub async fn get_frame(stack: Stack<'static>, dest: &mut [u8]) -> (FrameResult, 
 
     match fetched {
         Ok(Some((status, body, etag))) => match status {
-            304 => {
+            204 | 304 => {
                 FrameStatus::NotModified.store();
                 (FrameResult::NotModified, body, etag)
             }

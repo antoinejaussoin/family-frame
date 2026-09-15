@@ -344,6 +344,10 @@ mod tests {
             root(),
             Path::new("/proj/src/.http.rs.swp")
         ));
+        assert!(!should_trigger_reload(
+            root(),
+            Path::new("/proj/debug/polls.jsonl")
+        ));
     }
 
     #[test]

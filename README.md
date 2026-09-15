@@ -29,9 +29,10 @@ This is being worked on, not working yet.
    [`server/static/dashboard.css`](server/static/dashboard.css).
 2. Open `/preview` in a browser. The iframe is the real 1600×1200 panel.
 3. On the LAN, Chromium screenshots `/dashboard`, the server dithers to
-   Spectra 6, and the Pico GETs `/frame.bin`.
+   Spectra 6, and the Pico POSTs `/frame.bin` with battery diagnostics.
 4. If the family data has not changed, the checksum matches and the Pico
-   does **not** refresh the glass.
+   does **not** refresh the glass. Open `/debug` on a phone to see battery
+   history and every Pico poll.
 
 The dashboard HTML must not include a ticking clock. A changing “updated at”
 would make every hour look like a new image.
@@ -56,7 +57,8 @@ cargo run -- --watch
 # or: make watch
 ```
 
-Then open <http://127.0.0.1:8765/preview>.
+Then open <http://127.0.0.1:8765/preview> or the debug page at
+<http://127.0.0.1:8765/debug>.
 
 ### Docker
 
@@ -71,18 +73,20 @@ mkdir -p data
 docker compose up -d
 ```
 
-Then <http://<host>:8765/preview>. Meross login and BBC weather caches stay in `data/` next to the config.
+Then <http://<host>:8765/preview> or <http://<host>:8765/debug>. Meross login,
+BBC weather caches, and Pico poll history stay in `data/` next to the config.
 
 Local one-off: `cd server && make docker-build && make docker-run`. Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`, same as compta).
 
 ## Pretend to be the Pico
 
-A separate crate polls `/frame.bin` the way the LiPo 2 XL W will: keep the last
-checksum, skip a refresh on 304, and unpack a new frame to PNG on 200.
+A separate crate polls `/frame.bin` the way the LiPo 2 XL W will: POST
+battery diagnostics, keep the last checksum, skip a refresh on 204, and
+unpack a new frame to PNG on 200.
 
 ```bash
 cd pico-sim
-cargo run -- --url http://127.0.0.1:8765 --interval-secs 5
+cargo run -- --url http://127.0.0.1:8765 --interval-secs 5 --drain
 # or: make run
 ```
 
@@ -155,6 +159,6 @@ the demo statuses are shown.
 
 The [firmware](firmware/) is the Pico LiPo 2 XL W Embassy / Rust client:
 USB-serial `wifi` / `psk` / `server` / `save` (same as the laser-tag
-nodes), then `GET /frame.bin` and paint on 200. `make build` in
+nodes), then `POST /frame.bin` and paint on 200. `make build` in
 `firmware/` and drop `family-frame.uf2` on the `RP2350` drive. Without
 the board, [`pico-sim`](pico-sim/) speaks the same loop.
