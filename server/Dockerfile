@@ -1,3 +1,12 @@
+# Multi-stage: build the family SPA, then the Rust server.
+
+FROM node:22-bookworm AS ui
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci
+COPY ui/ ./
+RUN npm run build
+
 FROM rust:1-bookworm AS builder
 
 WORKDIR /src
@@ -41,12 +50,14 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=builder /src/target/release/eink-frame /usr/local/bin/eink-frame
+COPY --from=ui /ui/dist /app/ui
 COPY fixtures /app/fixtures
 COPY config.example.toml /app/config.example.toml
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV EINK_HOME=/app
+ENV EINK_UI=/app/ui
 ENV RUST_LOG=eink_frame=info,tower_http=info
 
 EXPOSE 8765

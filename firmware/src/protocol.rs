@@ -1,5 +1,5 @@
 //! Server URL shaping: same `host:port/path` form as the laser-tag nodes,
-//! then append `/frame.bin`. Checksum rides on `If-None-Match`; battery
+//! then append `/api/frame.bin`. Checksum rides on `If-None-Match`; battery
 //! diagnostics ride on the POST body.
 
 use core::fmt::Write as _;
@@ -60,7 +60,7 @@ fn split_host_port(hostport: &str) -> Option<(&str, u16)> {
     Some((hostport, 80))
 }
 
-/// `http://host:port/frame.bin`, trailing slashes stripped.
+/// `http://host:port/api/frame.bin`, trailing slashes stripped.
 pub fn frame_url<const N: usize>(base: &str) -> Option<String<N>> {
     let mut s = base.trim();
     while s.ends_with('/') {
@@ -70,11 +70,11 @@ pub fn frame_url<const N: usize>(base: &str) -> Option<String<N>> {
         return None;
     }
     let mut out = String::new();
-    write!(out, "{s}/frame.bin").ok()?;
+    write!(out, "{s}/api/frame.bin").ok()?;
     Some(out)
 }
 
-/// POST target after appending `/frame.bin` to the provisioned server string.
+/// POST target after appending `/api/frame.bin` to the provisioned server string.
 pub fn frame_target(server: &str) -> Option<ServerTarget> {
     let url = frame_url::<192>(server)?;
     parse_server(url.as_str())
@@ -132,14 +132,14 @@ mod tests {
 
     #[test]
     fn strips_trailing_slash() {
-        expect_url("http://127.0.0.1:8765/", "http://127.0.0.1:8765/frame.bin");
+        expect_url("http://127.0.0.1:8765/", "http://127.0.0.1:8765/api/frame.bin");
     }
 
     #[test]
     fn lan_host() {
         expect_url(
             "http://192.168.0.251:8765/",
-            "http://192.168.0.251:8765/frame.bin",
+            "http://192.168.0.251:8765/api/frame.bin",
         );
     }
 
@@ -156,7 +156,7 @@ mod tests {
         let t = frame_target("192.168.0.251:8765").unwrap();
         assert_eq!(t.host.as_str(), "192.168.0.251");
         assert_eq!(t.port, 8765);
-        assert_eq!(t.path.as_str(), "/frame.bin");
+        assert_eq!(t.path.as_str(), "/api/frame.bin");
     }
 
     #[test]
@@ -174,11 +174,16 @@ mod tests {
     #[test]
     fn post_request_keeps_checksum_on_if_none_match() {
         let body = telemetry_form(3850, 72, false, true);
-        let req =
-            post_frame_request::<384>("192.168.0.251", 8765, "/frame.bin", "abc123", body.as_str())
-                .unwrap();
+        let req = post_frame_request::<384>(
+            "192.168.0.251",
+            8765,
+            "/api/frame.bin",
+            "abc123",
+            body.as_str(),
+        )
+        .unwrap();
         let s = req.as_str();
-        assert!(s.starts_with("POST /frame.bin HTTP/1.1\r\n"));
+        assert!(s.starts_with("POST /api/frame.bin HTTP/1.1\r\n"));
         assert!(s.contains("Host: 192.168.0.251:8765\r\n"));
         assert!(s.contains("If-None-Match: abc123\r\n"));
         assert!(s.contains("Content-Type: application/x-www-form-urlencoded\r\n"));
@@ -190,9 +195,10 @@ mod tests {
     #[test]
     fn post_request_omits_if_none_match_when_empty() {
         let body = "mv=1&pct=0&usb=0&wake=cold";
-        let req = post_frame_request::<384>("127.0.0.1", 80, "/frame.bin", "", body).unwrap();
+        let req =
+            post_frame_request::<384>("127.0.0.1", 80, "/api/frame.bin", "", body).unwrap();
         let s = req.as_str();
-        assert!(s.starts_with("POST /frame.bin HTTP/1.1\r\nHost: 127.0.0.1\r\n"));
+        assert!(s.starts_with("POST /api/frame.bin HTTP/1.1\r\nHost: 127.0.0.1\r\n"));
         assert!(!s.contains("If-None-Match"));
         assert!(s.contains(&format!("Content-Length: {}\r\n", body.len())));
     }

@@ -27,7 +27,6 @@ const ROOT_FILES: &[&str] = &[
     "Cargo.toml",
     "Cargo.lock",
     "rust-toolchain.toml",
-    "config.toml",
     "config.example.toml",
 ];
 
@@ -263,13 +262,7 @@ fn should_trigger_reload(root: &Path, path: &Path) -> bool {
 fn interesting_root_file(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|s| s.to_str()),
-        Some(
-            "Cargo.toml"
-                | "Cargo.lock"
-                | "rust-toolchain.toml"
-                | "config.toml"
-                | "config.example.toml"
-        )
+        Some("Cargo.toml" | "Cargo.lock" | "rust-toolchain.toml" | "config.example.toml")
     )
 }
 
@@ -294,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn source_templates_and_config_trigger() {
+    fn source_templates_and_example_config_trigger() {
         assert!(should_trigger_reload(
             root(),
             Path::new("/proj/src/http.rs")
@@ -311,9 +304,13 @@ mod tests {
             root(),
             Path::new("/proj/fixtures/family.ics")
         ));
-        assert!(should_trigger_reload(
+        assert!(!should_trigger_reload(
             root(),
             Path::new("/proj/config.toml")
+        ));
+        assert!(should_trigger_reload(
+            root(),
+            Path::new("/proj/config.example.toml")
         ));
         assert!(should_trigger_reload(root(), Path::new("/proj/Cargo.toml")));
     }

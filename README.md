@@ -3,9 +3,10 @@
 An e-ink, battery-powered frame for the family.
 
 A 13.3″ Spectra 6 panel in a picture frame. A **Pimoroni Pico LiPo 2 XL W**
-wakes once an hour, downloads a packed image, and sleeps. A **Rust server**
-on the LAN builds that image from HTML/CSS plus the family calendar,
-to-dos, house temperatures, Tube status, and BBC weather in the section headers.
+wakes, downloads a packed image, and sleeps for however long the server
+says. A **Rust server** on the LAN builds that image from HTML/CSS plus
+the family calendar, to-dos, house temperatures, Tube status, and BBC
+weather in the section headers.
 
 Hardware to buy is in [`shopping.md`](shopping.md).
 
@@ -20,8 +21,28 @@ This is being worked on, not working yet.
 | Hardware shopping list | [`shopping.md`](shopping.md) (list A: LiPo 2 XL W, or list B: Plus 2 W) |
 | Wiring / stack | [`wiring.svg`](wiring.svg), [`connections.svg`](connections.svg) |
 | Pico firmware (LiPo 2 XL W) | [`firmware/`](firmware/) |
-| Rust server + layout simulator | [`server/`](server/) |
+| Rust server + family UI + layout simulator | [`server/`](server/) |
+| Family SPA (Svelte) | [`server/ui/`](server/ui/) |
 | Pico client simulator | [`pico-sim/`](pico-sim/) |
+
+## Family UI
+
+Open <http://127.0.0.1:8765/> on a phone or laptop (trusted LAN — no auth).
+
+From there you can:
+
+- Switch between **dashboard** and **picture** mode
+- Edit the poll interval or wake-up times **per mode** (written into `config.toml`)
+- Upload landscape photos (stored under `pictures/` next to the config)
+- Choose which photos to rotate each wake, and preview the dithered Spectra 6 look
+
+Build the SPA once (Docker does this automatically):
+
+```bash
+cd server/ui && npm ci && npm run build
+```
+
+Local Vite dev with API proxy: `cd server/ui && npm run dev` (proxies to `:8765`).
 
 ## Layout workflow
 
@@ -29,7 +50,7 @@ This is being worked on, not working yet.
    [`server/static/dashboard.css`](server/static/dashboard.css).
 2. Open `/preview` in a browser. The iframe is the real 1600×1200 panel.
 3. On the LAN, Chromium screenshots `/dashboard`, the server dithers to
-   Spectra 6, and the Pico POSTs `/frame.bin` with battery diagnostics.
+   Spectra 6, and the Pico POSTs `/api/frame.bin` with battery diagnostics.
 4. If the family data has not changed, the checksum matches and the Pico
    does **not** refresh the glass. Open `/debug` on a phone to see battery
    history and every Pico poll.
@@ -39,31 +60,34 @@ would make every hour look like a new image.
 
 ## Run the server
 
-Chrome or Chromium is required only for `/frame.bin` / `/frame.png`. The
-HTML simulator works without it.
+Chrome or Chromium is required only for dashboard `/api/frame.bin` /
+`/api/frame.png`. Picture mode and the HTML simulator work without it.
 
 ```bash
 cd server
 cp config.example.toml config.toml   # optional; demo data is the default
+cd ui && npm ci && npm run build && cd ..
 cargo run
 ```
 
 While iterating locally, `--watch` rebuilds and restarts on source, template,
-static, fixture, or config changes. Do not use it in production (Docker `CMD`
-is the binary with no flags).
+static, or fixture changes (not `config.toml` — the family UI edits that live).
+Do not use `--watch` in production (Docker `CMD` is the binary with no flags).
 
 ```bash
 cargo run -- --watch
 # or: make watch
 ```
 
-Then open <http://127.0.0.1:8765/preview> or the debug page at
+Then open <http://127.0.0.1:8765/>, the layout simulator at
+<http://127.0.0.1:8765/preview>, or the debug page at
 <http://127.0.0.1:8765/debug>.
 
 ### Docker
 
-The image includes Google Chrome (amd64) or Chromium (arm64) so `/frame.bin` works.
-Dashboard HTML/CSS/JS is compiled into the binary — deploy only needs `config.toml`.
+The image includes Google Chrome (amd64) or Chromium (arm64) and the built
+family UI so `/api/frame.bin` and `/` work. Deploy only needs `config.toml`
+(and optional photos under `data/pictures/`).
 
 On the Linux box, copy [`docker-compose.yml`](docker-compose.yml) and a `data/config.toml` (from [`server/config.example.toml`](server/config.example.toml)):
 
@@ -73,23 +97,25 @@ mkdir -p data
 docker compose up -d
 ```
 
-Then <http://<host>:8765/preview> or <http://<host>:8765/debug>. Meross login,
-BBC weather caches, and Pico poll history stay in `data/` next to the config.
+Then <http://<host>:8765/>, <http://<host>:8765/preview>, or
+<http://<host>:8765/debug>. Meross login, BBC weather caches, uploaded
+photos, and Pico poll history stay in `data/` next to the config.
 
 Local one-off: `cd server && make docker-build && make docker-run`. Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`, same as compta).
 
 ## Pretend to be the Pico
 
-A separate crate polls `/frame.bin` the way the LiPo 2 XL W will: POST
+A separate crate polls `/api/frame.bin` the way the LiPo 2 XL W will: POST
 battery diagnostics, keep the last checksum, skip a refresh on 204, and
 unpack a new frame to PNG on 200.
 
 ```bash
 cd pico-sim
-cargo run -- --url http://127.0.0.1:8765 --interval-secs 5 --drain
+cargo run -- --url http://127.0.0.1:8765 --drain
 # or: make run
 ```
 
+Sleep length comes from `X-Sleep-Seconds`, the same way the Pico does.
 Each new frame is written as a timestamped PNG under `pico-sim/out/` (gitignored).
 
 ## Family calendar
@@ -159,6 +185,8 @@ the demo statuses are shown.
 
 The [firmware](firmware/) is the Pico LiPo 2 XL W Embassy / Rust client:
 USB-serial `wifi` / `psk` / `server` / `save` (same as the laser-tag
-nodes), then `POST /frame.bin` and paint on 200. `make build` in
-`firmware/` and drop `family-frame.uf2` on the `RP2350` drive. Without
-the board, [`pico-sim`](pico-sim/) speaks the same loop.
+nodes), then `POST /api/frame.bin` and paint on 200. Sleep length comes back
+on `X-Sleep-Seconds` from that mode’s `poll_interval_secs` or `wake-up` in
+`config.toml`. `make build` in `firmware/` and drop `family-frame.uf2`
+on the `RP2350` drive. Without the board, [`pico-sim`](pico-sim/) speaks
+the same loop.

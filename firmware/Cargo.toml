@@ -3,7 +3,7 @@ name = "family-frame-fw"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Pico LiPo 2 XL W client: USB-provisioned Wi-Fi, POST /frame.bin, Inky Impression 13.3″"
+description = "Pico LiPo 2 XL W client: USB-provisioned Wi-Fi, POST /api/frame.bin, Inky Impression 13.3″"
 
 [lib]
 name = "family_frame_fw"

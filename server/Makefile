@@ -1,11 +1,14 @@
-.PHONY: serve watch test docker-build docker-run docker
+.PHONY: serve watch test docker-build docker-run docker ui
 
 IMAGE := antoinejaussoin/family-frame-server
 
-all:
+all: ui
 	cargo run
 
-# Local only: rebuild and restart when source / templates / config change.
+ui:
+	cd ui && npm ci && npm run build
+
+# Local only: rebuild and restart when source / templates change.
 watch:
 	cargo run -- --watch
 

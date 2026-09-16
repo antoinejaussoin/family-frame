@@ -2,7 +2,8 @@
 //!
 //! Same Embassy / PIO wiring as the laser-tag temperature and IR-capture nodes.
 
-use core::sync::atomic::{AtomicU8, Ordering};
+use core::fmt::Write as _;
+use core::sync::atomic::{AtomicU8, AtomicU16, Ordering};
 use cyw43::{JoinAuth, JoinError, JoinOptions, PowerManagementMode};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use embassy_executor::Spawner;
@@ -17,11 +18,16 @@ use embassy_rp::pio::Pio;
 use embassy_time::{Duration, Timer, with_timeout};
 use static_cell::StaticCell;
 
+use heapless::String;
+
 use crate::board::Irqs;
 use crate::settings;
 
 static WIFI_STATUS: AtomicU8 = AtomicU8::new(WifiStatus::Setup as u8);
 static FRAME_STATUS: AtomicU8 = AtomicU8::new(FrameStatus::None as u8);
+/// Last IPv4 octet, or [`NO_IP`] when DHCP has not given us an address.
+static LAST_OCTET: AtomicU16 = AtomicU16::new(NO_IP);
+const NO_IP: u16 = 0xFFFF;
 
 /// `join()` either errors quickly or hangs waiting for a handshake event.
 const JOIN_TIMEOUT: Duration = Duration::from_secs(12);
@@ -81,18 +87,63 @@ pub fn is_up() -> bool {
     WifiStatus::load() == WifiStatus::Up
 }
 
-pub fn status_line() -> &'static str {
+pub fn status_line() -> String<21> {
+    let mut s = String::new();
     match WifiStatus::load() {
-        WifiStatus::Joining => "wifi: joining",
-        WifiStatus::Up => match FrameStatus::load() {
-            FrameStatus::Ok => "wifi ok  frame 200",
-            FrameStatus::NotModified => "wifi ok  frame 204",
-            FrameStatus::Fail => "wifi ok  frame fail",
-            FrameStatus::None => "wifi ok",
-        },
-        WifiStatus::Fail => "wifi fail",
-        WifiStatus::Setup => "USB: wifi/save",
+        WifiStatus::Joining => {
+            let _ = s.push_str("wifi: joining");
+        }
+        WifiStatus::Up => {
+            let frame = match FrameStatus::load() {
+                FrameStatus::Ok => "200",
+                FrameStatus::NotModified => "204",
+                FrameStatus::Fail => "fail",
+                FrameStatus::None => "",
+            };
+            match (last_octet(), frame) {
+                (Some(n), "") => {
+                    let _ = write!(s, "wifi .{n}");
+                }
+                (Some(n), f) => {
+                    let _ = write!(s, "wifi .{n} {f}");
+                }
+                (None, "") => {
+                    let _ = s.push_str("wifi ok");
+                }
+                (None, f) => {
+                    let _ = write!(s, "wifi {f}");
+                }
+            }
+        }
+        WifiStatus::Fail => {
+            let _ = s.push_str("wifi fail");
+        }
+        WifiStatus::Setup => {
+            let _ = s.push_str("USB: wifi/save");
+        }
     }
+    s
+}
+
+fn last_octet() -> Option<u8> {
+    let v = LAST_OCTET.load(Ordering::Relaxed);
+    (v <= 255).then_some(v as u8)
+}
+
+fn remember_ip(stack: Stack<'_>) {
+    match stack.config_v4() {
+        Some(cfg) => {
+            LAST_OCTET.store(
+                u16::from(cfg.address.address().octets()[3]),
+                Ordering::Relaxed,
+            );
+        }
+        None => forget_ip(),
+    }
+}
+
+fn forget_ip() {
+    LAST_OCTET.store(NO_IP, Ordering::Relaxed);
 }
 
 pub async fn start(
@@ -165,6 +216,7 @@ async fn wifi_task(mut control: cyw43::Control<'static>, stack: Stack<'static>) 
         apply_user_led(&mut control).await;
         let cfg = settings::snapshot().await;
         if cfg.ssid.is_empty() {
+            forget_ip();
             WifiStatus::Setup.store();
             wait_while_updating_led(&mut control, settings::wait_rejoin()).await;
             backoff_s = 1;
@@ -175,6 +227,7 @@ async fn wifi_task(mut control: cyw43::Control<'static>, stack: Stack<'static>) 
         FrameStatus::None.store();
 
         if associate(&mut control, stack, &cfg).await {
+            remember_ip(stack);
             backoff_s = 1;
             WifiStatus::Up.store();
             control
@@ -186,9 +239,12 @@ async fn wifi_task(mut control: cyw43::Control<'static>, stack: Stack<'static>) 
                 }
             })
             .await;
+            forget_ip();
             WifiStatus::Joining.store();
             continue;
         }
+
+        forget_ip();
 
         wait_while_updating_led(&mut control, async {
             match select(settings::wait_rejoin(), Timer::after_secs(backoff_s)).await {

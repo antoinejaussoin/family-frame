@@ -61,12 +61,13 @@ impl DebugOled {
         };
         let _ = screen.display.display_on();
         let (mv, pct) = crate::battery::last();
+        let status = wifi::status_line();
         screen.show(
             self.psram.as_str(),
             mv,
             pct,
             bat.sample_chip_tenths(),
-            wifi::status_line(),
+            status.as_str(),
             extra,
         );
     }

@@ -3,16 +3,31 @@
 bind = "0.0.0.0:8765"
 timezone = "Europe/London"
 family_name = "Family"
+# Display mode: "dashboard" (calendars & house) or "picture" (photo rotation).
+# Switch from the family UI at http://<host>:8765/ — no restart needed.
+mode = "dashboard"
 # Birthdays live here, not on a calendar. Each entry is `Name,YYYY-MM-DD`.
 # Merged into Today / Coming next up to two weeks ahead as “Name turns N”.
 birthdays = ["Maya,2018-03-15", "Sam,2015-11-02"]
-# How often the Pico should poll. The server re-renders when data changes
-# or this interval has elapsed since the last successful render.
-refresh_minutes = 60
+# Seconds the Pico should sleep between polls when `wake-up` is empty.
+# Top-level values are the *dashboard* schedule. Picture mode can override
+# them under `[pictures]` (the family UI edits each mode separately).
+poll_interval_secs = 3600
+# Optional local times (HH:MM in `timezone`). If this list has at least one
+# entry, the server tells the Pico how many seconds to sleep until the next one.
+# wake-up = ["06:00", "07:00", "08:30", "15:00", "23:15"]
 
 # Optional Chromium / Chrome binary. Leave empty to auto-detect
 # google-chrome / chromium on PATH, or the usual macOS .app paths.
 chrome_path = ""
+
+[pictures]
+# Ordered picture ids (from the family UI uploads under pictures/).
+# Required non-empty when mode = "picture".
+rotate = []
+# Optional picture-mode schedule. Omitted: same as the dashboard values above.
+# poll_interval_secs = 600
+# wake-up = []
 
 [icloud]
 # Apple Account email + an *app-specific* password from

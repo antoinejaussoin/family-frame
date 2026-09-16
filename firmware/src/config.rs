@@ -23,6 +23,7 @@ pub struct NetConfig {
     pub psk: String<PSK_MAX>,
     pub server: String<SERVER_MAX>,
     pub last_checksum: String<CHECKSUM_MAX>,
+    /// Last `X-Sleep-Seconds` from the server (fallback if a later poll omits it).
     pub sleep_s: u32,
 }
 

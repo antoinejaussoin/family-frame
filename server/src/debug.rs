@@ -1,7 +1,7 @@
 //! Pico poll history for the `/debug` dashboard.
 //!
-//! POST `/frame.bin` appends one JSONL row and, on 200, a dithered PNG keyed
-//! by checksum. GET `/frame.bin` from a browser is not recorded.
+//! POST `/api/frame.bin` appends one JSONL row and, on 200, a dithered PNG keyed
+//! by checksum. GET `/api/frame.bin` from a browser is not recorded.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -29,6 +29,9 @@ pub struct Poll {
     pub pct: u16,
     pub usb: bool,
     pub wake: String,
+    /// Seconds the Pico was told to sleep after this poll.
+    #[serde(default)]
+    pub sleep_s: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +50,10 @@ pub struct DebugPage {
     pub last_mv: u32,
     pub last_usb: bool,
     pub last_wake: String,
+    pub last_sleep_s: u64,
+    pub has_next_refresh: bool,
+    pub next_refresh: String,
+    pub next_refresh_rel: String,
     pub last_status: u16,
     pub last_status_label: String,
     pub last_seen: String,
@@ -67,6 +74,7 @@ pub struct DebugPollView {
     pub mv: u32,
     pub usb: bool,
     pub wake: String,
+    pub sleep_s: u64,
     pub has_image: bool,
     pub image_url: String,
     pub checksum_short: String,
@@ -146,6 +154,10 @@ pub fn page_from_polls(polls: &[Poll], tz: Tz, has_frame: impl Fn(&str) -> bool)
             last_mv: 0,
             last_usb: false,
             last_wake: String::new(),
+            last_sleep_s: 0,
+            has_next_refresh: false,
+            next_refresh: String::new(),
+            next_refresh_rel: String::new(),
             last_status: 0,
             last_status_label: String::new(),
             last_seen: String::new(),
@@ -161,6 +173,7 @@ pub fn page_from_polls(polls: &[Poll], tz: Tz, has_frame: impl Fn(&str) -> bool)
     let last = polls.last().unwrap();
     let eta = discharge_eta(polls, now);
     let (eta_kind, eta_text) = eta_copy(eta, last.usb);
+    let (next_refresh, next_refresh_rel) = next_refresh_copy(last, now, tz);
 
     DebugPage {
         has_polls: true,
@@ -168,6 +181,10 @@ pub fn page_from_polls(polls: &[Poll], tz: Tz, has_frame: impl Fn(&str) -> bool)
         last_mv: last.mv,
         last_usb: last.usb,
         last_wake: last.wake.clone(),
+        last_sleep_s: last.sleep_s,
+        has_next_refresh: !next_refresh.is_empty(),
+        next_refresh,
+        next_refresh_rel,
         last_status: last.status,
         last_status_label: status_label(last.status).into(),
         last_seen: format_when(last.t, tz),
@@ -191,6 +208,7 @@ pub fn page_from_polls(polls: &[Poll], tz: Tz, has_frame: impl Fn(&str) -> bool)
                 mv: p.mv,
                 usb: p.usb,
                 wake: p.wake.clone(),
+                sleep_s: p.sleep_s,
                 has_image: has_frame(&p.checksum),
                 image_url: format!("/debug/frames/{}.png", p.checksum),
                 checksum_short: checksum_short(&p.checksum),
@@ -313,6 +331,45 @@ fn checksum_short(checksum: &str) -> String {
 
 fn format_when(t: DateTime<Utc>, tz: Tz) -> String {
     t.with_timezone(&tz).format("%a %-d %b, %H:%M").to_string()
+}
+
+fn next_refresh_copy(last: &Poll, now: DateTime<Utc>, tz: Tz) -> (String, String) {
+    if last.sleep_s == 0 {
+        return (String::new(), String::new());
+    }
+    let secs = i64::try_from(last.sleep_s).unwrap_or(i64::MAX);
+    let at = last.t + Duration::seconds(secs);
+    (format_when(at, tz), format_until(at, now))
+}
+
+fn format_until(then: DateTime<Utc>, now: DateTime<Utc>) -> String {
+    let secs = then.signed_duration_since(now).num_seconds();
+    if secs >= 0 {
+        if secs < 60 {
+            "any moment".into()
+        } else if secs < 3_600 {
+            format!("in {} min", secs / 60)
+        } else if secs < 86_400 {
+            let h = secs / 3_600;
+            format!("in {h} hour{}", if h == 1 { "" } else { "s" })
+        } else {
+            let d = secs / 86_400;
+            format!("in {d} day{}", if d == 1 { "" } else { "s" })
+        }
+    } else {
+        let ago = -secs;
+        if ago < 60 {
+            "overdue".into()
+        } else if ago < 3_600 {
+            format!("{} min overdue", ago / 60)
+        } else if ago < 86_400 {
+            let h = ago / 3_600;
+            format!("{h} hour{} overdue", if h == 1 { "" } else { "s" })
+        } else {
+            let d = ago / 86_400;
+            format!("{d} day{} overdue", if d == 1 { "" } else { "s" })
+        }
+    }
 }
 
 fn format_rel(then: DateTime<Utc>, now: DateTime<Utc>) -> String {
@@ -504,6 +561,7 @@ mod tests {
             pct,
             usb,
             wake: "timer".into(),
+            sleep_s: 3600,
         }
     }
 
@@ -618,5 +676,40 @@ mod tests {
             "/debug/frames/deadbeef.png"
         );
         assert!(page.graph_svg.contains("<svg"));
+    }
+
+    #[test]
+    fn page_shows_next_refresh_from_sleep() {
+        let polls = vec![poll_at(60, 78, false, 204, "deadbeef")];
+        let page = page_from_polls(&polls, chrono_tz::Europe::London, |_| true);
+        assert!(page.has_next_refresh);
+        // 13:00 UTC + 1h sleep, displayed in BST.
+        assert!(
+            page.next_refresh.contains("15:00"),
+            "got {}",
+            page.next_refresh
+        );
+        assert!(!page.next_refresh_rel.is_empty());
+    }
+
+    #[test]
+    fn format_until_future_and_overdue() {
+        let now = Utc.with_ymd_and_hms(2026, 9, 16, 12, 0, 0).unwrap();
+        assert_eq!(
+            format_until(now + Duration::seconds(30), now).as_str(),
+            "any moment"
+        );
+        assert_eq!(
+            format_until(now + Duration::minutes(12), now).as_str(),
+            "in 12 min"
+        );
+        assert_eq!(
+            format_until(now + Duration::hours(2), now).as_str(),
+            "in 2 hours"
+        );
+        assert_eq!(
+            format_until(now - Duration::minutes(5), now).as_str(),
+            "5 min overdue"
+        );
     }
 }

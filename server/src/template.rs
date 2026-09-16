@@ -133,12 +133,14 @@ mod tests {
             pct: 72,
             usb: false,
             wake: "timer".into(),
+            sleep_s: 3600,
         }];
         let page = crate::debug::page_from_polls(&polls, chrono_tz::Europe::London, |_| true);
         let html = Templates::load().unwrap().render_debug(&page).unwrap();
         assert!(html.contains("72"));
         assert!(html.contains("3850"));
         assert!(html.contains("200 new frame"));
+        assert!(html.contains("Next refresh"));
         assert!(html.contains("/debug/frames/deadbeef.png"));
         assert!(html.contains("<svg"));
     }

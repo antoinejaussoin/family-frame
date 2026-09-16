@@ -9,13 +9,11 @@ mod unpack;
 #[derive(Parser, Debug)]
 #[command(
     name = "pico-sim",
-    about = "Behave like the Pico: POST /frame.bin with battery diagnostics"
+    about = "Behave like the Pico: POST /api/frame.bin with battery diagnostics"
 )]
 struct Cli {
     #[arg(long, default_value = "http://127.0.0.1:8765")]
     url: String,
-    #[arg(long, default_value_t = 5)]
-    interval_secs: u64,
     /// Directory for timestamped PNGs of each new frame.
     #[arg(long)]
     out: Option<PathBuf>,
@@ -31,6 +29,10 @@ struct Cli {
     drain: bool,
 }
 
+/// Same fallbacks as the Pico firmware.
+const FAIL_SLEEP_S: u64 = 120;
+const DEFAULT_SLEEP_S: u64 = 3600;
+
 struct Telemetry {
     mv: u32,
     pct: u16,
@@ -43,8 +45,7 @@ impl Telemetry {
     fn body(&mut self) -> String {
         let wake = if self.first { "cold" } else { "timer" };
         self.first = false;
-        let usb = if self.usb { 1 } else { 0 };
-        let body = format!("mv={}&pct={}&usb={usb}&wake={wake}", self.mv, self.pct);
+        let body = telemetry_form(self.mv, self.pct, self.usb, wake);
         if self.drain && !self.usb {
             self.pct = self.pct.saturating_sub(1);
             self.mv = 3300 + u32::from(self.pct) * 9;
@@ -84,12 +85,35 @@ async fn run(cli: Cli) -> Result<()> {
         drain: cli.drain,
         first: true,
     };
+    let mut last_sleep = DEFAULT_SLEEP_S;
     loop {
         let body = tel.body();
-        if let Err(err) = poll_frame(&client, &url, &out_dir, &mut checksum, &body).await {
-            error!(%err, %url, "could not reach frame endpoint — retrying");
+        let (reached, server_sleep) =
+            match poll_frame(&client, &url, &out_dir, &mut checksum, &body).await {
+                Ok(outcome) => outcome,
+                Err(err) => {
+                    error!(%err, %url, "could not reach frame endpoint — retrying");
+                    (false, None)
+                }
+            };
+        if let Some(s) = server_sleep.filter(|&s| s > 0) {
+            last_sleep = s;
         }
-        tokio::time::sleep(std::time::Duration::from_secs(cli.interval_secs)).await;
+        let nap = next_nap(reached, server_sleep, last_sleep);
+        info!(nap, "sleep until next poll");
+        tokio::time::sleep(std::time::Duration::from_secs(nap)).await;
+    }
+}
+
+fn next_nap(reached: bool, server_sleep: Option<u64>, last_sleep: u64) -> u64 {
+    if !reached {
+        FAIL_SLEEP_S
+    } else if let Some(s) = server_sleep.filter(|&s| s > 0) {
+        s
+    } else if last_sleep > 0 {
+        last_sleep
+    } else {
+        DEFAULT_SLEEP_S
     }
 }
 
@@ -98,7 +122,7 @@ fn default_out_dir() -> PathBuf {
 }
 
 fn frame_url(base: &str) -> String {
-    format!("{}/frame.bin", base.trim_end_matches('/'))
+    format!("{}/api/frame.bin", base.trim_end_matches('/'))
 }
 
 fn telemetry_form(mv: u32, pct: u16, usb: bool, wake: &str) -> String {
@@ -114,7 +138,7 @@ async fn poll_frame(
     out_dir: &Path,
     checksum: &mut String,
     body: &str,
-) -> Result<()> {
+) -> Result<(bool, Option<u64>)> {
     let mut req = client
         .post(url)
         .header("Content-Type", "application/x-www-form-urlencoded")
@@ -124,8 +148,10 @@ async fn poll_frame(
     }
     let resp = req.send().await.with_context(|| format!("POST {url}"))?;
     let status = resp.status();
+    let sleep_s = sleep_seconds(resp.headers());
     if status.as_u16() == 204 || status.as_u16() == 304 {
-        info!(checksum, %status, "unchanged — Pico would skip the refresh");
+        info!(checksum, %status, sleep_s, "unchanged — Pico would skip the refresh");
+        Ok((true, sleep_s))
     } else if status.is_success() {
         let etag = resp
             .headers()
@@ -139,13 +165,23 @@ async fn poll_frame(
         info!(
             checksum,
             bytes = bytes.len(),
+            sleep_s,
             path = %path.display(),
             "200 new frame"
         );
+        Ok((true, sleep_s))
     } else {
         warn!(%status, "frame request failed");
+        Ok((false, None))
     }
-    Ok(())
+}
+
+fn sleep_seconds(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    headers
+        .get("x-sleep-seconds")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse().ok())
+        .filter(|&s| s > 0)
 }
 
 fn save_frame(dir: &Path, checksum: &str, bin: &[u8]) -> Result<PathBuf> {
@@ -175,11 +211,11 @@ mod tests {
     fn frame_url_has_no_checksum_query() {
         assert_eq!(
             frame_url("http://127.0.0.1:8765/"),
-            "http://127.0.0.1:8765/frame.bin"
+            "http://127.0.0.1:8765/api/frame.bin"
         );
         assert_eq!(
             frame_url("http://127.0.0.1:8765"),
-            "http://127.0.0.1:8765/frame.bin"
+            "http://127.0.0.1:8765/api/frame.bin"
         );
     }
 
@@ -203,7 +239,7 @@ mod tests {
             .unwrap();
         let dir = tempfile::tempdir().unwrap();
         let mut checksum = String::new();
-        let url = format!("http://{addr}/frame.bin");
+        let url = format!("http://{addr}/api/frame.bin");
         let err = poll_frame(
             &client,
             &url,
@@ -216,6 +252,25 @@ mod tests {
         assert!(err.to_string().contains("POST"));
         assert!(checksum.is_empty());
         assert!(dir.path().read_dir().unwrap().next().is_none());
+    }
+
+    #[test]
+    fn next_nap_matches_firmware() {
+        assert_eq!(next_nap(false, Some(3600), 3600), FAIL_SLEEP_S);
+        assert_eq!(next_nap(true, Some(90), 3600), 90);
+        assert_eq!(next_nap(true, None, 1800), 1800);
+        assert_eq!(next_nap(true, Some(0), 0), DEFAULT_SLEEP_S);
+        assert_eq!(next_nap(true, None, 0), DEFAULT_SLEEP_S);
+    }
+
+    #[test]
+    fn sleep_seconds_parses_positive_header() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-sleep-seconds", "3600".parse().unwrap());
+        assert_eq!(sleep_seconds(&headers), Some(3600));
+        headers.insert("x-sleep-seconds", "0".parse().unwrap());
+        assert_eq!(sleep_seconds(&headers), None);
+        assert_eq!(sleep_seconds(&reqwest::header::HeaderMap::new()), None);
     }
 
     #[test]

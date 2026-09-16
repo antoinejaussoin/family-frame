@@ -1,8 +1,17 @@
-//! HTTP/1.1 response framing for `/frame.bin` (status, checksum, body).
+//! HTTP/1.1 response framing for `/frame.bin` (status, checksum, sleep, body).
 
 use heapless::String;
 
 pub const HEADER_MAX: usize = 2048;
+
+/// Status line plus the headers the Pico actually uses.
+#[derive(Clone, Debug)]
+pub struct ParsedResponse {
+    pub status: u16,
+    pub body_len: usize,
+    pub checksum: String<80>,
+    pub sleep_s: Option<u32>,
+}
 
 /// Incremental TCP → header / body split. Binary bodies are not parsed as text.
 pub struct ResponseReader {
@@ -65,19 +74,23 @@ impl ResponseReader {
         true
     }
 
-    pub fn finish(&self) -> Option<(u16, usize, String<80>)> {
+    pub fn finish(&self) -> Option<ParsedResponse> {
         if self.overflow {
             return None;
         }
         let end = self.hdr_end?;
         let headers = core::str::from_utf8(&self.hdr[..end]).ok()?;
-        let status = parse_status(headers)?;
-        Some((status, self.body_len, copy_checksum(headers)))
+        Some(ParsedResponse {
+            status: parse_status(headers)?,
+            body_len: self.body_len,
+            checksum: copy_checksum(headers),
+            sleep_s: copy_sleep_seconds(headers),
+        })
     }
 }
 
 /// One-shot helper for tests and complete-in-one-buffer responses.
-pub fn parse_response(raw: &[u8], dest: &mut [u8]) -> Option<(u16, usize, String<80>)> {
+pub fn parse_response(raw: &[u8], dest: &mut [u8]) -> Option<ParsedResponse> {
     let mut reader = ResponseReader::new();
     if !reader.feed(raw, dest) {
         return None;
@@ -104,6 +117,14 @@ pub fn copy_checksum(headers: &str) -> String<80> {
     let v = value.trim().trim_matches('"');
     let _ = out.push_str(v);
     out
+}
+
+pub fn copy_sleep_seconds(headers: &str) -> Option<u32> {
+    header_value(headers, "x-sleep-seconds")?
+        .trim()
+        .parse()
+        .ok()
+        .filter(|&s| s > 0)
 }
 
 pub fn header_value<'a>(headers: &'a str, name: &str) -> Option<&'a str> {
@@ -140,10 +161,11 @@ mod tests {
     fn empty_204_body() {
         let raw = response("204 No Content", "X-Frame-Checksum: abc\r\n", b"");
         let mut dest = [0u8; 8];
-        let (status, n, etag) = parse_response(&raw, &mut dest).expect("parse");
-        assert_eq!(status, 204);
-        assert_eq!(n, 0);
-        assert_eq!(etag.as_str(), "abc");
+        let parsed = parse_response(&raw, &mut dest).expect("parse");
+        assert_eq!(parsed.status, 204);
+        assert_eq!(parsed.body_len, 0);
+        assert_eq!(parsed.checksum.as_str(), "abc");
+        assert_eq!(parsed.sleep_s, None);
     }
 
     #[test]
@@ -174,11 +196,12 @@ mod tests {
         ];
         let raw = response("200 OK", "X-Frame-Checksum: good\r\n", &body);
         let mut dest = [0u8; 32];
-        let (status, n, etag) = parse_response(&raw, &mut dest).expect("parse");
-        assert_eq!(status, 200);
-        assert_eq!(n, body.len());
-        assert_eq!(&dest[..n], &body);
-        assert_eq!(etag.as_str(), "good");
+        let parsed = parse_response(&raw, &mut dest).expect("parse");
+        assert_eq!(parsed.status, 200);
+        assert_eq!(parsed.body_len, body.len());
+        assert_eq!(&dest[..parsed.body_len], &body);
+        assert_eq!(parsed.checksum.as_str(), "good");
+        assert_eq!(parsed.sleep_s, None);
     }
 
     #[test]
@@ -187,12 +210,34 @@ mod tests {
         let mut r = ResponseReader::new();
         assert!(r.feed(b"HTTP/1.1 200 OK\r\nX-Frame-", &mut dest));
         assert!(r.finish().is_none());
-        assert!(r.feed(b"Checksum: ab\r\n\r\nXY", &mut dest));
-        let (status, n, etag) = r.finish().expect("complete");
-        assert_eq!(status, 200);
-        assert_eq!(n, 2);
+        assert!(r.feed(b"Checksum: ab\r\nX-Sleep-Seconds: 90\r\n\r\nXY", &mut dest));
+        let parsed = r.finish().expect("complete");
+        assert_eq!(parsed.status, 200);
+        assert_eq!(parsed.body_len, 2);
         assert_eq!(&dest[..2], b"XY");
-        assert_eq!(etag.as_str(), "ab");
+        assert_eq!(parsed.checksum.as_str(), "ab");
+        assert_eq!(parsed.sleep_s, Some(90));
+    }
+
+    #[test]
+    fn sleep_seconds_is_case_insensitive_and_ignores_zero() {
+        assert_eq!(
+            copy_sleep_seconds("HTTP/1.1 204 No Content\r\nX-Sleep-Seconds: 3600\r\n\r\n"),
+            Some(3600)
+        );
+        assert_eq!(
+            copy_sleep_seconds("HTTP/1.1 200 OK\r\nx-sleep-seconds: 1\r\n\r\n"),
+            Some(1)
+        );
+        assert_eq!(
+            copy_sleep_seconds("HTTP/1.1 200 OK\r\nX-Sleep-Seconds: 0\r\n\r\n"),
+            None
+        );
+        assert_eq!(
+            copy_sleep_seconds("HTTP/1.1 200 OK\r\nX-Sleep-Seconds: nope\r\n\r\n"),
+            None
+        );
+        assert_eq!(copy_sleep_seconds("HTTP/1.1 200 OK\r\n\r\n"), None);
     }
 
     #[test]

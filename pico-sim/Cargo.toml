@@ -3,7 +3,7 @@ name = "pico-sim"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Pico LiPo 2 XL W client simulator: poll /frame.bin and save Spectra 6 PNGs"
+description = "Pico LiPo 2 XL W client simulator: poll /api/frame.bin and save Spectra 6 PNGs"
 
 [dependencies]
 anyhow = "1.0.99"

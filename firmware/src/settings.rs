@@ -1,7 +1,7 @@
 //! Provisioned Wi-Fi and server target: RAM copy plus last flash sector.
 //!
 //! Same USB-CLI + last-sector layout as the laser-tag temperature / IR nodes,
-//! with extra fields for the last frame checksum and the poll interval.
+//! with extra fields for the last frame checksum and the last server sleep.
 
 use embassy_rp::flash::{Blocking, ERASE_SIZE, Error as FlashError, Flash};
 use embassy_rp::peripherals::FLASH;

@@ -1,4 +1,4 @@
-//! USB CDC serial CLI: `wifi`, `psk`, `server`, `sleep`, `save`, `show`, `clear`, `help`.
+//! USB CDC serial CLI: `wifi`, `psk`, `server`, `save`, `show`, `clear`, `help`.
 //!
 //! Same commands as the laser-tag temperature / IR-capture nodes.
 
@@ -118,7 +118,6 @@ async fn handle_line(
                  psk <password>   (empty = open network)\r\n\
                  server <host:port>\r\n\
                    e.g. 192.168.0.251:8765\r\n\
-                 sleep <seconds>  (0 = poll every 60s; dormant unless USB)\r\n\
                  save             write flash and join Wi-Fi\r\n\
                  show\r\n\
                  forget           drop last frame checksum (force next paint)\r\n\
@@ -166,24 +165,13 @@ async fn handle_line(
             .await;
             let _ = write_text(class, "ok. type save when ready.\r\n").await;
         }
-        "sleep" => {
-            let Ok(secs) = rest.parse::<u32>() else {
-                let _ = write_text(class, "usage: sleep <seconds>\r\n").await;
-                return;
-            };
-            settings::update(|cfg| {
-                cfg.sleep_s = secs;
-            })
-            .await;
-            let _ = write_text(class, "ok. type save when ready.\r\n").await;
-        }
         "show" => {
             let cfg = settings::snapshot().await;
             let (mv, pct) = battery::last();
             let mut msg = String::<384>::new();
             let _ = write!(
                 msg,
-                "ssid: {}\r\npsk:  {}\r\nurl:  {}\r\nsleep: {} s\r\nchecksum: {}\r\n{}\r\nbattery: {} mV ~{}%\r\nleds: {}\r\nwake: {}\r\n",
+                "ssid: {}\r\npsk:  {}\r\nurl:  {}\r\nsleep: {} s (from server)\r\nchecksum: {}\r\n{}\r\nbattery: {} mV ~{}%\r\nleds: {}\r\nwake: {}\r\n",
                 cfg.ssid,
                 if cfg.psk.is_empty() {
                     "(none)"

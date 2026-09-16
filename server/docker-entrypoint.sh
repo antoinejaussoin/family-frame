@@ -11,7 +11,7 @@ if [ -z "${EINK_CONFIG:-}" ]; then
   EINK_CONFIG=/data/config.toml
 fi
 
-mkdir -p /data "$(dirname "$EINK_CONFIG")"
+mkdir -p /data /data/pictures "$(dirname "$EINK_CONFIG")"
 
 if [ -d "$EINK_CONFIG" ]; then
   echo "eink-frame: $EINK_CONFIG is a directory." >&2

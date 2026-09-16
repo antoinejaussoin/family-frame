@@ -5,11 +5,12 @@ Impression 13.3″. Family data and HTML stay on the LAN server. This
 binary:
 
 1. Joins 2.4 GHz Wi-Fi (SSID and password from USB, not compiled in).
-2. `POST /frame.bin` with battery diagnostics and `If-None-Match`.
+2. `POST /api/frame.bin` with battery diagnostics and `If-None-Match`.
 3. **204** → leave the glass alone.
 4. **200** → `show_frame()` the 960 000-byte body, store the checksum.
-5. Powers the switched-core down for `sleep` seconds (default 3600) and
-   repeats. A USB host keeps the chip awake so the CDC serial port stays up.
+5. Powers the switched-core down for `X-Sleep-Seconds` from the response
+   (fallback 3600 if the header is missing) and repeats. A USB host keeps
+   the chip awake so the CDC serial port stays up.
 
 Wi-Fi / server provisioning is the same USB CDC CLI as the laser-tag
 temperature-display and IR-capture nodes: type `wifi`, `psk`, `server`,
@@ -32,7 +33,6 @@ screen /dev/cu.usbmodem* 115200
 wifi MySsid
 psk MyPassword
 server 192.168.0.251:8765
-sleep 3600
 save
 ```
 
@@ -40,16 +40,15 @@ save
 |---|---|
 | `wifi <ssid>` | 2.4 GHz SSID (max 32) |
 | `psk <password>` | WPA2 PSK, or empty for an open network |
-| `server <host:port>` | Family-frame HTTP origin. `POST /frame.bin` is appended |
-| `sleep <seconds>` | Interval between polls. `0` = poll every 60 s. POWMAN-dormant between polls unless a USB host is plugged |
+| `server <host:port>` | Family-frame HTTP origin. `POST /api/frame.bin` is appended |
 | `save` | Write the last flash sector and join Wi-Fi |
-| `show` | SSID, URL, sleep, checksum, Wi-Fi / frame status, battery, wake reason |
+| `show` | SSID, URL, last server sleep, checksum, Wi-Fi / frame status, battery, wake reason |
 | `forget` | Drop the last checksum so the next poll paints |
 | `clear` | Erase saved settings |
 | `help` | Command list |
 
 Nothing is compiled in. `save` is required after `wifi` / `psk` /
-`server` / `sleep`. Until the node is ready, `show` prints
+`server`. Until the node is ready, `show` prints
 `USB: wifi/save` and the panel paints yellow once.
 
 ## Build
@@ -60,7 +59,7 @@ Pico 2 W nodes, with `embassy-rp` on **`rp235xb`** (48 GPIO, GP47 PSRAM).
 
 ```bash
 cd firmware
-make test    # host check of /frame.bin URL shaping
+make test    # host check of /api/frame.bin URL shaping
 make build
 make uf2     # writes family-frame.uf2
 make uf2-oled  # writes family-frame-oled.uf2 (SSD1306/SH1106 status)
@@ -118,7 +117,7 @@ refresh browns out and the cell can deliver it.
 ## OLED debug
 
 A second binary, `family-frame-oled`, is the same client (Wi-Fi, PSRAM,
-`POST /frame.bin`, Inky driver still compiled in) plus a 0.96″ I²C status
+`POST /api/frame.bin`, Inky driver still compiled in) plus a 0.96″ I²C status
 panel. Use it until the e-ink ribbon arrives.
 
 The laser-tag temperature-display node used **GP16 / GP17**. Do **not**
@@ -141,14 +140,17 @@ cd firmware
 make flash-oled
 ```
 
-USB CLI is unchanged (`wifi` / `psk` / `server` / `save`). For a fast
-poll while you watch the OLED, `sleep 0` then `save` (wakes every 60 s).
+USB CLI is unchanged (`wifi` / `psk` / `server` / `save`). How often the
+board sleeps is set on the server (`poll_interval_secs` / `wake-up`), not
+here. For a fast poll while you watch the OLED, set a short
+`poll_interval_secs` in `config.toml`.
+
 On battery the glass and radio go dark between polls and the CDC port
 drops until the next wake. Leave USB-C plugged into a host (not a
 charge-only cable) and the board stays awake so `screen` keeps working.
 
 The OLED shows PSRAM bring-up, VSYS battery, on-die chip temperature,
-Wi-Fi, and the last `/frame.bin` result. Cold-boot e-ink colour fills
+Wi-Fi, and the last `/api/frame.bin` result. Cold-boot e-ink colour fills
 run once per power-on, not after a timer wake. With no panel they just
 waste a few seconds of SPI.
 
@@ -158,9 +160,10 @@ and the blue area is noise, in `src/oled.rs` switch
 `OledConfig::sh1106_128x64()` to `OledConfig::ssd1306_128x64()` and flash
 again. Address `0x3C` (try `0x3D` if the glass stays black).
 
-Between polls both binaries power-down the switched-core (AON LPOSC
-alarm wake, `WL_REG_ON` held low, OLED `display_off`) **unless a USB
-host is sending SOFs**. Until Wi-Fi and server are saved, or while USB
-serial is plugged in, the node stays awake for the USB CLI.
+Between polls both binaries force `WL_REG_ON` (GP23) low so the RM2
+cannot stay powered, then power-down the switched-core (AON LPOSC
+alarm wake, OLED `display_off`) **unless a USB host is sending SOFs**.
+Until Wi-Fi and server are saved, or while USB serial is plugged in,
+the node stays awake for the USB CLI.
 
 Without hardware, [`pico-sim`](../pico-sim/) speaks the same HTTP loop.

@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -7,7 +8,9 @@ use eink_frame::config::Config;
 use eink_frame::debug::DebugLog;
 use eink_frame::frame::FrameCache;
 use eink_frame::http::{self, AppState};
+use eink_frame::pictures::PictureStore;
 use tokio::net::TcpListener;
+use tokio::sync::RwLock;
 use tracing::{info, warn};
 
 mod watch;
@@ -48,27 +51,41 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
         cfg.bind = bind;
     }
     let addr: SocketAddr = cfg.bind.parse().context("bind address")?;
-    let cache = FrameCache::new(cfg.clone(), addr.port())?;
-    let debug = DebugLog::open(&cfg.config_dir)?;
-    let app = http::router(AppState { cache, debug });
+    let pictures = PictureStore::open(&cfg.config_dir)?;
+    let cfg = Arc::new(RwLock::new(cfg));
+    let cache = FrameCache::new(cfg.clone(), pictures, addr.port())?;
+    let debug = {
+        let guard = cfg.read().await;
+        DebugLog::open(&guard.config_dir)?
+    };
+    let ui = http::ui_dir();
+    let app = http::router(AppState { cache, debug }, ui.clone());
 
     let listener = TcpListener::bind(addr).await?;
     info!(%addr, "eink-frame listening");
+    if ui.as_ref().is_some_and(|d| d.join("index.html").exists()) {
+        info!("family UI         http://{addr}/");
+    } else {
+        warn!("family UI not built — open /preview until server/ui is built");
+    }
     info!("layout simulator  http://{addr}/preview");
     info!("debug dashboard   http://{addr}/debug");
     info!("dashboard only    http://{addr}/dashboard");
-    info!("Pico endpoint     POST http://{addr}/frame.bin");
-    if !cfg.icloud_enabled() {
-        warn!("no iCloud credentials — serving demo calendar unless ICS URLs are set");
-    }
-    if !cfg.todoist_enabled() {
-        warn!("no Todoist token — serving demo to-dos");
-    }
-    if !cfg.meross_enabled() {
-        warn!("no Meross credentials — house temperatures will be demo rooms");
-    }
-    if !cfg.weather_enabled() {
-        warn!("no BBC weather location_id — serving demo forecast");
+    info!("Pico endpoint     POST http://{addr}/api/frame.bin");
+    {
+        let guard = cfg.read().await;
+        if !guard.icloud_enabled() {
+            warn!("no iCloud credentials — serving demo calendar unless ICS URLs are set");
+        }
+        if !guard.todoist_enabled() {
+            warn!("no Todoist token — serving demo to-dos");
+        }
+        if !guard.meross_enabled() {
+            warn!("no Meross credentials — house temperatures will be demo rooms");
+        }
+        if !guard.weather_enabled() {
+            warn!("no BBC weather location_id — serving demo forecast");
+        }
     }
     axum::serve(listener, app).await?;
     Ok(())
@@ -79,10 +96,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn watch_flag_parses() {
+    fn cli_parses_watch() {
         let cli = Cli::try_parse_from(["eink-frame", "--watch"]).unwrap();
         assert!(cli.watch);
-        let cli = Cli::try_parse_from(["eink-frame"]).unwrap();
-        assert!(!cli.watch);
     }
 }

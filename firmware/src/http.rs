@@ -5,7 +5,7 @@ use embassy_net::tcp::TcpSocket;
 use embassy_net::{IpEndpoint, Stack};
 use embassy_time::Duration;
 use embedded_io_async::Write;
-use family_frame_fw::headers::ResponseReader;
+use family_frame_fw::headers::{ParsedResponse, ResponseReader};
 use family_frame_fw::protocol::{frame_target, post_frame_request, telemetry_form};
 use heapless::String;
 
@@ -22,28 +22,31 @@ pub enum FrameResult {
     Err,
 }
 
-pub async fn get_frame(stack: Stack<'static>, dest: &mut [u8]) -> (FrameResult, usize, String<80>) {
+pub async fn get_frame(
+    stack: Stack<'static>,
+    dest: &mut [u8],
+) -> (FrameResult, String<80>, Option<u32>) {
     let empty = String::new();
     if dest.len() < FRAME_BYTES {
         FrameStatus::Fail.store();
-        return (FrameResult::Err, 0, empty);
+        return (FrameResult::Err, empty, None);
     }
     if !crate::wifi::is_up() || !stack.is_config_up() {
         FrameStatus::Fail.store();
-        return (FrameResult::Err, 0, empty);
+        return (FrameResult::Err, empty, None);
     }
 
     let cfg = settings::snapshot().await;
     let Some(target) = frame_target(cfg.server.as_str()) else {
         FrameStatus::Fail.store();
-        return (FrameResult::Err, 0, empty);
+        return (FrameResult::Err, empty, None);
     };
 
     let ips = match stack.dns_query(target.host.as_str(), DnsQueryType::A).await {
         Ok(v) if !v.is_empty() => v,
         _ => {
             FrameStatus::Fail.store();
-            return (FrameResult::Err, 0, empty);
+            return (FrameResult::Err, empty, None);
         }
     };
     let ip = ips[0];
@@ -63,7 +66,7 @@ pub async fn get_frame(stack: Stack<'static>, dest: &mut [u8]) -> (FrameResult, 
         body.as_str(),
     ) else {
         FrameStatus::Fail.store();
-        return (FrameResult::Err, 0, empty);
+        return (FrameResult::Err, empty, None);
     };
 
     let mut rx = [0u8; 4096];
@@ -82,31 +85,28 @@ pub async fn get_frame(stack: Stack<'static>, dest: &mut [u8]) -> (FrameResult, 
     .await;
 
     match fetched {
-        Ok(Some((status, body, etag))) => match status {
+        Ok(Some(parsed)) => match parsed.status {
             204 | 304 => {
                 FrameStatus::NotModified.store();
-                (FrameResult::NotModified, body, etag)
+                (FrameResult::NotModified, parsed.checksum, parsed.sleep_s)
             }
-            200 if body == FRAME_BYTES => {
+            200 if parsed.body_len == FRAME_BYTES => {
                 FrameStatus::Ok.store();
-                (FrameResult::Ok, body, etag)
+                (FrameResult::Ok, parsed.checksum, parsed.sleep_s)
             }
             _ => {
                 FrameStatus::Fail.store();
-                (FrameResult::Err, body, etag)
+                (FrameResult::Err, parsed.checksum, parsed.sleep_s)
             }
         },
         _ => {
             FrameStatus::Fail.store();
-            (FrameResult::Err, 0, empty)
+            (FrameResult::Err, empty, None)
         }
     }
 }
 
-async fn read_response(
-    socket: &mut TcpSocket<'_>,
-    dest: &mut [u8],
-) -> Option<(u16, usize, String<80>)> {
+async fn read_response(socket: &mut TcpSocket<'_>, dest: &mut [u8]) -> Option<ParsedResponse> {
     let mut reader = ResponseReader::new();
     let mut chunk = [0u8; 1024];
 

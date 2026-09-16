@@ -1,10 +1,10 @@
 async function loadChecksum() {
   const el = document.getElementById("checksum");
   try {
-    const res = await fetch("/frame.json");
+    const res = await fetch("/api/frame.json");
     if (!res.ok) {
       el.textContent =
-        "Raster is not ready yet (Chrome needed for /frame.bin). The HTML panel above is still the layout you edit.";
+        "Raster is not ready yet (Chrome needed for /api/frame.bin). The HTML panel above is still the layout you edit.";
       return;
     }
     const data = await res.json();

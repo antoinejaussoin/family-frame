@@ -1,9 +1,56 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
-use chrono::NaiveDate;
-use serde::{Deserialize, Deserializer};
+use anyhow::{bail, Context, Result};
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use chrono_tz::Tz;
+use serde::{Deserialize, Deserializer, Serialize};
+use toml_edit::{Array, DocumentMut, Item, Value};
+
+/// Seconds the Pico sleeps between polls when [`Config::wake_up`] is empty.
+pub const DEFAULT_POLL_INTERVAL_SECS: u64 = 3600;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum FrameMode {
+    #[default]
+    Dashboard,
+    Picture,
+}
+
+impl FrameMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dashboard => "dashboard",
+            Self::Picture => "picture",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "dashboard" => Ok(Self::Dashboard),
+            "picture" | "pictures" | "photo" | "photos" => Ok(Self::Picture),
+            other => bail!("unknown mode `{other}` (use dashboard or picture)"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[serde(default)]
+pub struct PicturesConfig {
+    /// Ordered picture ids to rotate through in picture mode.
+    pub rotate: Vec<String>,
+    /// Picture-mode poll interval. When omitted, inherits the dashboard value.
+    pub poll_interval_secs: Option<u64>,
+    /// Picture-mode wake times. `None` inherits dashboard; `Some([])` uses the interval.
+    #[serde(
+        default,
+        rename = "wake-up",
+        alias = "wake_up",
+        deserialize_with = "deserialize_optional_wake_times"
+    )]
+    pub wake_up: Option<Vec<NaiveTime>>,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -11,17 +58,36 @@ pub struct Config {
     pub bind: String,
     pub timezone: String,
     pub family_name: String,
-    pub refresh_minutes: u64,
+    /// Display mode: family dashboard or rotating photos.
+    #[serde(default)]
+    pub mode: FrameMode,
+    /// Seconds between Pico polls when `wake-up` is empty.
+    #[serde(default = "default_poll_interval_secs", alias = "interval")]
+    pub poll_interval_secs: u64,
+    /// Local `HH:MM` times (in [`Config::timezone`]). Non-empty: the Pico
+    /// sleeps until the next one instead of using [`Self::poll_interval_secs`].
+    #[serde(
+        default,
+        rename = "wake-up",
+        alias = "wake_up",
+        deserialize_with = "deserialize_wake_times"
+    )]
+    pub wake_up: Vec<NaiveTime>,
     pub chrome_path: String,
     pub icloud: IcloudConfig,
     pub todoist: TodoistConfig,
     pub meross: MerossConfig,
     pub weather: WeatherConfig,
     pub sources: SourcesConfig,
+    #[serde(default)]
+    pub pictures: PicturesConfig,
     /// `"Name,YYYY-MM-DD"` entries, merged into the calendar up to two weeks ahead.
     pub birthdays: Vec<Birthday>,
     #[serde(skip)]
     pub config_dir: PathBuf,
+    /// Absolute path to the loaded config.toml (when one was loaded from disk).
+    #[serde(skip)]
+    pub config_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,15 +171,19 @@ impl Default for Config {
             bind: "0.0.0.0:8765".into(),
             timezone: "Europe/London".into(),
             family_name: "Family".into(),
-            refresh_minutes: 60,
+            mode: FrameMode::Dashboard,
+            poll_interval_secs: DEFAULT_POLL_INTERVAL_SECS,
+            wake_up: Vec::new(),
             chrome_path: String::new(),
             icloud: IcloudConfig::default(),
             todoist: TodoistConfig::default(),
             meross: MerossConfig::default(),
             weather: WeatherConfig::default(),
             sources: SourcesConfig::default(),
+            pictures: PicturesConfig::default(),
             birthdays: Vec::new(),
             config_dir: PathBuf::from("."),
+            config_path: None,
         }
     }
 }
@@ -179,6 +249,41 @@ pub fn asset_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
 
+/// Public schedule for one display mode.
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicSchedule {
+    pub poll_interval_secs: u64,
+    pub wake_up: Vec<String>,
+}
+
+/// Public settings exposed to the family UI (no secrets).
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicSettings {
+    pub mode: String,
+    /// Schedule for the current [`Self::mode`] (family UI editor).
+    pub poll_interval_secs: u64,
+    pub wake_up: Vec<String>,
+    pub dashboard_schedule: PublicSchedule,
+    pub pictures_schedule: PublicSchedule,
+    pub timezone: String,
+    pub family_name: String,
+    pub next_sleep_secs: u64,
+    pub rotate: Vec<String>,
+}
+
+/// Patchable fields from the family UI.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SettingsPatch {
+    pub mode: Option<String>,
+    pub poll_interval_secs: Option<u64>,
+    /// When present (including empty), replaces the wake-up list.
+    /// Empty clears wake-up so the interval is used.
+    pub wake_up: Option<Vec<String>>,
+    /// Which mode's schedule to patch. Defaults to the (possibly newly set) mode.
+    pub schedule_for: Option<String>,
+    pub rotate: Option<Vec<String>>,
+}
+
 impl Config {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -190,6 +295,8 @@ impl Config {
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf();
+        cfg.config_path = Some(path.to_path_buf());
+        cfg.materialize_pictures_schedule();
         Ok(cfg)
     }
 
@@ -211,6 +318,161 @@ impl Config {
         let mut cfg = Config::default();
         cfg.config_dir = asset_root();
         Ok(cfg)
+    }
+
+    pub fn effective_mode(&self) -> FrameMode {
+        match self.mode {
+            FrameMode::Picture if self.pictures.rotate.is_empty() => FrameMode::Dashboard,
+            other => other,
+        }
+    }
+
+    fn materialize_pictures_schedule(&mut self) {
+        if self.pictures.poll_interval_secs.is_none() {
+            self.pictures.poll_interval_secs = Some(self.poll_interval_secs);
+        }
+        if self.pictures.wake_up.is_none() {
+            self.pictures.wake_up = Some(self.wake_up.clone());
+        }
+    }
+
+    /// Poll interval and wake times for a display mode.
+    /// Picture mode inherits the dashboard schedule until it is saved separately.
+    pub fn schedule(&self, mode: FrameMode) -> (u64, &[NaiveTime]) {
+        match mode {
+            FrameMode::Dashboard => (self.poll_interval_secs, self.wake_up.as_slice()),
+            FrameMode::Picture => {
+                let interval = self
+                    .pictures
+                    .poll_interval_secs
+                    .unwrap_or(self.poll_interval_secs);
+                let wakes = self
+                    .pictures
+                    .wake_up
+                    .as_deref()
+                    .unwrap_or(self.wake_up.as_slice());
+                (interval, wakes)
+            }
+        }
+    }
+
+    fn public_schedule(interval: u64, wakes: &[NaiveTime]) -> PublicSchedule {
+        PublicSchedule {
+            poll_interval_secs: interval,
+            wake_up: format_wake_times(wakes),
+        }
+    }
+
+    pub fn public_settings(&self, now: DateTime<Utc>) -> PublicSettings {
+        let (interval, wakes) = self.schedule(self.mode);
+        let (dash_interval, dash_wakes) = self.schedule(FrameMode::Dashboard);
+        let (pic_interval, pic_wakes) = self.schedule(FrameMode::Picture);
+        PublicSettings {
+            mode: self.mode.as_str().to_string(),
+            poll_interval_secs: interval,
+            wake_up: format_wake_times(wakes),
+            dashboard_schedule: Self::public_schedule(dash_interval, dash_wakes),
+            pictures_schedule: Self::public_schedule(pic_interval, pic_wakes),
+            timezone: self.timezone.clone(),
+            family_name: self.family_name.clone(),
+            next_sleep_secs: self.pico_sleep_secs(now),
+            rotate: self.pictures.rotate.clone(),
+        }
+    }
+
+    /// Apply a settings patch in memory and persist the editable keys with `toml_edit`.
+    pub fn apply_patch(&mut self, patch: SettingsPatch) -> Result<()> {
+        if let Some(rotate) = &patch.rotate {
+            self.pictures.rotate = rotate.clone();
+        }
+        if let Some(mode_s) = patch.mode.as_deref() {
+            self.mode = FrameMode::parse(mode_s)?;
+        }
+        let schedule_mode = match patch.schedule_for.as_deref() {
+            Some(s) => FrameMode::parse(s)?,
+            None => self.mode,
+        };
+        if patch.poll_interval_secs.is_some() || patch.wake_up.is_some() {
+            self.set_schedule(
+                schedule_mode,
+                patch.poll_interval_secs,
+                match &patch.wake_up {
+                    Some(times) => Some(parse_wake_list(times)?),
+                    None => None,
+                },
+            )?;
+        }
+        if self.mode == FrameMode::Picture && self.pictures.rotate.is_empty() {
+            bail!("picture mode needs at least one photo in the rotation");
+        }
+        self.persist_editable()?;
+        Ok(())
+    }
+
+    fn set_schedule(
+        &mut self,
+        mode: FrameMode,
+        interval: Option<u64>,
+        wakes: Option<Vec<NaiveTime>>,
+    ) -> Result<()> {
+        if let Some(secs) = interval {
+            if secs == 0 {
+                bail!("poll_interval_secs must be at least 1");
+            }
+        }
+        match mode {
+            FrameMode::Dashboard => {
+                if let Some(secs) = interval {
+                    self.poll_interval_secs = secs;
+                }
+                if let Some(times) = wakes {
+                    self.wake_up = times;
+                }
+            }
+            FrameMode::Picture => {
+                if let Some(secs) = interval {
+                    self.pictures.poll_interval_secs = Some(secs);
+                }
+                if let Some(times) = wakes {
+                    self.pictures.wake_up = Some(times);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Write `mode`, dashboard schedule, and `[pictures]` rotate + schedule.
+    pub fn persist_editable(&self) -> Result<()> {
+        let Some(path) = self.config_path.as_ref() else {
+            tracing::warn!("no config path — settings kept in memory only");
+            return Ok(());
+        };
+        let text = std::fs::read_to_string(path)
+            .with_context(|| format!("reading {}", path.display()))?;
+        let mut doc: DocumentMut = text
+            .parse()
+            .with_context(|| format!("parsing {} for edit", path.display()))?;
+
+        doc["mode"] = Item::Value(Value::from(self.mode.as_str()));
+        doc["poll_interval_secs"] = Item::Value(Value::from(self.poll_interval_secs as i64));
+        doc["wake-up"] = Item::Value(Value::Array(wake_toml_array(&self.wake_up)));
+
+        if !doc.as_table().contains_key("pictures") {
+            doc["pictures"] = Item::Table(toml_edit::Table::new());
+        }
+        let mut rotate = Array::new();
+        for id in &self.pictures.rotate {
+            rotate.push(id.as_str());
+        }
+        doc["pictures"]["rotate"] = Item::Value(Value::Array(rotate));
+
+        let (pic_interval, pic_wakes) = self.schedule(FrameMode::Picture);
+        doc["pictures"]["poll_interval_secs"] = Item::Value(Value::from(pic_interval as i64));
+        doc["pictures"]["wake-up"] = Item::Value(Value::Array(wake_toml_array(pic_wakes)));
+
+        std::fs::write(path, doc.to_string())
+            .with_context(|| format!("writing {}", path.display()))?;
+        Ok(())
     }
 
     pub fn icloud_enabled(&self) -> bool {
@@ -236,6 +498,79 @@ impl Config {
     pub fn weather_cache_path(&self) -> PathBuf {
         self.config_dir.join("weather-cache.json")
     }
+
+    pub fn tz(&self) -> Tz {
+        self.timezone.parse().unwrap_or(chrono_tz::Europe::London)
+    }
+
+    /// Seconds the Pico should POWMAN-sleep after this poll.
+    pub fn pico_sleep_secs(&self, now: DateTime<Utc>) -> u64 {
+        let (interval, wakes) = self.schedule(self.effective_mode());
+        crate::schedule::seconds_until_next_poll(now, self.tz(), interval, wakes)
+    }
+}
+
+fn format_wake_times(times: &[NaiveTime]) -> Vec<String> {
+    times.iter().map(|t| t.format("%H:%M").to_string()).collect()
+}
+
+fn wake_toml_array(times: &[NaiveTime]) -> Array {
+    let mut wake = Array::new();
+    for t in times {
+        wake.push(t.format("%H:%M").to_string());
+    }
+    wake
+}
+
+fn parse_wake_list(times: &[String]) -> Result<Vec<NaiveTime>> {
+    times
+        .iter()
+        .map(|s| parse_wake_time(s).map_err(|e| anyhow::anyhow!(e)))
+        .collect()
+}
+
+fn default_poll_interval_secs() -> u64 {
+    DEFAULT_POLL_INTERVAL_SECS
+}
+
+pub fn parse_wake_time(entry: &str) -> Result<NaiveTime, String> {
+    let entry = entry.trim();
+    let Some((hour_s, minute_s)) = entry.split_once(':') else {
+        return Err(format!("wake-up `{entry}` should be HH:MM"));
+    };
+    if minute_s.contains(':') {
+        return Err(format!("wake-up `{entry}` should be HH:MM"));
+    }
+    let hour: u32 = hour_s
+        .trim()
+        .parse()
+        .map_err(|_| format!("wake-up `{entry}` has an invalid hour"))?;
+    let minute: u32 = minute_s
+        .trim()
+        .parse()
+        .map_err(|_| format!("wake-up `{entry}` has an invalid minute"))?;
+    NaiveTime::from_hms_opt(hour, minute, 0)
+        .ok_or_else(|| format!("wake-up `{entry}` is not a valid time of day"))
+}
+
+fn deserialize_wake_times<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<NaiveTime>, D::Error> {
+    let raw = Option::<Vec<String>>::deserialize(deserializer)?.unwrap_or_default();
+    raw.iter()
+        .map(|s| parse_wake_time(s).map_err(serde::de::Error::custom))
+        .collect()
+}
+
+fn deserialize_optional_wake_times<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<NaiveTime>>, D::Error> {
+    let raw = Vec::<String>::deserialize(deserializer)?;
+    let times = raw
+        .iter()
+        .map(|s| parse_wake_time(s).map_err(serde::de::Error::custom))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(times))
 }
 
 #[cfg(test)]
@@ -252,7 +587,8 @@ mod tests {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("config.example.toml");
         let cfg = Config::load(path).unwrap();
         assert_eq!(cfg.family_name, "Family");
-        assert_eq!(cfg.refresh_minutes, 60);
+        assert_eq!(cfg.poll_interval_secs, DEFAULT_POLL_INTERVAL_SECS);
+        assert!(cfg.wake_up.is_empty());
         assert_eq!(cfg.todoist.project, "Family");
         assert!(!cfg.todoist_enabled());
         assert_eq!(cfg.meross.api_base_url, "https://iotx-eu.meross.com");
@@ -300,5 +636,227 @@ mod tests {
         assert!(Birthday::parse("Maya").is_err());
         assert!(Birthday::parse(",2018-03-15").is_err());
         assert!(Birthday::parse("Maya,14-09-2018").is_err());
+    }
+
+    #[test]
+    fn poll_interval_defaults_to_one_hour() {
+        let cfg: Config = toml::from_str("family_name = \"X\"").unwrap();
+        assert_eq!(cfg.poll_interval_secs, 3600);
+        assert!(cfg.wake_up.is_empty());
+    }
+
+    #[test]
+    fn interval_alias_and_wake_up_times_parse() {
+        let cfg: Config = toml::from_str(
+            r#"
+            interval = 120
+            wake-up = ["06:00", "7:30", "23:15"]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(cfg.poll_interval_secs, 120);
+        assert_eq!(
+            cfg.wake_up,
+            vec![
+                NaiveTime::from_hms_opt(6, 0, 0).unwrap(),
+                NaiveTime::from_hms_opt(7, 30, 0).unwrap(),
+                NaiveTime::from_hms_opt(23, 15, 0).unwrap(),
+            ]
+        );
+    }
+
+    #[test]
+    fn wake_up_snake_case_alias() {
+        let cfg: Config = toml::from_str(r#"wake_up = ["08:30"]"#).unwrap();
+        assert_eq!(
+            cfg.wake_up,
+            vec![NaiveTime::from_hms_opt(8, 30, 0).unwrap()]
+        );
+    }
+
+    #[test]
+    fn wake_up_rejects_bad_entries() {
+        assert!(parse_wake_time("6").is_err());
+        assert!(parse_wake_time("24:00").is_err());
+        assert!(parse_wake_time("08:60").is_err());
+        assert!(parse_wake_time("08:00:00").is_err());
+        assert!(toml::from_str::<Config>(r#"wake-up = ["nope"]"#).is_err());
+    }
+
+    #[test]
+    fn mode_defaults_to_dashboard() {
+        let cfg: Config = toml::from_str("family_name = \"X\"").unwrap();
+        assert_eq!(cfg.mode, FrameMode::Dashboard);
+        assert!(cfg.pictures.rotate.is_empty());
+    }
+
+    #[test]
+    fn picture_mode_and_rotate_parse() {
+        let cfg: Config = toml::from_str(
+            r#"
+            mode = "picture"
+            [pictures]
+            rotate = ["aaa", "bbb"]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(cfg.mode, FrameMode::Picture);
+        assert_eq!(cfg.pictures.rotate, vec!["aaa", "bbb"]);
+    }
+
+    #[test]
+    fn toml_edit_preserves_secrets_and_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"# keep me
+family_name = "Family"
+mode = "dashboard"
+poll_interval_secs = 3600
+# wake times
+wake-up = []
+
+[meross]
+email = "secret@example.com"
+password = "hunter2"
+
+[pictures]
+rotate = []
+"#,
+        )
+        .unwrap();
+        let mut cfg = Config::load(&path).unwrap();
+        cfg.apply_patch(SettingsPatch {
+            mode: Some("dashboard".into()),
+            poll_interval_secs: Some(1800),
+            wake_up: Some(vec!["07:00".into(), "18:30".into()]),
+            rotate: Some(vec!["photo-1".into()]),
+            ..Default::default()
+        })
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# keep me"));
+        assert!(text.contains("secret@example.com"));
+        assert!(text.contains("hunter2"));
+        assert!(text.contains("1800"));
+        assert!(text.contains("07:00"));
+        assert!(text.contains("photo-1"));
+        let reloaded = Config::load(&path).unwrap();
+        assert_eq!(reloaded.poll_interval_secs, 1800);
+        assert_eq!(reloaded.pictures.poll_interval_secs, Some(3600));
+        assert_eq!(reloaded.pictures.rotate, vec!["photo-1"]);
+        assert_eq!(reloaded.meross.password, "hunter2");
+    }
+
+    #[test]
+    fn picture_mode_rejects_empty_rotate() {
+        let mut cfg = Config::default();
+        cfg.config_path = None;
+        let err = cfg
+            .apply_patch(SettingsPatch {
+                mode: Some("picture".into()),
+                rotate: Some(vec![]),
+                ..Default::default()
+            })
+            .unwrap_err();
+        assert!(err.to_string().contains("at least one"));
+    }
+
+    #[test]
+    fn pico_sleep_secs_prefers_next_wake_up() {
+        use chrono::TimeZone;
+        let cfg: Config = toml::from_str(
+            r#"
+            timezone = "Europe/London"
+            poll_interval_secs = 3600
+            wake-up = ["06:00", "15:00"]
+            "#,
+        )
+        .unwrap();
+        let now = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 16, 12, 0, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(cfg.pico_sleep_secs(now), 3 * 3600);
+    }
+
+    #[test]
+    fn pictures_schedule_inherits_dashboard_until_set() {
+        let cfg: Config = toml::from_str(
+            r#"
+            poll_interval_secs = 180
+            wake-up = ["07:00"]
+            [pictures]
+            rotate = ["aaa"]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(cfg.pictures.poll_interval_secs, None);
+        assert_eq!(cfg.pictures.wake_up, None);
+        let (interval, wakes) = cfg.schedule(FrameMode::Picture);
+        assert_eq!(interval, 180);
+        assert_eq!(wakes, cfg.wake_up.as_slice());
+    }
+
+    #[test]
+    fn pictures_schedule_can_diverge() {
+        let cfg: Config = toml::from_str(
+            r#"
+            mode = "picture"
+            poll_interval_secs = 3600
+            wake-up = ["07:00"]
+            [pictures]
+            rotate = ["aaa"]
+            poll_interval_secs = 120
+            wake-up = []
+            "#,
+        )
+        .unwrap();
+        let (dash_i, dash_w) = cfg.schedule(FrameMode::Dashboard);
+        let (pic_i, pic_w) = cfg.schedule(FrameMode::Picture);
+        assert_eq!(dash_i, 3600);
+        assert_eq!(dash_w.len(), 1);
+        assert_eq!(pic_i, 120);
+        assert!(pic_w.is_empty());
+        let now = Utc::now();
+        assert_eq!(cfg.pico_sleep_secs(now), 120);
+    }
+
+    #[test]
+    fn patch_schedule_for_picture_leaves_dashboard() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+family_name = "Family"
+mode = "dashboard"
+poll_interval_secs = 3600
+wake-up = ["07:00"]
+
+[pictures]
+rotate = ["photo-1"]
+"#,
+        )
+        .unwrap();
+        let mut cfg = Config::load(&path).unwrap();
+        cfg.apply_patch(SettingsPatch {
+            mode: Some("picture".into()),
+            poll_interval_secs: Some(90),
+            wake_up: Some(vec![]),
+            schedule_for: Some("picture".into()),
+            rotate: None,
+        })
+        .unwrap();
+        assert_eq!(cfg.mode, FrameMode::Picture);
+        assert_eq!(cfg.poll_interval_secs, 3600);
+        assert_eq!(cfg.wake_up.len(), 1);
+        assert_eq!(cfg.pictures.poll_interval_secs, Some(90));
+        assert_eq!(cfg.pictures.wake_up.as_deref(), Some(&[][..]));
+        let reloaded = Config::load(&path).unwrap();
+        assert_eq!(reloaded.poll_interval_secs, 3600);
+        assert_eq!(reloaded.pictures.poll_interval_secs, Some(90));
+        assert_eq!(reloaded.pico_sleep_secs(Utc::now()), 90);
     }
 }

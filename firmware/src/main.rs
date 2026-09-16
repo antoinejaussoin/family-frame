@@ -15,6 +15,7 @@ mod power;
 mod settings;
 mod wifi;
 
+use core::fmt::Write as _;
 use core::sync::atomic::{Ordering, compiler_fence};
 use embassy_executor::Spawner;
 use embassy_rp::block::ImageDef;
@@ -25,6 +26,8 @@ use embassy_rp::qmi_cs1::QmiCs1;
 use embassy_rp::spi::{Config as SpiConfig, Spi};
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
+use family_frame_fw::config::DEFAULT_SLEEP_S;
+use heapless::String;
 use panic_halt as _;
 use static_cell::StaticCell;
 
@@ -34,7 +37,6 @@ use crate::http::FrameResult;
 use crate::settings::{ConfigFlash, SharedFlash};
 
 const FAIL_SLEEP_S: u32 = 120;
-const AWAKE_POLL_S: u32 = 60;
 /// Long enough for a missed handshake plus one retry (join + link + DHCP).
 const WIFI_WAIT_S: u64 = 90;
 
@@ -138,7 +140,7 @@ async fn main(spawner: Spawner) {
 
         let frame =
             frame_ptr.map(|ptr| unsafe { core::slice::from_raw_parts_mut(ptr, FRAME_BYTES) });
-        let reached = run_cycle(
+        let (reached, sleep_s) = run_cycle(
             stack,
             &mut epd,
             &mut bat,
@@ -156,12 +158,14 @@ async fn main(spawner: Spawner) {
         }
 
         let cfg = settings::snapshot().await;
-        let nap = if cfg.sleep_s == 0 {
-            AWAKE_POLL_S
-        } else if fails > 0 && cfg.sleep_s > FAIL_SLEEP_S {
+        let nap = if fails > 0 {
             FAIL_SLEEP_S
-        } else {
+        } else if let Some(s) = sleep_s.filter(|&s| s > 0) {
+            s
+        } else if cfg.sleep_s > 0 {
             cfg.sleep_s
+        } else {
+            DEFAULT_SLEEP_S
         };
         nap_with_ui(&mut ui, &mut bat, nap).await;
     }
@@ -194,14 +198,14 @@ async fn run_cycle(
     paint_diag: bool,
     flash: &'static SharedFlash,
     ui: &mut DebugUi,
-) -> bool {
+) -> (bool, Option<u32>) {
     let _ = bat.sample();
     let Some(frame) = frame else {
         ui.paint(bat, "no PSRAM");
         if paint_diag {
             el133::show_solid(epd, RED).await;
         }
-        return false;
+        return (false, None);
     };
 
     if !wifi::is_up() {
@@ -209,36 +213,25 @@ async fn run_cycle(
         if paint_diag {
             el133::show_solid(epd, RED).await;
         }
-        return false;
+        return (false, None);
     }
 
     ui.paint(bat, "POST /frame.bin");
-    let (status, _got, etag) = http::get_frame(stack, frame).await;
+    let (status, etag, sleep_s) = http::get_frame(stack, frame).await;
     compiler_fence(Ordering::SeqCst);
 
     match status {
         FrameResult::NotModified => {
             ui.paint(bat, "frame 204 skip");
-            true
+            remember_server(flash, etag.as_str(), sleep_s).await;
+            (true, sleep_s)
         }
         FrameResult::Ok => {
             ui.paint(bat, "frame 200 eink");
             el133::show_frame(epd, frame).await;
             ui.paint(bat, "frame 200 done");
-            if !etag.is_empty() {
-                let cfg = settings::snapshot().await;
-                if !eq_ignore_ascii_case(etag.as_str(), cfg.last_checksum.as_str()) {
-                    settings::update(|c| {
-                        c.last_checksum.clear();
-                        let _ = c.last_checksum.push_str(etag.as_str());
-                    })
-                    .await;
-                    let cfg = settings::snapshot().await;
-                    let mut flash = flash.lock().await;
-                    let _ = settings::save_flash(&mut flash, &cfg);
-                }
-            }
-            true
+            remember_server(flash, etag.as_str(), sleep_s).await;
+            (true, sleep_s)
         }
         FrameResult::Err => {
             ui.paint(bat, "frame POST fail");
@@ -246,8 +239,31 @@ async fn run_cycle(
             if paint_diag && cfg.last_checksum.is_empty() {
                 el133::show_solid(epd, BLUE).await;
             }
-            false
+            (false, None)
         }
+    }
+}
+
+async fn remember_server(flash: &'static SharedFlash, checksum: &str, sleep_s: Option<u32>) {
+    let mut dirty = false;
+    settings::update(|c| {
+        if let Some(s) = sleep_s.filter(|&s| s > 0) {
+            if c.sleep_s != s {
+                c.sleep_s = s;
+                dirty = true;
+            }
+        }
+        if !checksum.is_empty() && !eq_ignore_ascii_case(checksum, c.last_checksum.as_str()) {
+            c.last_checksum.clear();
+            let _ = c.last_checksum.push_str(checksum);
+            dirty = true;
+        }
+    })
+    .await;
+    if dirty {
+        let cfg = settings::snapshot().await;
+        let mut flash = flash.lock().await;
+        let _ = settings::save_flash(&mut flash, &cfg);
     }
 }
 
@@ -304,11 +320,19 @@ impl DebugUi {
 
 async fn nap_with_ui(ui: &mut DebugUi, bat: &mut battery::Battery<'_>, nap: u32) {
     let _ = bat.sample();
-    if power::plugged_usb().await {
-        ui.paint(bat, "USB stay awake");
-    } else {
-        ui.paint(bat, "dormant");
-        ui.sleep_display();
+    let usb = power::plugged_usb().await;
+    if usb {
+        let mut msg = String::<24>::new();
+        let _ = write!(msg, "USB wait {nap}s");
+        ui.paint(bat, msg.as_str());
     }
-    power::sleep_secs(nap).await;
+    let remaining = power::wait_usb_deadline(nap).await;
+    if remaining.as_ticks() == 0 {
+        return;
+    }
+    let mut msg = String::<24>::new();
+    let _ = write!(msg, "sleep {}s", remaining.as_secs().max(1));
+    ui.paint(bat, msg.as_str());
+    ui.sleep_display();
+    power::sleep_duration(remaining).await;
 }
