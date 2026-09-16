@@ -28,31 +28,59 @@
   let dashPreviewLoading = $state(false)
   let rotateSaving = $state(false)
   let pendingRotate = $state(null)
+  // Editor panel. Independent of `settings.mode` so the album (and upload)
+  // is reachable before anything is hung on the frame.
+  let view = $state('dashboard')
+
+  function scheduleOf(s, mode) {
+    if (!s) return { poll_interval_secs: 3600, wake_up: [] }
+    const sch = mode === 'picture' ? s.pictures_schedule : s.dashboard_schedule
+    return {
+      poll_interval_secs: sch?.poll_interval_secs ?? s.poll_interval_secs ?? 3600,
+      wake_up: sch?.wake_up ?? s.wake_up ?? [],
+    }
+  }
+
+  function applyScheduleFrom(s, mode) {
+    const sch = scheduleOf(s, mode)
+    intervalMins = Math.max(1, Math.round((sch.poll_interval_secs || 3600) / 60))
+    wakeTimes = [...(sch.wake_up || [])]
+    scheduleMode = wakeTimes.length > 0 ? 'wake' : 'interval'
+  }
+
+  function knownRotate(ids, pics = pictures) {
+    const known = new Set((pics || []).map((p) => p.id))
+    return (ids || []).filter((id) => known.has(id))
+  }
 
   function applySettings(s) {
     settings = s
-    intervalMins = Math.max(1, Math.round((s.poll_interval_secs || 3600) / 60))
-    wakeTimes = [...(s.wake_up || [])]
-    scheduleMode = wakeTimes.length > 0 ? 'wake' : 'interval'
-    if (Array.isArray(s.rotate)) rotate = s.rotate
+    applyScheduleFrom(s, view)
+    if (Array.isArray(s.rotate)) rotate = knownRotate(s.rotate)
   }
 
   async function refresh() {
     error = ''
     const [s, p] = await Promise.all([getSettings(), listPictures()])
-    applySettings(s)
     pictures = p.pictures || []
-    rotate = p.rotate || s.rotate || []
+    applySettings(s)
+    rotate = knownRotate(p.rotate || s.rotate || [], pictures)
+    if (s.mode === 'picture' && rotate.length === 0) {
+      applySettings(await patchSettings({ mode: 'dashboard', rotate: [] }))
+      rotate = []
+    }
   }
 
   onMount(async () => {
     try {
       await refresh()
+      view = settings?.mode === 'picture' ? 'picture' : 'dashboard'
+      applyScheduleFrom(settings, view)
     } catch (e) {
       error = e.message || String(e)
     } finally {
       loading = false
-      if (settings?.mode === 'dashboard') dashPreviewLoading = true
+      if (view === 'dashboard') dashPreviewLoading = true
     }
   })
 
@@ -66,24 +94,33 @@
   })
 
   async function setMode(mode) {
-    if (busy || !settings || settings.mode === mode) return
-    if (mode === 'picture' && rotate.length === 0) {
-      error = 'Hang at least one photo on the frame before switching to Pictures.'
-      return
+    if (busy || !settings) return
+    if (view === mode && settings.mode === mode) return
+    const viewChanged = view !== mode
+    view = mode
+    if (viewChanged) applyScheduleFrom(settings, mode)
+    if (viewChanged && mode === 'dashboard') {
+      dashPreviewKey += 1
+      dashPreviewLoading = true
     }
-    busy = true
     error = ''
+    if (settings.mode === mode) return
+    // Keep the album visible with no photos; the e-ink stays on the dashboard
+    // until something is hung in the rotation.
+    if (mode === 'picture' && knownRotate(rotate).length === 0) return
+    busy = true
     try {
       applySettings(await patchSettings({ mode }))
-      if (mode === 'dashboard') {
-        dashPreviewKey += 1
-        dashPreviewLoading = true
-      }
     } catch (e) {
       error = e.message || String(e)
     } finally {
       busy = false
     }
+  }
+
+  async function putPicturesOnFrame() {
+    if (!settings || settings.mode === 'picture' || knownRotate(rotate).length === 0) return
+    applySettings(await patchSettings({ mode: 'picture' }))
   }
 
   async function saveSchedule() {
@@ -96,12 +133,12 @@
           ? {
               wake_up: wakeTimes,
               poll_interval_secs: intervalMins * 60,
-              schedule_for: settings.mode,
+              schedule_for: view,
             }
           : {
               wake_up: [],
               poll_interval_secs: intervalMins * 60,
-              schedule_for: settings.mode,
+              schedule_for: view,
             }
       applySettings(await patchSettings(body))
     } catch (e) {
@@ -166,14 +203,16 @@
         const s = await putRotate(payload)
         settings = s
         if (!pendingRotate) {
-          rotate = s.rotate || payload
+          rotate = knownRotate(s.rotate || payload)
         }
       }
+      if (view === 'picture') await putPicturesOnFrame()
     } catch (e) {
       error = e.message || String(e)
       try {
         const p = await listPictures()
-        rotate = p.rotate || rotate
+        pictures = p.pictures || pictures
+        rotate = knownRotate(p.rotate || rotate, pictures)
       } catch {
         /* keep optimistic rotate */
       }
@@ -189,11 +228,16 @@
     uploading = true
     error = ''
     try {
+      const added = []
       for (const raw of files) {
         const file = await normalizeUpload(raw)
-        await uploadPicture(file)
+        const meta = await uploadPicture(file)
+        if (meta?.id) added.push(meta.id)
       }
       await refresh()
+      if (rotate.length === 0 && added.length) {
+        await persistRotate(added)
+      }
     } catch (e) {
       error = e.message || String(e)
     } finally {
@@ -313,9 +357,9 @@
           <div class="mt-4 grid grid-cols-2 gap-2.5 lg:grid-cols-1">
             <button
               type="button"
-              class="choice {settings?.mode === 'dashboard' ? 'on' : ''}"
+              class="choice {view === 'dashboard' ? 'on' : ''}"
               disabled={busy}
-              aria-pressed={settings?.mode === 'dashboard'}
+              aria-pressed={view === 'dashboard'}
               onclick={() => setMode('dashboard')}
             >
               <span class="choice-icon text-terracotta">
@@ -336,9 +380,9 @@
             </button>
             <button
               type="button"
-              class="choice {settings?.mode === 'picture' ? 'on' : ''}"
+              class="choice {view === 'picture' ? 'on' : ''}"
               disabled={busy}
-              aria-pressed={settings?.mode === 'picture'}
+              aria-pressed={view === 'picture'}
               onclick={() => setMode('picture')}
             >
               <span class="choice-icon text-sage">
@@ -364,7 +408,7 @@
           <p class="mt-1 text-sm font-semibold text-muted">
             For
             <span class="text-ink">
-              {settings?.mode === 'picture' ? 'Pictures' : 'Dashboard'}
+              {view === 'picture' ? 'Pictures' : 'Dashboard'}
             </span>
             {#if settings?.timezone}
               , in {settings.timezone}
@@ -434,7 +478,7 @@
         </section>
       </aside>
 
-      {#if settings?.mode === 'picture'}
+      {#if view === 'picture'}
       <section class="board p-4 sm:p-6 lg:p-7">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>

@@ -186,6 +186,25 @@ async fn patch_settings(
                 return bad_request(err);
             }
         }
+        let cfg = state.cache.snapshot_config().await;
+        let next_mode = match patch.mode.as_deref() {
+            Some(s) => match crate::config::FrameMode::parse(s) {
+                Ok(m) => m,
+                Err(err) => return bad_request(err),
+            },
+            None => cfg.mode,
+        };
+        if next_mode == crate::config::FrameMode::Picture {
+            let ids = rotate_ids.as_ref().unwrap_or(&cfg.pictures.rotate);
+            if ids.is_empty() {
+                return bad_request(anyhow::anyhow!(
+                    "picture mode needs at least one photo in the rotation"
+                ));
+            }
+            if let Err(err) = pictures.validate_rotate_ids(ids) {
+                return bad_request(err);
+            }
+        }
     }
 
     let result = {
@@ -210,11 +229,20 @@ async fn patch_settings(
 async fn list_pictures(State(state): State<AppState>) -> Response {
     let cfg = state.cache.snapshot_config().await;
     match state.cache.pictures().list(&cfg.pictures.rotate) {
-        Ok(list) => Json(serde_json::json!({
-            "pictures": list,
-            "rotate": cfg.pictures.rotate,
-        }))
-        .into_response(),
+        Ok(list) => {
+            let rotate: Vec<String> = cfg
+                .pictures
+                .rotate
+                .iter()
+                .filter(|id| list.iter().any(|p| p.id == **id))
+                .cloned()
+                .collect();
+            Json(serde_json::json!({
+                "pictures": list,
+                "rotate": rotate,
+            }))
+            .into_response()
+        }
         Err(err) => error_response(err),
     }
 }
