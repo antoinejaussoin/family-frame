@@ -19,6 +19,7 @@ use crate::assets;
 use crate::config::SettingsPatch;
 use crate::debug::{page_from_polls, DebugLog, Poll};
 use crate::frame::{checksum_matches, FrameCache};
+use crate::meross;
 use crate::sources;
 
 #[derive(Clone)]
@@ -425,7 +426,17 @@ async fn frame_bin_post(
     headers: HeaderMap,
     Form(tel): Form<PicoTelemetry>,
 ) -> Response {
-    match state.cache.current_for_pico().await {
+    let fresh = tel.wake.eq_ignore_ascii_case("button");
+    if fresh {
+        meross::invalidate_rooms();
+        tracing::info!("Pico button wake — reloading dashboard sources");
+    }
+    let frame_result = if fresh {
+        state.cache.current_for_pico_fresh().await
+    } else {
+        state.cache.current_for_pico().await
+    };
+    match frame_result {
         Ok(frame) => {
             let offered = headers
                 .get(header::IF_NONE_MATCH)

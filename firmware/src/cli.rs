@@ -193,11 +193,7 @@ async fn handle_line(
                 } else {
                     "battery (user LED off)"
                 },
-                if power::woke_from_sleep() {
-                    "POWMAN timer"
-                } else {
-                    "cold"
-                }
+                power::wake_label()
             );
             let _ = write_text(class, msg.as_str()).await;
         }

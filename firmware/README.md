@@ -104,6 +104,8 @@ swaps SCLK and MOSI — meter it, do not trust the vendor PDF.
 | BUSY | 17 (active low) |
 | CS_M (left, cols 0–599) | 26 |
 | CS_S (right, cols 600–1199) | 16 |
+| Inky button A (wake / fetch) | 5 |
+| Inky button B (wake / fetch) | 6 |
 | OLED SDA (`family-frame-oled` only) | 18 |
 | OLED SCL (`family-frame-oled` only) | 19 |
 
@@ -163,7 +165,9 @@ again. Address `0x3C` (try `0x3D` if the glass stays black).
 Between polls both binaries force `WL_REG_ON` (GP23) low so the RM2
 cannot stay powered, then power-down the switched-core (AON LPOSC
 alarm wake, OLED `display_off`) **unless a USB host is sending SOFs**.
-Until Wi-Fi and server are saved, or while USB serial is plugged in,
-the node stays awake for the USB CLI.
+Inky **A** or **B** (GP5 / GP6) are also armed as POWMAN GPIO wakes, so
+a press fetches a new frame without waiting for the timer. Until Wi-Fi
+and server are saved, or while USB serial is plugged in, the node stays
+awake for the USB CLI (A/B still abort the wait and poll immediately).
 
 Without hardware, [`pico-sim`](../pico-sim/) speaks the same HTTP loop.

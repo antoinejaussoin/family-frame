@@ -52,12 +52,8 @@ pub async fn get_frame(
     let ip = ips[0];
 
     let (mv, pct) = crate::battery::last();
-    let body = telemetry_form(
-        mv,
-        pct,
-        crate::power::on_usb(),
-        crate::power::woke_from_sleep(),
-    );
+    let wake = crate::power::take_wake_label();
+    let body = telemetry_form(mv, pct, crate::power::on_usb(), wake);
     let Some(req) = post_frame_request::<384>(
         target.host.as_str(),
         target.port,
@@ -65,6 +61,7 @@ pub async fn get_frame(
         cfg.last_checksum.as_str(),
         body.as_str(),
     ) else {
+        crate::power::restore_button_wake(wake);
         FrameStatus::Fail.store();
         return (FrameResult::Err, empty, None);
     };
@@ -100,6 +97,7 @@ pub async fn get_frame(
             }
         },
         _ => {
+            crate::power::restore_button_wake(wake);
             FrameStatus::Fail.store();
             (FrameResult::Err, empty, None)
         }

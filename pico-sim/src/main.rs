@@ -225,6 +225,10 @@ mod tests {
             telemetry_form(3850, 72, false, "timer"),
             "mv=3850&pct=72&usb=0&wake=timer"
         );
+        assert_eq!(
+            telemetry_form(3850, 72, false, "button"),
+            "mv=3850&pct=72&usb=0&wake=button"
+        );
     }
 
     #[tokio::test]

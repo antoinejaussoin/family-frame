@@ -103,10 +103,15 @@ pub async fn load_rooms(cfg: &MerossConfig, creds_path: &Path) -> Result<Vec<Roo
 }
 
 pub fn invalidate_cache() {
-    if let Ok(mut guard) = ROOMS.lock() {
+    invalidate_rooms();
+    if let Ok(mut guard) = CREDS.lock() {
         *guard = None;
     }
-    if let Ok(mut guard) = CREDS.lock() {
+}
+
+/// Drop cached thermometer readings so the next dashboard load talks to the hub.
+pub fn invalidate_rooms() {
+    if let Ok(mut guard) = ROOMS.lock() {
         *guard = None;
     }
 }
@@ -1180,5 +1185,29 @@ mod tests {
         let ts = v.pointer("/header/timestamp").unwrap().as_u64().unwrap();
         let sign = v.pointer("/header/sign").unwrap().as_str().unwrap();
         assert_eq!(sign, md5_hex(format!("{mid}secret{ts}").as_bytes()));
+    }
+
+    #[test]
+    fn invalidate_rooms_drops_ttl_cache_only() {
+        {
+            let mut guard = ROOMS.lock().unwrap();
+            *guard = Some((Instant::now(), demo_rooms()));
+        }
+        {
+            let mut guard = CREDS.lock().unwrap();
+            *guard = Some(CloudCreds {
+                email: "a@b.c".into(),
+                token: "t".into(),
+                key: "k".into(),
+                user_id: "1".into(),
+                domain: "d".into(),
+                mqtt_domain: "m".into(),
+            });
+        }
+        invalidate_rooms();
+        assert!(ROOMS.lock().unwrap().is_none());
+        assert!(CREDS.lock().unwrap().is_some());
+        invalidate_cache();
+        assert!(CREDS.lock().unwrap().is_none());
     }
 }

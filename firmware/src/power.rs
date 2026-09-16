@@ -15,6 +15,11 @@
 //! clean way to kill the radio. A USB host keeps the core up so CDC serial
 //! stays connected.
 //!
+//! Inky Impression A/B (GP5 / GP6, active-low) are POWMAN GPIO pwrup sources,
+//! so a press wakes the chip from switched-core sleep and forces a poll. C/D
+//! are Pi GPIO 25/24 — those pins are the RM2 on this board, so they cannot
+//! be wake buttons.
+//!
 //! The RM2 `WL_REG_ON` pin is forced low *before* POWMAN runs. cyw43 still
 //! owns that GPIO as an output; without the override it keeps the radio
 //! powered (~50 mA) through the “sleep” hour.
@@ -28,6 +33,7 @@ use embassy_time::{Duration, Instant, Timer};
 static USB_HOST: AtomicBool = AtomicBool::new(false);
 static USB_HOST_CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static WOKE_FROM_SLEEP: AtomicBool = AtomicBool::new(false);
+static BUTTON_WAKE: AtomicBool = AtomicBool::new(false);
 
 const POWMAN: u32 = 0x4010_0000;
 const POWMAN_PASSWORD: u32 = 0x5AFE << 16;
@@ -74,8 +80,13 @@ const SEQ_RUN_LPOSC_IN_LP: u32 = 1 << 8;
 const SEQ_HW_PWRUP_SRAM: u32 = 0x3;
 
 const PWRUP_ENABLE: u32 = 1 << 6;
+const PWRUP_MODE_EDGE: u32 = 1 << 8;
 const PWRUP_STATUS: u32 = 1 << 9;
 const INTE_TIMER: u32 = 1 << 1;
+
+/// Inky Impression 13.3 A / B (Pi BCM 5 / 6 through the Pico-to-Pi HAT).
+const BUTTON_A_GPIO: u32 = 5;
+const BUTTON_B_GPIO: u32 = 6;
 
 /// RM2 `WL_REG_ON` (GP23). POWMAN holds it low in the low-power state.
 const WL_REG_ON_GPIO: u32 = 23;
@@ -95,6 +106,9 @@ const GPIO_OEOVER_ENABLE: u32 = 3 << 14;
 const GPIO_OUTOVER_LOW: u32 = 2 << 12;
 const GPIO_OUTOVER_HIGH: u32 = 3 << 12;
 const GPIO_FUNCSEL_SIO: u32 = 5;
+/// PADS: IE + PUE + Schmitt. ISO=0 so POWMAN still sees the pin while asleep.
+const PAD_INPUT_PULLUP: u32 = (1 << 6) | (1 << 3) | (1 << 1);
+const SIO_GPIO_IN: *const u32 = 0xd000_0004 as *const u32;
 
 /// RESETS bits (RP2350): ADC, DMA, I2C1, PIO0, SPI1, TIMER0, TIMER1, USBCTRL.
 const RESET_HOLD: u32 =
@@ -128,6 +142,44 @@ pub fn woke_from_sleep() -> bool {
     WOKE_FROM_SLEEP.load(Ordering::Relaxed)
 }
 
+/// Current wake reason without consuming a pending button press.
+pub fn wake_label() -> &'static str {
+    if button_wake_pending() {
+        "button"
+    } else if woke_from_sleep() {
+        "timer"
+    } else {
+        "cold"
+    }
+}
+
+/// Like [`wake_label`], but a button flag is consumed so a USB stay-awake
+/// loop does not keep reporting `button` after the press.
+pub fn take_wake_label() -> &'static str {
+    if BUTTON_WAKE.swap(false, Ordering::Relaxed) {
+        "button"
+    } else if woke_from_sleep() {
+        "timer"
+    } else {
+        "cold"
+    }
+}
+
+/// Put `button` back if the poll that consumed it never reached the server.
+pub fn restore_button_wake(label: &str) {
+    if label == "button" {
+        request_button_wake();
+    }
+}
+
+fn request_button_wake() {
+    BUTTON_WAKE.store(true, Ordering::Relaxed);
+}
+
+fn button_wake_pending() -> bool {
+    BUTTON_WAKE.load(Ordering::Relaxed)
+}
+
 fn set_usb_host(on: bool) {
     if USB_HOST.swap(on, Ordering::Relaxed) != on {
         USB_HOST_CHANGED.signal(());
@@ -140,6 +192,7 @@ pub async fn wait_usb_change() {
 
 pub fn start(spawner: Spawner) {
     note_wake_reason();
+    retain_button_pads();
     spawner.spawn(sof_watch_task().unwrap());
 }
 
@@ -151,12 +204,12 @@ pub fn release_radio_hold() {
 /// Wait out `secs` while a USB host is present.
 ///
 /// Returns remaining time to POWMAN-sleep. Zero means a host stayed until
-/// the deadline (caller should poll again without sleeping).
+/// the deadline, or Inky A/B was pressed (caller should poll without sleeping).
 pub async fn wait_usb_deadline(secs: u32) -> Duration {
     let secs = secs.max(1);
     let deadline = Instant::now() + Duration::from_secs(u64::from(secs));
     wait_while_usb(deadline).await;
-    if on_usb() {
+    if button_wake_pending() || on_usb() {
         Duration::from_ticks(0)
     } else {
         deadline.saturating_duration_since(Instant::now())
@@ -181,6 +234,7 @@ pub async fn sleep_duration(remaining: Duration) {
     powman_write(OFF_SCRATCH0, SLEEP_MAGIC);
     unlock_vreg();
     disable_gpio_pwrups();
+    arm_button_wakeups();
     clear_boot_vectors();
     let armed = arm_lposc_alarm_ms(remaining.as_millis().max(1));
     let waiting = armed && request_swcore_down();
@@ -188,10 +242,18 @@ pub async fn sleep_duration(remaining: Duration) {
 }
 
 /// Stay running while a USB host is present. Poll SOF so an unplug can
-/// still drop into POWMAN for the rest of the interval.
+/// still drop into POWMAN for the rest of the interval. Inky A/B abort the
+/// wait so a plugged-in frame can still fetch on demand.
 async fn wait_while_usb(deadline: Instant) {
     const SLICE: Duration = Duration::from_millis(50);
-    while on_usb() {
+    loop {
+        if buttons_pressed().await {
+            request_button_wake();
+            return;
+        }
+        if !on_usb() {
+            return;
+        }
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.as_ticks() == 0 {
             return;
@@ -203,8 +265,11 @@ async fn wait_while_usb(deadline: Instant) {
 fn note_wake_reason() {
     let scratch = powman_read(OFF_SCRATCH0) & 0xffff;
     powman_write(OFF_SCRATCH0, 0);
+    let button = gpio_pwrup_latched();
+    disable_gpio_pwrups();
     let slept = scratch == SLEEP_MAGIC || had_swcore_pd();
     WOKE_FROM_SLEEP.store(slept, Ordering::Relaxed);
+    BUTTON_WAKE.store(button, Ordering::Relaxed);
 }
 
 fn had_swcore_pd() -> bool {
@@ -289,6 +354,52 @@ fn disable_gpio_pwrups() {
     }
 }
 
+fn arm_button_wakeups() {
+    retain_button_pads();
+    arm_gpio_wakeup(0, BUTTON_A_GPIO);
+    arm_gpio_wakeup(1, BUTTON_B_GPIO);
+}
+
+fn arm_gpio_wakeup(slot: u32, gpio: u32) {
+    let off = OFF_PWRUP0 + slot * 4;
+    // Edge, active-low (falling). Enable is a separate write so a stale level
+    // cannot latch STATUS before we clear it (pico-sdk powman_enable_gpio_wakeup).
+    powman_write(off, PWRUP_MODE_EDGE | (gpio & 0x3f));
+    powman_clr(off, PWRUP_STATUS);
+    powman_set(off, PWRUP_ENABLE);
+}
+
+fn gpio_pwrup_latched() -> bool {
+    for i in 0..2 {
+        let off = OFF_PWRUP0 + i * 4;
+        if powman_read(off) & PWRUP_STATUS != 0 {
+            return true;
+        }
+    }
+    false
+}
+
+fn retain_button_pads() {
+    for gpio in [BUTTON_A_GPIO, BUTTON_B_GPIO] {
+        unsafe {
+            core::ptr::write_volatile((PADS_BANK0 + 0x04 + gpio * 4) as *mut u32, PAD_INPUT_PULLUP);
+        }
+    }
+}
+
+fn gpio_low(gpio: u32) -> bool {
+    let bits = unsafe { core::ptr::read_volatile(SIO_GPIO_IN) };
+    bits & (1 << gpio) == 0
+}
+
+async fn buttons_pressed() -> bool {
+    if !(gpio_low(BUTTON_A_GPIO) || gpio_low(BUTTON_B_GPIO)) {
+        return false;
+    }
+    Timer::after_millis(20).await;
+    gpio_low(BUTTON_A_GPIO) || gpio_low(BUTTON_B_GPIO)
+}
+
 fn clear_boot_vectors() {
     // 32-bit registers; no password / 16-bit mask. Reboot runs flash like a
     // cold start instead of a stale POWMAN boot vector.
@@ -351,6 +462,7 @@ fn request_swcore_down() -> bool {
         let state = powman_read(OFF_STATE);
         if state & (STATE_REQ_IGNORED | STATE_BAD_SW_REQ) != 0 {
             disable_gpio_pwrups();
+            arm_button_wakeups();
             continue;
         }
         if spin_until(|| powman_read(OFF_STATE) & STATE_WAITING != 0, 400_000) {

@@ -80,15 +80,10 @@ pub fn frame_target(server: &str) -> Option<ServerTarget> {
     parse_server(url.as_str())
 }
 
-pub fn wake_label(from_sleep: bool) -> &'static str {
-    if from_sleep { "timer" } else { "cold" }
-}
-
 /// `application/x-www-form-urlencoded` body for a Pico poll.
-pub fn telemetry_form(mv: u32, pct: u16, usb: bool, from_sleep: bool) -> String<64> {
+pub fn telemetry_form(mv: u32, pct: u16, usb: bool, wake: &str) -> String<64> {
     let mut body = String::new();
     let usb_n = if usb { 1 } else { 0 };
-    let wake = wake_label(from_sleep);
     let _ = write!(body, "mv={mv}&pct={pct}&usb={usb_n}&wake={wake}");
     body
 }
@@ -162,18 +157,22 @@ mod tests {
     #[test]
     fn telemetry_form_encodes_fields() {
         assert_eq!(
-            telemetry_form(3850, 72, false, true).as_str(),
+            telemetry_form(3850, 72, false, "timer").as_str(),
             "mv=3850&pct=72&usb=0&wake=timer"
         );
         assert_eq!(
-            telemetry_form(4200, 100, true, false).as_str(),
+            telemetry_form(4200, 100, true, "cold").as_str(),
             "mv=4200&pct=100&usb=1&wake=cold"
+        );
+        assert_eq!(
+            telemetry_form(3850, 72, false, "button").as_str(),
+            "mv=3850&pct=72&usb=0&wake=button"
         );
     }
 
     #[test]
     fn post_request_keeps_checksum_on_if_none_match() {
-        let body = telemetry_form(3850, 72, false, true);
+        let body = telemetry_form(3850, 72, false, "timer");
         let req = post_frame_request::<384>(
             "192.168.0.251",
             8765,

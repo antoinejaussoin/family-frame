@@ -93,6 +93,11 @@ async fn main(spawner: Spawner) {
     let _ = bat.sample();
     ui.paint(&mut bat, "booting radio");
 
+    // Inky Impression A/B (Pi GPIO 5/6). Keep the Inputs so pull-ups survive;
+    // POWMAN samples the pads from switched-core sleep.
+    let _btn_a = Input::new(p.PIN_5, Pull::Up);
+    let _btn_b = Input::new(p.PIN_6, Pull::Up);
+
     power::release_radio_hold();
     let stack = wifi::start(
         spawner, p.PIN_23, p.PIN_25, p.PIN_24, p.PIN_29, p.PIO0, p.DMA_CH0,

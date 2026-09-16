@@ -121,15 +121,21 @@ impl FrameCache {
 
     /// Current frame for GET (no playlist advance).
     pub async fn current(&self) -> Result<Frame> {
-        self.current_inner(false).await
+        self.current_inner(false, false).await
     }
 
     /// Current frame for Pico POST; advances picture playlist after the frame is chosen.
     pub async fn current_for_pico(&self) -> Result<Frame> {
-        self.current_inner(true).await
+        self.current_inner(true, false).await
     }
 
-    async fn current_inner(&self, advance_after: bool) -> Result<Frame> {
+    /// Button wake: skip the dashboard TTL cache and rebuild from live sources.
+    pub async fn current_for_pico_fresh(&self) -> Result<Frame> {
+        *self.inner.lock().await = None;
+        self.current_inner(true, true).await
+    }
+
+    async fn current_inner(&self, advance_after: bool, bypass_cache: bool) -> Result<Frame> {
         let cfg = self.cfg.read().await.clone();
         let mode = cfg.effective_mode();
         let mode_key = match mode {
@@ -148,7 +154,9 @@ impl FrameCache {
 
         match mode {
             FrameMode::Dashboard => {
-                let frame = self.current_dashboard(&cfg, &mode_key).await?;
+                let frame = self
+                    .current_dashboard(&cfg, &mode_key, bypass_cache)
+                    .await?;
                 Ok(frame)
             }
             FrameMode::Picture => {
@@ -163,44 +171,67 @@ impl FrameCache {
         }
     }
 
-    async fn current_dashboard(&self, cfg: &Config, mode_key: &str) -> Result<Frame> {
+    async fn current_dashboard(
+        &self,
+        cfg: &Config,
+        mode_key: &str,
+        bypass_cache: bool,
+    ) -> Result<Frame> {
         let now = Utc::now();
-        {
-            let guard = self.inner.lock().await;
-            if let Some(cached) = guard.as_ref() {
-                if cached.mode_key.starts_with("dashboard:")
-                    && dashboard_cache_fresh(cached.frame.generated_at, now)
-                {
-                    info!(
-                        age_secs = now
-                            .signed_duration_since(cached.frame.generated_at)
-                            .num_seconds(),
-                        checksum = %cached.frame.checksum,
-                        "reusing in-memory dashboard frame"
-                    );
-                    return Ok(cached.frame.clone());
+        if !bypass_cache {
+            {
+                let guard = self.inner.lock().await;
+                if let Some(cached) = guard.as_ref() {
+                    if cached.mode_key.starts_with("dashboard:")
+                        && dashboard_cache_fresh(cached.frame.generated_at, now)
+                    {
+                        info!(
+                            age_secs = now
+                                .signed_duration_since(cached.frame.generated_at)
+                                .num_seconds(),
+                            checksum = %cached.frame.checksum,
+                            "reusing in-memory dashboard frame"
+                        );
+                        return Ok(cached.frame.clone());
+                    }
                 }
             }
-        }
-        if let Some(frame) = self.load_dashboard_disk(cfg) {
-            if dashboard_cache_fresh(frame.generated_at, now) {
-                info!(
-                    age_secs = now
-                        .signed_duration_since(frame.generated_at)
-                        .num_seconds(),
-                    checksum = %frame.checksum,
-                    "reusing last dashboard frame"
-                );
-                let mut guard = self.inner.lock().await;
-                *guard = Some(Cached {
-                    frame: frame.clone(),
-                    mode_key: mode_key.to_string(),
-                });
-                return Ok(frame);
+            if let Some(frame) = self.load_dashboard_disk(cfg) {
+                if dashboard_cache_fresh(frame.generated_at, now) {
+                    info!(
+                        age_secs = now
+                            .signed_duration_since(frame.generated_at)
+                            .num_seconds(),
+                        checksum = %frame.checksum,
+                        "reusing last dashboard frame"
+                    );
+                    let mut guard = self.inner.lock().await;
+                    *guard = Some(Cached {
+                        frame: frame.clone(),
+                        mode_key: mode_key.to_string(),
+                    });
+                    return Ok(frame);
+                }
             }
         }
         let dash = sources::load_dashboard(cfg).await?;
         let content_hash = self.layout_hash(&dash)?;
+        if bypass_cache {
+            if let Some(frame) = self.load_dashboard_disk(cfg) {
+                if frame.content_hash == content_hash {
+                    info!(
+                        checksum = %frame.checksum,
+                        "button refresh: sources unchanged"
+                    );
+                    let mut guard = self.inner.lock().await;
+                    *guard = Some(Cached {
+                        frame: frame.clone(),
+                        mode_key: mode_key.to_string(),
+                    });
+                    return Ok(frame);
+                }
+            }
+        }
         let frame = self.render_dashboard(dash, content_hash).await?;
         self.save_dashboard_disk(cfg, &frame);
         let mut guard = self.inner.lock().await;
