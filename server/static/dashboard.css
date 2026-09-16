@@ -21,7 +21,7 @@ body {
   overflow: hidden;
   background: var(--white);
   color: var(--black);
-  font-family: "Noto Sans", "Noto Sans Display", Arial, Helvetica, sans-serif;
+  font-family: Verdana, Geneva, sans-serif;
   font-kerning: none;
   font-smooth: never;
   -webkit-font-smoothing: none;
