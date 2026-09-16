@@ -32,7 +32,7 @@ Open <http://127.0.0.1:8765/> on a phone or laptop (trusted LAN — no auth).
 From there you can:
 
 - Switch between **dashboard** and **picture** mode
-- Edit the poll interval or wake-up times **per mode** (written into `config.toml`)
+- Edit the poll interval or wake-up times **per mode** (both are kept; the UI stores which one is selected)
 - Upload landscape photos (stored under `pictures/` next to the config)
 - Choose which photos to rotate each wake, and preview the dithered Spectra 6 look
 

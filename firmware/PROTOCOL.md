@@ -60,9 +60,11 @@ X-Sleep-Seconds: 3600
 ```
 
 `X-Sleep-Seconds` is computed on the server from the **current mode’s**
-`poll_interval_secs` or, when that mode’s `wake-up` has at least one `HH:MM`
-time, the number of seconds until the next of those times in `timezone`.
-Dashboard and Pictures can each have their own schedule.
+selected schedule: `poll_interval_secs` when `schedule_kind` is `interval`,
+or seconds until the next `wake-up` `HH:MM` in `timezone` when it is `times`.
+If `schedule_kind` is omitted, a non-empty `wake-up` list selects times.
+Dashboard and Pictures each keep both values so the family UI can switch
+without losing the other setting.
 
 ## Endpoints
 

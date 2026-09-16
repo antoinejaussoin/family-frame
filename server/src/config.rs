@@ -7,8 +7,41 @@ use chrono_tz::Tz;
 use serde::{Deserialize, Deserializer, Serialize};
 use toml_edit::{Array, DocumentMut, Item, Value};
 
-/// Seconds the Pico sleeps between polls when [`Config::wake_up`] is empty.
+/// Seconds the Pico sleeps between polls when the active schedule is the interval.
 pub const DEFAULT_POLL_INTERVAL_SECS: u64 = 3600;
+
+/// Which stored schedule a display mode uses. The other value is kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ScheduleKind {
+    #[default]
+    Interval,
+    Times,
+}
+
+impl ScheduleKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Interval => "interval",
+            Self::Times => "times",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "interval" | "every" | "poll" => Ok(Self::Interval),
+            "times" | "time" | "wake" | "wake-up" | "wakeup" | "wake_up" => Ok(Self::Times),
+            other => bail!("unknown schedule_kind `{other}` (use interval or times)"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ScheduleKind {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        ScheduleKind::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -42,7 +75,7 @@ pub struct PicturesConfig {
     pub rotate: Vec<String>,
     /// Picture-mode poll interval. When omitted, inherits the dashboard value.
     pub poll_interval_secs: Option<u64>,
-    /// Picture-mode wake times. `None` inherits dashboard; `Some([])` uses the interval.
+    /// Picture-mode wake times. `None` inherits dashboard; `Some` (including empty) is stored.
     #[serde(
         default,
         rename = "wake-up",
@@ -50,6 +83,9 @@ pub struct PicturesConfig {
         deserialize_with = "deserialize_optional_wake_times"
     )]
     pub wake_up: Option<Vec<NaiveTime>>,
+    /// Picture-mode schedule kind. `None` is inferred from that mode’s wake list.
+    #[serde(default, alias = "schedule-kind")]
+    pub schedule_kind: Option<ScheduleKind>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -61,11 +97,10 @@ pub struct Config {
     /// Display mode: family dashboard or rotating photos.
     #[serde(default)]
     pub mode: FrameMode,
-    /// Seconds between Pico polls when `wake-up` is empty.
+    /// Seconds between Pico polls when [`Self::schedule_kind`] is `interval`.
     #[serde(default = "default_poll_interval_secs", alias = "interval")]
     pub poll_interval_secs: u64,
-    /// Local `HH:MM` times (in [`Config::timezone`]). Non-empty: the Pico
-    /// sleeps until the next one instead of using [`Self::poll_interval_secs`].
+    /// Local `HH:MM` times (in [`Config::timezone`]). Used when the kind is `times`.
     #[serde(
         default,
         rename = "wake-up",
@@ -73,6 +108,9 @@ pub struct Config {
         deserialize_with = "deserialize_wake_times"
     )]
     pub wake_up: Vec<NaiveTime>,
+    /// Which stored schedule is active. Omitted: `times` if `wake-up` is non-empty.
+    #[serde(default, alias = "schedule-kind")]
+    pub schedule_kind: Option<ScheduleKind>,
     pub chrome_path: String,
     pub icloud: IcloudConfig,
     pub todoist: TodoistConfig,
@@ -174,6 +212,7 @@ impl Default for Config {
             mode: FrameMode::Dashboard,
             poll_interval_secs: DEFAULT_POLL_INTERVAL_SECS,
             wake_up: Vec::new(),
+            schedule_kind: None,
             chrome_path: String::new(),
             icloud: IcloudConfig::default(),
             todoist: TodoistConfig::default(),
@@ -249,11 +288,13 @@ pub fn asset_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
 
-/// Public schedule for one display mode.
+/// Public schedule for one display mode. Both values are always present;
+/// [`Self::schedule_kind`] says which one the Pico currently follows.
 #[derive(Debug, Clone, Serialize)]
 pub struct PublicSchedule {
     pub poll_interval_secs: u64,
     pub wake_up: Vec<String>,
+    pub schedule_kind: String,
 }
 
 /// Public settings exposed to the family UI (no secrets).
@@ -263,6 +304,7 @@ pub struct PublicSettings {
     /// Schedule for the current [`Self::mode`] (family UI editor).
     pub poll_interval_secs: u64,
     pub wake_up: Vec<String>,
+    pub schedule_kind: String,
     pub dashboard_schedule: PublicSchedule,
     pub pictures_schedule: PublicSchedule,
     pub timezone: String,
@@ -276,9 +318,12 @@ pub struct PublicSettings {
 pub struct SettingsPatch {
     pub mode: Option<String>,
     pub poll_interval_secs: Option<u64>,
-    /// When present (including empty), replaces the wake-up list.
-    /// Empty clears wake-up so the interval is used.
+    /// When present (including empty), replaces the stored wake-up list.
+    /// Does not by itself choose the interval; send [`Self::schedule_kind`].
     pub wake_up: Option<Vec<String>>,
+    /// `"interval"` or `"times"`. When omitted, inferred from a wake-up patch
+    /// (empty → interval, non-empty → times) so older clients keep working.
+    pub schedule_kind: Option<String>,
     /// Which mode's schedule to patch. Defaults to the (possibly newly set) mode.
     pub schedule_for: Option<String>,
     pub rotate: Option<Vec<String>>,
@@ -331,16 +376,23 @@ impl Config {
         if self.pictures.poll_interval_secs.is_none() {
             self.pictures.poll_interval_secs = Some(self.poll_interval_secs);
         }
-        if self.pictures.wake_up.is_none() {
+        let inheriting_wakes = self.pictures.wake_up.is_none();
+        if inheriting_wakes {
             self.pictures.wake_up = Some(self.wake_up.clone());
+        }
+        if self.pictures.schedule_kind.is_none() && inheriting_wakes {
+            let kind = self.mode_schedule(FrameMode::Dashboard).kind;
+            self.pictures.schedule_kind = Some(kind);
         }
     }
 
-    /// Poll interval and wake times for a display mode.
-    /// Picture mode inherits the dashboard schedule until it is saved separately.
-    pub fn schedule(&self, mode: FrameMode) -> (u64, &[NaiveTime]) {
+    fn mode_schedule(&self, mode: FrameMode) -> ModeSchedule<'_> {
         match mode {
-            FrameMode::Dashboard => (self.poll_interval_secs, self.wake_up.as_slice()),
+            FrameMode::Dashboard => ModeSchedule {
+                interval_secs: self.poll_interval_secs,
+                wake_up: self.wake_up.as_slice(),
+                kind: infer_schedule_kind(self.schedule_kind, &self.wake_up),
+            },
             FrameMode::Picture => {
                 let interval = self
                     .pictures
@@ -351,28 +403,42 @@ impl Config {
                     .wake_up
                     .as_deref()
                     .unwrap_or(self.wake_up.as_slice());
-                (interval, wakes)
+                ModeSchedule {
+                    interval_secs: interval,
+                    wake_up: wakes,
+                    kind: infer_schedule_kind(self.pictures.schedule_kind, wakes),
+                }
             }
         }
     }
 
-    fn public_schedule(interval: u64, wakes: &[NaiveTime]) -> PublicSchedule {
+    /// Effective poll for a display mode: interval always, wake times only when selected.
+    /// Picture mode inherits the dashboard schedule until it is saved separately.
+    pub fn schedule(&self, mode: FrameMode) -> (u64, &[NaiveTime]) {
+        let stored = self.mode_schedule(mode);
+        match stored.kind {
+            ScheduleKind::Interval => (stored.interval_secs, &[]),
+            ScheduleKind::Times => (stored.interval_secs, stored.wake_up),
+        }
+    }
+
+    fn public_schedule(stored: ModeSchedule<'_>) -> PublicSchedule {
         PublicSchedule {
-            poll_interval_secs: interval,
-            wake_up: format_wake_times(wakes),
+            poll_interval_secs: stored.interval_secs,
+            wake_up: format_wake_times(stored.wake_up),
+            schedule_kind: stored.kind.as_str().to_string(),
         }
     }
 
     pub fn public_settings(&self, now: DateTime<Utc>) -> PublicSettings {
-        let (interval, wakes) = self.schedule(self.mode);
-        let (dash_interval, dash_wakes) = self.schedule(FrameMode::Dashboard);
-        let (pic_interval, pic_wakes) = self.schedule(FrameMode::Picture);
+        let current = self.mode_schedule(self.mode);
         PublicSettings {
             mode: self.mode.as_str().to_string(),
-            poll_interval_secs: interval,
-            wake_up: format_wake_times(wakes),
-            dashboard_schedule: Self::public_schedule(dash_interval, dash_wakes),
-            pictures_schedule: Self::public_schedule(pic_interval, pic_wakes),
+            poll_interval_secs: current.interval_secs,
+            wake_up: format_wake_times(current.wake_up),
+            schedule_kind: current.kind.as_str().to_string(),
+            dashboard_schedule: Self::public_schedule(self.mode_schedule(FrameMode::Dashboard)),
+            pictures_schedule: Self::public_schedule(self.mode_schedule(FrameMode::Picture)),
             timezone: self.timezone.clone(),
             family_name: self.family_name.clone(),
             next_sleep_secs: self.pico_sleep_secs(now),
@@ -392,12 +458,19 @@ impl Config {
             Some(s) => FrameMode::parse(s)?,
             None => self.mode,
         };
-        if patch.poll_interval_secs.is_some() || patch.wake_up.is_some() {
+        if patch.poll_interval_secs.is_some()
+            || patch.wake_up.is_some()
+            || patch.schedule_kind.is_some()
+        {
             self.set_schedule(
                 schedule_mode,
                 patch.poll_interval_secs,
                 match &patch.wake_up {
                     Some(times) => Some(parse_wake_list(times)?),
+                    None => None,
+                },
+                match patch.schedule_kind.as_deref() {
+                    Some(s) => Some(ScheduleKind::parse(s)?),
                     None => None,
                 },
             )?;
@@ -414,12 +487,22 @@ impl Config {
         mode: FrameMode,
         interval: Option<u64>,
         wakes: Option<Vec<NaiveTime>>,
+        kind: Option<ScheduleKind>,
     ) -> Result<()> {
         if let Some(secs) = interval {
             if secs == 0 {
                 bail!("poll_interval_secs must be at least 1");
             }
         }
+        let kind = kind.or_else(|| {
+            wakes.as_ref().map(|times| {
+                if times.is_empty() {
+                    ScheduleKind::Interval
+                } else {
+                    ScheduleKind::Times
+                }
+            })
+        });
         match mode {
             FrameMode::Dashboard => {
                 if let Some(secs) = interval {
@@ -428,6 +511,9 @@ impl Config {
                 if let Some(times) = wakes {
                     self.wake_up = times;
                 }
+                if let Some(k) = kind {
+                    self.schedule_kind = Some(k);
+                }
             }
             FrameMode::Picture => {
                 if let Some(secs) = interval {
@@ -435,6 +521,9 @@ impl Config {
                 }
                 if let Some(times) = wakes {
                     self.pictures.wake_up = Some(times);
+                }
+                if let Some(k) = kind {
+                    self.pictures.schedule_kind = Some(k);
                 }
             }
         }
@@ -453,9 +542,11 @@ impl Config {
             .parse()
             .with_context(|| format!("parsing {} for edit", path.display()))?;
 
+        let dash = self.mode_schedule(FrameMode::Dashboard);
         doc["mode"] = Item::Value(Value::from(self.mode.as_str()));
-        doc["poll_interval_secs"] = Item::Value(Value::from(self.poll_interval_secs as i64));
-        doc["wake-up"] = Item::Value(Value::Array(wake_toml_array(&self.wake_up)));
+        doc["poll_interval_secs"] = Item::Value(Value::from(dash.interval_secs as i64));
+        doc["wake-up"] = Item::Value(Value::Array(wake_toml_array(dash.wake_up)));
+        doc["schedule_kind"] = Item::Value(Value::from(dash.kind.as_str()));
 
         if !doc.as_table().contains_key("pictures") {
             doc["pictures"] = Item::Table(toml_edit::Table::new());
@@ -466,9 +557,10 @@ impl Config {
         }
         doc["pictures"]["rotate"] = Item::Value(Value::Array(rotate));
 
-        let (pic_interval, pic_wakes) = self.schedule(FrameMode::Picture);
-        doc["pictures"]["poll_interval_secs"] = Item::Value(Value::from(pic_interval as i64));
-        doc["pictures"]["wake-up"] = Item::Value(Value::Array(wake_toml_array(pic_wakes)));
+        let pic = self.mode_schedule(FrameMode::Picture);
+        doc["pictures"]["poll_interval_secs"] = Item::Value(Value::from(pic.interval_secs as i64));
+        doc["pictures"]["wake-up"] = Item::Value(Value::Array(wake_toml_array(pic.wake_up)));
+        doc["pictures"]["schedule_kind"] = Item::Value(Value::from(pic.kind.as_str()));
 
         std::fs::write(path, doc.to_string())
             .with_context(|| format!("writing {}", path.display()))?;
@@ -508,6 +600,20 @@ impl Config {
         let (interval, wakes) = self.schedule(self.effective_mode());
         crate::schedule::seconds_until_next_poll(now, self.tz(), interval, wakes)
     }
+}
+
+struct ModeSchedule<'a> {
+    interval_secs: u64,
+    wake_up: &'a [NaiveTime],
+    kind: ScheduleKind,
+}
+
+fn infer_schedule_kind(kind: Option<ScheduleKind>, wakes: &[NaiveTime]) -> ScheduleKind {
+    kind.unwrap_or(if wakes.is_empty() {
+        ScheduleKind::Interval
+    } else {
+        ScheduleKind::Times
+    })
 }
 
 fn format_wake_times(times: &[NaiveTime]) -> Vec<String> {
@@ -847,8 +953,10 @@ rotate = ["photo-1"]
             wake_up: Some(vec![]),
             schedule_for: Some("picture".into()),
             rotate: None,
+            schedule_kind: None,
         })
         .unwrap();
+        assert_eq!(cfg.pictures.schedule_kind, Some(ScheduleKind::Interval));
         assert_eq!(cfg.mode, FrameMode::Picture);
         assert_eq!(cfg.poll_interval_secs, 3600);
         assert_eq!(cfg.wake_up.len(), 1);
@@ -858,5 +966,104 @@ rotate = ["photo-1"]
         assert_eq!(reloaded.poll_interval_secs, 3600);
         assert_eq!(reloaded.pictures.poll_interval_secs, Some(90));
         assert_eq!(reloaded.pico_sleep_secs(Utc::now()), 90);
+    }
+
+    #[test]
+    fn schedule_kind_parse_aliases() {
+        assert_eq!(
+            ScheduleKind::parse("interval").unwrap(),
+            ScheduleKind::Interval
+        );
+        assert_eq!(ScheduleKind::parse("times").unwrap(), ScheduleKind::Times);
+        assert_eq!(ScheduleKind::parse("wake-up").unwrap(), ScheduleKind::Times);
+        assert!(ScheduleKind::parse("nope").is_err());
+    }
+
+    #[test]
+    fn interval_kind_keeps_wake_times_out_of_sleep() {
+        use chrono::TimeZone;
+        let cfg: Config = toml::from_str(
+            r#"
+            timezone = "Europe/London"
+            poll_interval_secs = 1800
+            schedule_kind = "interval"
+            wake-up = ["06:00", "15:00"]
+            "#,
+        )
+        .unwrap();
+        let now = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 16, 12, 0, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(cfg.pico_sleep_secs(now), 1800);
+        let public = cfg.public_settings(now);
+        assert_eq!(public.schedule_kind, "interval");
+        assert_eq!(public.wake_up, vec!["06:00", "15:00"]);
+        assert_eq!(public.dashboard_schedule.poll_interval_secs, 1800);
+        assert_eq!(public.dashboard_schedule.schedule_kind, "interval");
+    }
+
+    #[test]
+    fn patch_interval_kind_preserves_wake_times() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+family_name = "Family"
+mode = "dashboard"
+poll_interval_secs = 3600
+wake-up = ["07:00", "18:30"]
+"#,
+        )
+        .unwrap();
+        let mut cfg = Config::load(&path).unwrap();
+        cfg.apply_patch(SettingsPatch {
+            poll_interval_secs: Some(120),
+            schedule_kind: Some("interval".into()),
+            schedule_for: Some("dashboard".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(cfg.poll_interval_secs, 120);
+        assert_eq!(cfg.wake_up.len(), 2);
+        assert_eq!(cfg.schedule_kind, Some(ScheduleKind::Interval));
+        assert_eq!(cfg.pico_sleep_secs(Utc::now()), 120);
+        let reloaded = Config::load(&path).unwrap();
+        assert_eq!(reloaded.poll_interval_secs, 120);
+        assert_eq!(reloaded.wake_up.len(), 2);
+        assert_eq!(reloaded.schedule_kind, Some(ScheduleKind::Interval));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("07:00"));
+        assert!(text.contains("18:30"));
+        assert!(text.contains("interval"));
+    }
+
+    #[test]
+    fn patch_times_kind_preserves_interval() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+family_name = "Family"
+poll_interval_secs = 900
+schedule_kind = "interval"
+wake-up = ["08:00"]
+"#,
+        )
+        .unwrap();
+        let mut cfg = Config::load(&path).unwrap();
+        cfg.apply_patch(SettingsPatch {
+            schedule_kind: Some("times".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(cfg.poll_interval_secs, 900);
+        assert_eq!(cfg.schedule_kind, Some(ScheduleKind::Times));
+        let reloaded = Config::load(&path).unwrap();
+        assert_eq!(reloaded.poll_interval_secs, 900);
+        assert_eq!(reloaded.wake_up.len(), 1);
+        assert_eq!(reloaded.schedule_kind, Some(ScheduleKind::Times));
     }
 }

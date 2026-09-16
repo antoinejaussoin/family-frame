@@ -32,12 +32,22 @@
   // is reachable before anything is hung on the frame.
   let view = $state('dashboard')
 
+  function scheduleKindOf(sch) {
+    const k = sch?.schedule_kind
+    if (k === 'times' || k === 'wake' || k === 'wake-up') return 'wake'
+    if (k === 'interval') return 'interval'
+    return (sch?.wake_up || []).length > 0 ? 'wake' : 'interval'
+  }
+
   function scheduleOf(s, mode) {
-    if (!s) return { poll_interval_secs: 3600, wake_up: [] }
+    if (!s) {
+      return { poll_interval_secs: 3600, wake_up: [], schedule_kind: 'interval' }
+    }
     const sch = mode === 'picture' ? s.pictures_schedule : s.dashboard_schedule
     return {
       poll_interval_secs: sch?.poll_interval_secs ?? s.poll_interval_secs ?? 3600,
       wake_up: sch?.wake_up ?? s.wake_up ?? [],
+      schedule_kind: sch?.schedule_kind ?? s.schedule_kind,
     }
   }
 
@@ -45,7 +55,7 @@
     const sch = scheduleOf(s, mode)
     intervalMins = Math.max(1, Math.round((sch.poll_interval_secs || 3600) / 60))
     wakeTimes = [...(sch.wake_up || [])]
-    scheduleMode = wakeTimes.length > 0 ? 'wake' : 'interval'
+    scheduleMode = scheduleKindOf(sch)
   }
 
   function knownRotate(ids, pics = pictures) {
@@ -128,19 +138,14 @@
     busy = true
     error = ''
     try {
-      const body =
-        scheduleMode === 'wake'
-          ? {
-              wake_up: wakeTimes,
-              poll_interval_secs: intervalMins * 60,
-              schedule_for: view,
-            }
-          : {
-              wake_up: [],
-              poll_interval_secs: intervalMins * 60,
-              schedule_for: view,
-            }
-      applySettings(await patchSettings(body))
+      applySettings(
+        await patchSettings({
+          wake_up: wakeTimes,
+          poll_interval_secs: intervalMins * 60,
+          schedule_kind: scheduleMode === 'wake' ? 'times' : 'interval',
+          schedule_for: view,
+        }),
+      )
     } catch (e) {
       error = e.message || String(e)
     } finally {
