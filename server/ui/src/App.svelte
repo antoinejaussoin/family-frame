@@ -349,7 +349,7 @@
     </div>
   {:else}
     <div
-      class="grid items-start gap-6 lg:grid-cols-[minmax(17.5rem,22rem)_minmax(0,1fr)] lg:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]"
+      class="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(17.5rem,22rem)_minmax(0,1fr)] lg:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]"
     >
       <aside class="flex flex-col gap-5 lg:sticky lg:top-6">
         <section class="card p-5 sm:p-6">
@@ -484,7 +484,7 @@
       </aside>
 
       {#if view === 'picture'}
-      <section class="board p-4 sm:p-6 lg:p-7">
+      <section class="board min-w-0 p-4 sm:p-6 lg:p-7">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 class="font-display text-2xl font-semibold text-ink sm:text-3xl">
@@ -517,12 +517,12 @@
               {#each rotate as id, i}
                 {@const pic = pictures.find((p) => p.id === id)}
                 <li class="film-card">
-                  <p class="mb-1.5 flex items-center justify-between text-xs font-extrabold text-muted">
+                  <p class="mb-1 flex items-center justify-between gap-0.5 text-[10px] font-extrabold text-muted sm:mb-1.5 sm:text-xs">
                     <span>{i + 1}</span>
-                    <span class="flex gap-0.5">
+                    <span class="flex shrink-0">
                       <button
                         type="button"
-                        class="rounded-md px-1.5 py-0.5 hover:bg-plaster disabled:opacity-30"
+                        class="rounded-md px-1 py-0.5 hover:bg-plaster disabled:opacity-30 sm:px-1.5"
                         onclick={() => moveRotate(id, -1)}
                         disabled={i === 0}
                         aria-label="Move earlier"
@@ -531,7 +531,7 @@
                       </button>
                       <button
                         type="button"
-                        class="rounded-md px-1.5 py-0.5 hover:bg-plaster disabled:opacity-30"
+                        class="rounded-md px-1 py-0.5 hover:bg-plaster disabled:opacity-30 sm:px-1.5"
                         onclick={() => moveRotate(id, 1)}
                         disabled={i === rotate.length - 1}
                         aria-label="Move later"
@@ -554,7 +554,7 @@
         {/if}
 
         <div
-          class="mt-5 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4"
+          class="mt-5 grid grid-cols-3 gap-2 sm:gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5"
         >
           {#each pictures as pic}
             <article class="polaroid {rotate.includes(pic.id) ? 'on' : ''}">
@@ -592,7 +592,7 @@
               </button>
               <button
                 type="button"
-                class="absolute bottom-2 right-2 z-[2] rounded-full bg-paper/95 px-2 py-1 text-[11px] font-extrabold text-terracotta shadow-sm hover:bg-[#fff1ea]"
+                class="absolute bottom-1.5 right-1.5 z-[2] rounded-full bg-paper/95 px-1.5 py-0.5 text-[10px] font-extrabold text-terracotta shadow-sm hover:bg-[#fff1ea] sm:bottom-2 sm:right-2 sm:px-2 sm:py-1 sm:text-[11px]"
                 onclick={() => removePicture(pic.id)}
               >
                 Delete
