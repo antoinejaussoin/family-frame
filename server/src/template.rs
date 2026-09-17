@@ -154,7 +154,7 @@ mod tests {
             );
         }
         assert_eq!(
-            html.matches("class=\"at-160\"").count(),
+            html.matches("class=\"at-80\"").count(),
             crate::weather::ICONS.len()
         );
         assert!(html.contains("class=\"at-40\""));

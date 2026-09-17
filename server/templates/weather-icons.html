@@ -9,82 +9,75 @@
       box-sizing: border-box;
       width: 1600px;
       height: 1200px;
-      padding: 32px 48px 28px;
+      padding: 24px 40px 20px;
       display: flex;
       flex-direction: column;
-      gap: 22px;
+      gap: 14px;
     }
     .sheet-title {
       margin: 0;
-      font-size: 40px;
+      font-size: 32px;
       font-weight: 700;
       line-height: 1;
     }
     .sheet-lede {
-      margin: 8px 0 0;
-      font-size: 20px;
+      margin: 6px 0 0;
+      font-size: 18px;
       font-weight: 700;
       line-height: 1.2;
     }
     .header-row {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 12px;
       border-bottom: 4px solid var(--black);
-      padding-bottom: 10px;
+      padding-bottom: 8px;
     }
     .header-label {
-      font-size: 26px;
+      font-size: 22px;
       font-weight: 700;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       flex: 0 0 auto;
     }
-    .header-row .slots { margin-left: auto; }
+    .header-row .slots { margin-left: auto; gap: 6px; }
     .icon-grid {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      grid-template-rows: repeat(2, 1fr);
-      gap: 16px 18px;
+      grid-template-rows: repeat(3, 1fr);
+      gap: 10px 12px;
       flex: 1;
       min-height: 0;
     }
     .cell {
       box-sizing: border-box;
       border: 4px solid var(--black);
-      padding: 16px 10px 12px;
+      padding: 8px 6px 6px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 6px;
       min-width: 0;
     }
     .sizes {
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-    }
-    .sizes-small {
-      display: flex;
       align-items: flex-end;
       justify-content: center;
-      gap: 14px;
+      gap: 10px;
     }
     .at-40 { width: 40px; height: 40px; display: block; overflow: visible; }
     .at-80 { width: 80px; height: 80px; display: block; overflow: visible; }
-    .at-160 { width: 160px; height: 160px; display: block; overflow: visible; }
     .label {
       margin: 0;
-      font-size: 22px;
+      font-size: 18px;
       font-weight: 700;
       line-height: 1.1;
       text-align: center;
     }
     .meta {
       margin: 0;
-      font-size: 16px;
+      font-size: 13px;
       font-weight: 700;
       text-align: center;
       color: var(--red);
@@ -116,11 +109,8 @@
       {% for icon in icons %}
       <article class="cell">
         <div class="sizes">
-          <svg class="at-160" viewBox="0 0 64 64" aria-hidden="true"><use href="#wx-{{ icon.id }}"/></svg>
-          <div class="sizes-small">
-            <svg class="at-40" viewBox="0 0 64 64" aria-hidden="true"><use href="#wx-{{ icon.id }}"/></svg>
-            <svg class="at-80" viewBox="0 0 64 64" aria-hidden="true"><use href="#wx-{{ icon.id }}"/></svg>
-          </div>
+          <svg class="at-80" viewBox="0 0 64 64" aria-hidden="true"><use href="#wx-{{ icon.id }}"/></svg>
+          <svg class="at-40" viewBox="0 0 64 64" aria-hidden="true"><use href="#wx-{{ icon.id }}"/></svg>
         </div>
         <p class="label">{{ icon.label }}</p>
         <p class="meta">{{ icon.id }} · BBC {{ icon.codes }}</p>

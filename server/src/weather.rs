@@ -290,13 +290,28 @@ pub const ICONS: &[IconSpec] = &[
     },
     IconSpec {
         id: "cloud",
-        label: "Cloudy / overcast",
-        codes: "7, 8",
+        label: "Cloudy",
+        codes: "7",
+    },
+    IconSpec {
+        id: "overcast",
+        label: "Overcast",
+        codes: "8",
+    },
+    IconSpec {
+        id: "drizzle",
+        label: "Drizzle",
+        codes: "11",
     },
     IconSpec {
         id: "rain",
-        label: "Rain / drizzle / showers",
-        codes: "9–15, 39",
+        label: "Rain",
+        codes: "12, 15, 39",
+    },
+    IconSpec {
+        id: "showers",
+        label: "Showers",
+        codes: "9, 10, 13, 14",
     },
     IconSpec {
         id: "storm",
@@ -305,8 +320,18 @@ pub const ICONS: &[IconSpec] = &[
     },
     IconSpec {
         id: "snow",
-        label: "Snow / sleet / hail",
-        codes: "16–27",
+        label: "Snow",
+        codes: "22–27",
+    },
+    IconSpec {
+        id: "sleet",
+        label: "Sleet",
+        codes: "16–18",
+    },
+    IconSpec {
+        id: "hail",
+        label: "Hail",
+        codes: "19–21",
     },
     IconSpec {
         id: "fog",
@@ -327,9 +352,14 @@ pub fn icon_for(code: i64, text: &str) -> &'static str {
         2 => "partly-cloudy-night",
         3 => "partly-cloudy",
         5 | 6 => "fog",
-        7 | 8 => "cloud",
-        9 | 10 | 11 | 12 | 13 | 14 | 15 | 39 => "rain",
-        16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 => "snow",
+        7 => "cloud",
+        8 => "overcast",
+        9 | 10 | 13 | 14 => "showers",
+        11 => "drizzle",
+        12 | 15 | 39 => "rain",
+        16 | 17 | 18 => "sleet",
+        19 | 20 | 21 => "hail",
+        22 | 23 | 24 | 25 | 26 | 27 => "snow",
         28 | 29 | 30 => "storm",
         _ => icon_from_text(text),
     }
@@ -339,13 +369,23 @@ fn icon_from_text(text: &str) -> &'static str {
     let t = text.to_ascii_lowercase();
     if t.contains("thunder") || t.contains("lightning") {
         "storm"
-    } else if t.contains("snow") || t.contains("sleet") || t.contains("hail") {
+    } else if t.contains("hail") {
+        "hail"
+    } else if t.contains("sleet") {
+        "sleet"
+    } else if t.contains("snow") {
         "snow"
     } else if t.contains("fog") || t.contains("mist") {
         "fog"
-    } else if t.contains("rain") || t.contains("drizzle") || t.contains("shower") {
+    } else if t.contains("drizzle") {
+        "drizzle"
+    } else if t.contains("shower") {
+        "showers"
+    } else if t.contains("rain") {
         "rain"
-    } else if t.contains("cloud") || t.contains("overcast") {
+    } else if t.contains("overcast") {
+        "overcast"
+    } else if t.contains("cloud") {
         "cloud"
     } else if t.contains("clear") && (t.contains("night") || t.contains("sky")) {
         "moon"
@@ -604,7 +644,7 @@ mod tests {
         assert_eq!(today_slots[2].temperature, "15°");
 
         let tomorrow = &weather.days[1].slots;
-        assert_eq!(tomorrow[0].icon, "cloud");
+        assert_eq!(tomorrow[0].icon, "overcast");
         assert_eq!(tomorrow[0].temperature, "14°");
         assert_eq!(tomorrow[1].icon, "storm");
         assert_eq!(tomorrow[1].temperature, "17°");
@@ -685,11 +725,18 @@ mod tests {
         assert_eq!(icon_for(0, ""), "moon");
         assert_eq!(icon_for(3, ""), "partly-cloudy");
         assert_eq!(icon_for(12, ""), "rain");
+        assert_eq!(icon_for(8, ""), "overcast");
+        assert_eq!(icon_for(10, ""), "showers");
+        assert_eq!(icon_for(11, ""), "drizzle");
+        assert_eq!(icon_for(18, ""), "sleet");
+        assert_eq!(icon_for(21, ""), "hail");
         assert_eq!(icon_for(29, ""), "storm");
         assert_eq!(icon_for(24, ""), "snow");
         assert_eq!(icon_for(6, ""), "fog");
         assert_eq!(icon_for(39, "Light Rain"), "rain");
         assert_eq!(icon_for(99, "Thundery showers"), "storm");
+        assert_eq!(icon_for(99, "Hail shower"), "hail");
+        assert_eq!(icon_for(99, "Light drizzle"), "drizzle");
     }
 
     #[test]
