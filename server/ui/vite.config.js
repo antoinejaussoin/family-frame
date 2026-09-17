@@ -5,11 +5,10 @@ import { defineConfig, loadEnv } from 'vite'
 /** Paths owned by the Rust server. Leave `/` to Vite so HMR keeps working. */
 const BACKEND_PATHS = [
   '/api',
-  '/preview',
-  '/debug',
   '/static',
   '/dashboard',
   '/health',
+  '/debug/frames',
 ]
 
 function backendProxy(target) {

@@ -419,6 +419,17 @@ select {
   outline-offset: 2px;
 }
 
+.battery-graph svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.battery-graph .tick {
+  font-size: 10px;
+  fill: var(--color-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .polaroid,
   .choice,

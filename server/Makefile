@@ -12,7 +12,7 @@ serve:
 ui:
 	cd ui && npm ci && npm run build
 
-# Family SPA with hot reload. Proxies /api (and /preview, /debug) to :8765.
+# Family SPA with hot reload. Proxies /api and /dashboard to :8765.
 ui-dev:
 	cd ui && npm run dev
 

@@ -1,4 +1,4 @@
-//! Pico poll history for the `/debug` dashboard.
+//! Pico poll history for the family UI debug page (`GET /api/debug`).
 //!
 //! POST `/api/frame.bin` appends one JSONL row and, on 200, a dithered PNG keyed
 //! by checksum. GET `/api/frame.bin` from a browser is not recorded.
@@ -222,7 +222,7 @@ pub fn page_from_polls_with_drift(
                 wake: p.wake.clone(),
                 sleep_s: p.sleep_s,
                 has_image: has_frame(&p.checksum),
-                image_url: format!("/debug/frames/{}.png", p.checksum),
+                image_url: format!("/api/debug/frames/{}.png", p.checksum),
                 checksum_short: checksum_short(&p.checksum),
             })
             .collect(),
@@ -698,9 +698,17 @@ mod tests {
         assert!(page.polls[0].has_image);
         assert_eq!(
             page.polls[0].image_url.as_str(),
-            "/debug/frames/deadbeef.png"
+            "/api/debug/frames/deadbeef.png"
         );
         assert!(page.graph_svg.contains("<svg"));
+    }
+
+    #[test]
+    fn empty_page_has_no_graph() {
+        let page = page_from_polls(&[], chrono_tz::Europe::London, |_| false);
+        assert!(!page.has_polls);
+        assert!(page.graph_svg.is_empty());
+        assert!(page.eta_text.contains("No Pico"));
     }
 
     #[test]

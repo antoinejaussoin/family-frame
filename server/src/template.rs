@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use minijinja::Environment;
 
 use crate::assets;
-use crate::debug::DebugPage;
 use crate::model::Dashboard;
 
 pub struct Templates {
@@ -14,10 +13,6 @@ impl Templates {
         let mut env = Environment::new();
         env.add_template("dashboard.html", assets::DASHBOARD_HTML)
             .context("templates/dashboard.html")?;
-        env.add_template("preview.html", assets::PREVIEW_HTML)
-            .context("templates/preview.html")?;
-        env.add_template("debug.html", assets::DEBUG_HTML)
-            .context("templates/debug.html")?;
         Ok(Self { env })
     }
 
@@ -27,22 +22,6 @@ impl Templates {
             .get_template("dashboard.html")
             .context("templates/dashboard.html")?;
         Ok(tmpl.render(dash)?)
-    }
-
-    pub fn render_preview(&self, dash: &Dashboard) -> Result<String> {
-        let tmpl = self
-            .env
-            .get_template("preview.html")
-            .context("templates/preview.html")?;
-        Ok(tmpl.render(dash)?)
-    }
-
-    pub fn render_debug(&self, page: &DebugPage) -> Result<String> {
-        let tmpl = self
-            .env
-            .get_template("debug.html")
-            .context("templates/debug.html")?;
-        Ok(tmpl.render(page)?)
     }
 }
 
@@ -122,34 +101,4 @@ mod tests {
         assert!(!html.contains("No open family tasks"));
     }
 
-    #[test]
-    fn debug_page_renders_battery_and_log() {
-        let polls = vec![crate::debug::Poll {
-            t: chrono::Utc::now(),
-            status: 200,
-            offered: String::new(),
-            checksum: "deadbeef".into(),
-            mv: 3850,
-            pct: 72,
-            usb: false,
-            wake: "timer".into(),
-            sleep_s: 3600,
-        }];
-        let page = crate::debug::page_from_polls(&polls, chrono_tz::Europe::London, |_| true);
-        let html = Templates::load().unwrap().render_debug(&page).unwrap();
-        assert!(html.contains("72"));
-        assert!(html.contains("3850"));
-        assert!(html.contains("200 new frame"));
-        assert!(html.contains("Next refresh"));
-        assert!(html.contains("/debug/frames/deadbeef.png"));
-        assert!(html.contains("<svg"));
-    }
-
-    #[test]
-    fn debug_page_empty_state() {
-        let page = crate::debug::page_from_polls(&[], chrono_tz::Europe::London, |_| false);
-        let html = Templates::load().unwrap().render_debug(&page).unwrap();
-        assert!(html.contains("No Pico has checked in yet"));
-        assert!(!html.contains("<svg"));
-    }
 }

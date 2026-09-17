@@ -64,15 +64,16 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         .route("/pictures/{id}/thumb.jpg", get(picture_thumb))
         .route("/pictures/{id}/dither.png", get(picture_dither))
         .route("/pictures/{id}/original", get(picture_original))
+        .route("/debug", get(get_debug))
+        .route("/debug/frames/{id}", get(debug_frame))
         // Phone JPEGs routinely exceed Axum's 2 MiB default (multipart parse fails).
         .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT));
 
     let mut app = Router::new()
         .nest("/api", api)
         .route("/health", get(health))
-        .route("/preview", get(preview))
         .route("/dashboard", get(dashboard))
-        .route("/debug", get(debug_page))
+        // Old bookmarks; the SPA lives at /debug.
         .route("/debug/frames/{checksum}", get(debug_frame))
         .route("/static/{name}", get(static_asset))
         .layer(TraceLayer::new_for_http())
@@ -80,10 +81,13 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
 
     if let Some(dir) = ui_dir.filter(|d| d.join("index.html").exists()) {
         let index = ServeFile::new(dir.join("index.html"));
-        let spa = ServeDir::new(dir).not_found_service(index);
+        let spa = ServeDir::new(dir).fallback(index);
         app = app.fallback_service(spa);
     } else {
-        app = app.route("/", get(spa_missing));
+        app = app
+            .route("/", get(spa_missing))
+            .route("/preview", get(spa_missing))
+            .route("/debug", get(spa_missing));
     }
 
     app
@@ -109,9 +113,6 @@ async fn spa_missing() -> impl IntoResponse {
 async fn static_asset(Path(name): Path<String>) -> Response {
     let (body, content_type) = match name.as_str() {
         "dashboard.css" => (assets::DASHBOARD_CSS, "text/css; charset=utf-8"),
-        "preview.css" => (assets::PREVIEW_CSS, "text/css; charset=utf-8"),
-        "preview.js" => (assets::PREVIEW_JS, "application/javascript; charset=utf-8"),
-        "debug.css" => (assets::DEBUG_CSS, "text/css; charset=utf-8"),
         _ => {
             return (StatusCode::NOT_FOUND, "not found\n").into_response();
         }
@@ -120,17 +121,6 @@ async fn static_asset(Path(name): Path<String>) -> Response {
     headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
     headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
     (headers, body).into_response()
-}
-
-async fn preview(State(state): State<AppState>) -> impl IntoResponse {
-    let cfg = state.cache.snapshot_config().await;
-    match sources::load_dashboard(&cfg).await {
-        Ok(dash) => match state.cache.templates().render_preview(&dash) {
-            Ok(html) => no_store_html(html),
-            Err(err) => error_response(err),
-        },
-        Err(err) => error_response(err),
-    }
 }
 
 async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
@@ -144,16 +134,15 @@ async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-async fn debug_page(State(state): State<AppState>) -> impl IntoResponse {
+async fn get_debug(State(state): State<AppState>) -> impl IntoResponse {
     let polls = state.debug.snapshot().await;
     let cfg = state.cache.snapshot_config().await;
-    let page = page_from_polls_with_drift(&polls, cfg.tz(), cfg.pico_drift, |c| {
-        state.debug.has_frame(c)
-    });
-    match state.cache.templates().render_debug(&page) {
-        Ok(html) => no_store_html(html),
-        Err(err) => error_response(err),
-    }
+    Json(page_from_polls_with_drift(
+        &polls,
+        cfg.tz(),
+        cfg.pico_drift,
+        |c| state.debug.has_frame(c),
+    ))
 }
 
 async fn debug_frame(State(state): State<AppState>, Path(name): Path<String>) -> Response {

@@ -85,10 +85,12 @@ the panel still refreshes on the intended wall-clock cadence.
 | `GET /api/frame.json` | `{ checksum, bytes, content_hash, source_note }` |
 | `GET /api/settings` | Public schedule / mode (family UI) |
 | `GET /api/pictures` | Photo library |
+| `GET /api/debug` | Pico poll history, battery graph SVG, next-refresh copy |
+| `GET /api/debug/frames/{checksum}.png` | Dithered frame stored for that checksum |
 | `GET /` | Family SPA (mode, schedule, photos) |
+| `GET /preview` | Layout workbench (same SPA) |
+| `GET /debug` | Battery graph and Pico request log (same SPA) |
 | `GET /dashboard` | 1600×1200 HTML the server screenshots |
-| `GET /preview` | Layout workbench |
-| `GET /debug` | Battery graph and Pico request log |
 | `GET /health` | `{ "ok": true }` (also at `/api/health`) |
 
 ## Packed `.bin` (must match Tesserae / el133-pico-driver)

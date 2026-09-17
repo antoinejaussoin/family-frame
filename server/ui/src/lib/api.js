@@ -79,6 +79,14 @@ export async function normalizeUpload(file) {
   }
 }
 
+export function getDebug() {
+  return fetch('/api/debug').then(json)
+}
+
+export function getFrameJson() {
+  return fetch('/api/frame.json').then(json)
+}
+
 export function formatSleep(secs) {
   if (secs < 60) return `${secs}s`
   const m = Math.round(secs / 60)

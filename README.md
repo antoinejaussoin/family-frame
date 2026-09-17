@@ -36,9 +36,9 @@ Open the family app on a phone or laptop (trusted LAN — no auth). From there y
 
 ### Iterate with hot reload
 
-Run the API and the Svelte app as two processes. Vite proxies `/api` (and
-`/preview`, `/debug`, `/dashboard`) to the server so you get HMR without
-`npm run build`.
+Run the API and the Svelte app as two processes. Vite proxies `/api` and
+`/dashboard` to the server so you get HMR without `npm run build`. `/preview`
+and `/debug` are pages in the SPA.
 
 ```bash
 # terminal 1 — Rust API
@@ -78,7 +78,7 @@ would make every hour look like a new image.
 ## Run the server
 
 Chrome or Chromium is required only for dashboard `/api/frame.bin` /
-`/api/frame.png`. Picture mode and the HTML simulator work without it.
+`/api/frame.png`. Picture mode and the layout simulator (`/preview`) work without it.
 
 ```bash
 cd server
@@ -87,7 +87,7 @@ cargo run                            # or: make serve
 ```
 
 The family SPA is optional for the API. Without `ui/dist`, `/` explains how to
-start Vite; `/preview`, `/debug`, and `/api/*` still work. `make` (no target)
+start Vite; `/dashboard` and `/api/*` still work. `make` (no target)
 builds the SPA first, then runs the server.
 
 While iterating on Rust, templates, or dashboard CSS, `--watch` rebuilds and
