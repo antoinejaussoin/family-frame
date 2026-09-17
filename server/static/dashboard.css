@@ -166,8 +166,7 @@ h1 {
 }
 
 .battery-ok { color: var(--green); }
-.battery-low { color: var(--yellow); } /* Spectra 6 has no orange */
-.battery-critical { color: var(--red); }
+.battery-low { color: var(--red); }
 
 h2 {
   display: flex;
@@ -371,7 +370,7 @@ li:not(.tube-line):not(.todo-pill) {
 }
 .rooms li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px 60px;
+  grid-template-columns: minmax(0, 1fr) 108px 60px;
   align-items: center;
   column-gap: 10px;
 }

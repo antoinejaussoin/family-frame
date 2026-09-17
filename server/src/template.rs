@@ -78,9 +78,10 @@ mod tests {
         dash.set_battery(24);
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("battery-low"));
+        assert!(!html.contains("battery-critical"));
         dash.set_battery(10);
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
-        assert!(html.contains("battery-critical"));
+        assert!(html.contains("battery-low"));
         assert!(html.contains("10%"));
     }
 

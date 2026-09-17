@@ -165,7 +165,7 @@ pub struct Dashboard {
     pub has_battery: bool,
     #[serde(default)]
     pub battery_pct: u16,
-    /// Spectra class: `ok` (green), `low` (yellow, <25%), `critical` (red, <15%).
+    /// Spectra class: `ok` (green, ≥25%), `low` (red, <25%).
     #[serde(default)]
     pub battery_level: String,
     /// Local `HH:MM` when this bitmap was painted. Omitted from the layout hash.
@@ -286,9 +286,7 @@ fn sidebar_block_px(rows: usize, row_px: i32) -> i32 {
 }
 
 pub fn battery_level(pct: u16) -> &'static str {
-    if pct < 15 {
-        "critical"
-    } else if pct < 25 {
+    if pct < 25 {
         "low"
     } else {
         "ok"
@@ -462,9 +460,7 @@ mod tests {
         assert_eq!(battery_level(100), "ok");
         assert_eq!(battery_level(25), "ok");
         assert_eq!(battery_level(24), "low");
-        assert_eq!(battery_level(15), "low");
-        assert_eq!(battery_level(14), "critical");
-        assert_eq!(battery_level(0), "critical");
+        assert_eq!(battery_level(0), "low");
     }
 
     #[test]
