@@ -242,7 +242,14 @@ impl FrameCache {
         Ok(frame)
     }
 
-    fn dashboard_cache_paths(cfg: &Config) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    fn dashboard_cache_paths(
+        cfg: &Config,
+    ) -> (
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+    ) {
         let dir = cfg.config_dir.join("pictures").join(".cache");
         (
             dir.join("dashboard-last.json"),
@@ -254,7 +261,8 @@ impl FrameCache {
 
     fn load_dashboard_disk(&self, cfg: &Config) -> Option<Frame> {
         let (meta_path, bin_path, preview_path, full_path) = Self::dashboard_cache_paths(cfg);
-        let meta: DashboardDiskMeta = serde_json::from_slice(&std::fs::read(meta_path).ok()?).ok()?;
+        let meta: DashboardDiskMeta =
+            serde_json::from_slice(&std::fs::read(meta_path).ok()?).ok()?;
         let bin = std::fs::read(bin_path).ok()?;
         if bin.len() != PANEL_BYTES {
             return None;
@@ -373,10 +381,7 @@ impl FrameCache {
                 .clone()
                 .context("Chrome/Chromium not found — install it to rasterise /frame.bin, or use /preview to edit the HTML layout")?
         };
-        let url = format!(
-            "http://127.0.0.1:{}/dashboard?raster=1",
-            self.listen_port
-        );
+        let url = format!("http://127.0.0.1:{}/dashboard?raster=1", self.listen_port);
         let png = screenshot::capture_dashboard(&chrome, &url).await?;
         let png = ensure_panel_size(&png)?;
         let bin = pack::pack_png_to_spectra6(&png)?;

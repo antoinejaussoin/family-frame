@@ -185,7 +185,10 @@ pub fn dither_pack_rgba(img: &RgbaImage) -> Result<(Vec<u8>, Vec<u8>)> {
         .collect();
     let bin = pack_nibbles(&nibbles);
     if bin.len() != PANEL_BYTES {
-        bail!("packed photo must be {PANEL_BYTES} bytes, got {}", bin.len());
+        bail!(
+            "packed photo must be {PANEL_BYTES} bytes, got {}",
+            bin.len()
+        );
     }
     let preview = unpack_measured_preview_png(&bin)?;
     Ok((bin, preview))
@@ -359,6 +362,9 @@ mod tests {
         let preview_img = image::load_from_memory(&preview).unwrap().to_rgba8();
         let Rgba([r, g, b, _]) = *preview_img.get_pixel(0, 0);
         // Lifted preview white sits between measured (~175) and pure 255.
-        assert!(r > 190 && r < 255, "lifted preview white expected, got {r},{g},{b}");
+        assert!(
+            r > 190 && r < 255,
+            "lifted preview white expected, got {r},{g},{b}"
+        );
     }
 }

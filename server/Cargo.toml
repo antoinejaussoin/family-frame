@@ -15,6 +15,7 @@ clap = { version = "4.5.47", features = ["derive"] }
 hex = "0.4.3"
 md-5 = "0.10.6"
 icalendar = "0.16.15"
+rrule = "0.14"
 image = { version = "0.25.8", default-features = false, features = ["jpeg", "png", "webp"] }
 minijinja = { version = "2.12.0", features = ["loader"] }
 notify = "8.2.0"

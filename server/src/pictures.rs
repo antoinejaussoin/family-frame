@@ -133,11 +133,10 @@ impl PictureStore {
         std::fs::write(&original_path, &bytes)
             .with_context(|| format!("writing {}", original_path.display()))?;
 
-        let (bin, preview, panel) = tokio::task::spawn_blocking(move || {
-            photo::process_photo_bytes(&bytes)
-        })
-        .await
-        .context("photo worker panicked")??;
+        let (bin, preview, panel) =
+            tokio::task::spawn_blocking(move || photo::process_photo_bytes(&bytes))
+                .await
+                .context("photo worker panicked")??;
 
         let cache = self.cache_dir();
         std::fs::write(cache.join(format!("{id}.bin")), &bin)?;
@@ -237,20 +236,16 @@ impl PictureStore {
             .clone();
         let bin_path = self.bin_path(id);
         let png_path = self.dither_png_path(id);
-        if bin_path.exists()
-            && png_path.exists()
-            && meta.dither_version == DITHER_VERSION
-        {
+        if bin_path.exists() && png_path.exists() && meta.dither_version == DITHER_VERSION {
             return Ok(());
         }
         let original = self.original_path(id)?;
-        let bytes = std::fs::read(&original)
-            .with_context(|| format!("reading {}", original.display()))?;
-        let (bin, preview, panel) = tokio::task::spawn_blocking(move || {
-            photo::process_photo_bytes(&bytes)
-        })
-        .await
-        .context("photo worker panicked")??;
+        let bytes =
+            std::fs::read(&original).with_context(|| format!("reading {}", original.display()))?;
+        let (bin, preview, panel) =
+            tokio::task::spawn_blocking(move || photo::process_photo_bytes(&bytes))
+                .await
+                .context("photo worker panicked")??;
         let cache = self.cache_dir();
         std::fs::create_dir_all(&cache)?;
         std::fs::write(bin_path, &bin)?;

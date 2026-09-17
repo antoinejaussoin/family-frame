@@ -215,12 +215,7 @@ fn dither_preview(rgb: &[u8], mode: DitherMode, saturation: f64) -> Result<RgbaI
         tone: ToneCompression::Auto,
         gamut: GamutCompression::Auto,
     };
-    let indices = dither_with_canonical(
-        &buf,
-        &SPECTRA_7_3_6COLOR_V2,
-        ColorScheme::Bwgbry,
-        config,
-    );
+    let indices = dither_with_canonical(&buf, &SPECTRA_7_3_6COLOR_V2, ColorScheme::Bwgbry, config);
     if indices.len() != (PANEL_WIDTH * PANEL_HEIGHT) as usize {
         bail!(
             "dither returned {} indices, expected {}",
@@ -298,7 +293,8 @@ fn write_jpeg(img: &RgbaImage, path: &Path, quality: u8) -> Result<()> {
         )
     };
     let rgb = image::DynamicImage::ImageRgba8(resized).to_rgb8();
-    let mut file = fs::File::create(path).with_context(|| format!("creating {}", path.display()))?;
+    let mut file =
+        fs::File::create(path).with_context(|| format!("creating {}", path.display()))?;
     let encoder = JpegEncoder::new_with_quality(&mut file, quality);
     encoder
         .write_image(

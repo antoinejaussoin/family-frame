@@ -536,8 +536,8 @@ impl Config {
             tracing::warn!("no config path — settings kept in memory only");
             return Ok(());
         };
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let mut doc: DocumentMut = text
             .parse()
             .with_context(|| format!("parsing {} for edit", path.display()))?;
@@ -617,7 +617,10 @@ fn infer_schedule_kind(kind: Option<ScheduleKind>, wakes: &[NaiveTime]) -> Sched
 }
 
 fn format_wake_times(times: &[NaiveTime]) -> Vec<String> {
-    times.iter().map(|t| t.format("%H:%M").to_string()).collect()
+    times
+        .iter()
+        .map(|t| t.format("%H:%M").to_string())
+        .collect()
 }
 
 fn wake_toml_array(times: &[NaiveTime]) -> Array {

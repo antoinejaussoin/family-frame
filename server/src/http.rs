@@ -348,20 +348,14 @@ async fn picture_thumb(State(state): State<AppState>, Path(id): Path<String>) ->
     if let Err(err) = state.cache.pictures().ensure_cache(&id).await {
         return not_found_or_error(err);
     }
-    file_response(
-        state.cache.pictures().thumb_path(&id),
-        "image/jpeg",
-    )
+    file_response(state.cache.pictures().thumb_path(&id), "image/jpeg")
 }
 
 async fn picture_dither(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     if let Err(err) = state.cache.pictures().ensure_cache(&id).await {
         return not_found_or_error(err);
     }
-    file_response(
-        state.cache.pictures().dither_png_path(&id),
-        "image/png",
-    )
+    file_response(state.cache.pictures().dither_png_path(&id), "image/png")
 }
 
 async fn picture_original(State(state): State<AppState>, Path(id): Path<String>) -> Response {
@@ -542,7 +536,11 @@ fn offered_checksum<'a>(headers: &'a HeaderMap, q: &'a FrameQuery) -> Option<&'a
 }
 
 async fn pico_sleep_secs(state: &AppState) -> u64 {
-    state.cache.snapshot_config().await.pico_sleep_secs(Utc::now())
+    state
+        .cache
+        .snapshot_config()
+        .await
+        .pico_sleep_secs(Utc::now())
 }
 
 fn insert_sleep_header(headers: &mut HeaderMap, sleep_s: u64) {
