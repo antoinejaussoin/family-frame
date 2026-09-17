@@ -617,22 +617,34 @@ impl Config {
         crate::schedule::compensate_sleep_secs(self.next_poll_secs(now), self.pico_drift)
     }
 
-    /// Like [`Self::pico_sleep_secs`], but a timer poll within 10 minutes of
-    /// the planned wake counts as that wake.
-    pub fn pico_sleep_secs_for_timer(
+    /// POWMAN sleep and wall-clock slot for a Pico POST.
+    ///
+    /// `assigned_wake` is the slot the previous response told a timer poll to
+    /// hit. Button and cold boots pass `None`.
+    pub fn pico_sleep_plan(
         &self,
         now: DateTime<Utc>,
-        intended_wake: Option<DateTime<Utc>>,
-    ) -> u64 {
+        assigned_wake: Option<DateTime<Utc>>,
+    ) -> (u64, DateTime<Utc>) {
         let (interval, wakes) = self.schedule(self.effective_mode());
         let wall = crate::schedule::seconds_until_next_poll_for_timer(
             now,
             self.tz(),
             interval,
             wakes,
-            intended_wake,
+            assigned_wake,
         );
-        crate::schedule::compensate_sleep_secs(wall, self.pico_drift)
+        let sleep_s = crate::schedule::compensate_sleep_secs(wall, self.pico_drift);
+        (sleep_s, crate::schedule::instant_after(now, wall))
+    }
+
+    /// Like [`Self::pico_sleep_secs`], but a timer poll uses the stored slot.
+    pub fn pico_sleep_secs_for_timer(
+        &self,
+        now: DateTime<Utc>,
+        assigned_wake: Option<DateTime<Utc>>,
+    ) -> u64 {
+        self.pico_sleep_plan(now, assigned_wake).0
     }
 
     /// Blend a timer-poll measurement into [`Self::pico_drift`] and persist it.
@@ -976,7 +988,16 @@ rotate = []
             .with_timezone(&Utc);
         assert_eq!(cfg.pico_sleep_secs(now), 5 * 60);
         assert_eq!(cfg.pico_sleep_secs_for_timer(now, Some(intended)), 65 * 60);
-        assert_eq!(cfg.pico_sleep_secs_for_timer(now, None), 65 * 60);
+        assert_eq!(cfg.pico_sleep_secs_for_timer(now, None), 5 * 60);
+        let (sleep_s, wake_at) = cfg.pico_sleep_plan(now, Some(intended));
+        assert_eq!(sleep_s, 65 * 60);
+        assert_eq!(
+            wake_at,
+            chrono_tz::Europe::London
+                .with_ymd_and_hms(2026, 9, 16, 7, 0, 0)
+                .unwrap()
+                .with_timezone(&Utc)
+        );
     }
 
     #[test]

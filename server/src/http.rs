@@ -10,7 +10,7 @@ use axum::{Json, Router};
 
 /// Phone camera JPEGs routinely exceed Axum's 2 MiB default body limit.
 const UPLOAD_BODY_LIMIT: usize = 40 * 1024 * 1024;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
@@ -440,9 +440,10 @@ async fn frame_bin_post(
                 checksum_matches(&frame, Some(offered.as_str()).filter(|s| !s.is_empty()));
             let status = if unchanged { 204 } else { 200 };
             update_pico_drift(&state, &tel).await;
-            let sleep_s = pico_sleep_secs_for_wake(&state, &tel.wake).await;
+            let now = Utc::now();
+            let (sleep_s, wake_at) = pico_sleep_plan_for_wake(&state, &tel.wake, now).await;
             let poll = Poll {
-                t: Utc::now(),
+                t: now,
                 status,
                 offered,
                 checksum: frame.checksum.clone(),
@@ -451,6 +452,7 @@ async fn frame_bin_post(
                 usb: tel.usb != 0,
                 wake: tel.wake,
                 sleep_s,
+                wake_at: Some(wake_at),
             };
             let png = if status == 200 {
                 Some(frame.preview_png.as_slice())
@@ -542,16 +544,21 @@ async fn pico_sleep_secs(state: &AppState) -> u64 {
         .pico_sleep_secs(Utc::now())
 }
 
-async fn pico_sleep_secs_for_wake(state: &AppState, wake: &str) -> u64 {
-    if !crate::schedule::is_timer_wake(wake) {
-        return pico_sleep_secs(state).await;
-    }
+async fn pico_sleep_plan_for_wake(
+    state: &AppState,
+    wake: &str,
+    now: DateTime<Utc>,
+) -> (u64, DateTime<Utc>) {
     let cfg = state.cache.snapshot_config().await;
-    let polls = state.debug.snapshot().await;
-    let intended = polls
-        .last()
-        .and_then(|p| crate::schedule::intended_wake_at(p.t, p.sleep_s, cfg.pico_drift));
-    cfg.pico_sleep_secs_for_timer(Utc::now(), intended)
+    let assigned = if crate::schedule::is_timer_wake(wake) {
+        let polls = state.debug.snapshot().await;
+        polls.last().and_then(|p| {
+            crate::schedule::assigned_wake_from_poll(p.wake_at, p.t, p.sleep_s, cfg.pico_drift)
+        })
+    } else {
+        None
+    };
+    cfg.pico_sleep_plan(now, assigned)
 }
 
 async fn update_pico_drift(state: &AppState, tel: &PicoTelemetry) {

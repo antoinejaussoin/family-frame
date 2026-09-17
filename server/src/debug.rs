@@ -32,6 +32,9 @@ pub struct Poll {
     /// Seconds the Pico was told to sleep after this poll.
     #[serde(default)]
     pub sleep_s: u64,
+    /// Wall-clock instant that sleep was aiming for (not the POWMAN seconds).
+    #[serde(default)]
+    pub wake_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -349,12 +352,15 @@ fn format_when(t: DateTime<Utc>, tz: Tz) -> String {
 }
 
 fn next_refresh_copy(last: &Poll, now: DateTime<Utc>, tz: Tz, pico_drift: f64) -> (String, String) {
-    if last.sleep_s == 0 {
-        return (String::new(), String::new());
-    }
-    let wall = crate::schedule::wall_secs_from_commanded(last.sleep_s, pico_drift);
-    let secs = i64::try_from(wall).unwrap_or(i64::MAX);
-    let at = last.t + Duration::seconds(secs);
+    let at = if let Some(wake_at) = last.wake_at {
+        wake_at
+    } else {
+        if last.sleep_s == 0 {
+            return (String::new(), String::new());
+        }
+        let wall = crate::schedule::wall_secs_from_commanded(last.sleep_s, pico_drift);
+        last.t + Duration::seconds(i64::try_from(wall).unwrap_or(i64::MAX))
+    };
     (format_when(at, tz), format_until(at, now))
 }
 
@@ -590,6 +596,7 @@ mod tests {
             usb,
             wake: "timer".into(),
             sleep_s: 3600,
+            wake_at: None,
         }
     }
 
@@ -727,6 +734,19 @@ mod tests {
             page.next_refresh
         );
         assert!(!page.next_refresh_rel.is_empty());
+    }
+
+    #[test]
+    fn page_next_refresh_uses_stored_wake_at() {
+        let mut polls = vec![poll_at(60, 78, false, 204, "deadbeef")];
+        polls[0].sleep_s = 1;
+        polls[0].wake_at = Some(Utc.with_ymd_and_hms(2026, 9, 15, 14, 0, 0).unwrap());
+        let page = page_from_polls(&polls, chrono_tz::Europe::London, |_| true);
+        assert!(
+            page.next_refresh.contains("15:00"),
+            "got {}",
+            page.next_refresh
+        );
     }
 
     #[test]

@@ -224,8 +224,8 @@ USB-serial `wifi` / `psk` / `server` / `save` (same as the laser-tag
 nodes), then `POST /api/frame.bin` and paint on 200. Sleep length comes back
 on `X-Sleep-Seconds` from that mode’s `poll_interval_secs` or `wake-up` in
 `config.toml` (shortened by a measured `pico_drift` so the low-power
-oscillator still hits the intended wall-clock time). A timer poll within
-10 minutes before that planned wake is treated as the wake itself, so the
+oscillator still hits the intended wall-clock time). The server stores that
+planned wake as a timestamp; the next timer poll *is* that slot, so an early
 Pico is not sent back for a few seconds or minutes. `make build` in
 `firmware/` and drop `family-frame.uf2`
 on the `RP2350` drive. Without the board, [`pico-sim`](pico-sim/) speaks
