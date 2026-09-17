@@ -66,6 +66,14 @@ If `schedule_kind` is omitted, a non-empty `wake-up` list selects times.
 Dashboard and Pictures each keep both values so the family UI can switch
 without losing the other setting.
 
+The Pico’s POWMAN timer (LPOSC) typically runs a few percent slow, so a
+commanded hour can land a couple of minutes late. After two consecutive
+`wake=timer` polls (not buttons, and not while USB is holding the chip
+awake) the server compares wall-clock elapsed time to the previous
+`X-Sleep-Seconds`, stores that fraction as `pico_drift` in `config.toml`
+(capped at ±5% — larger gaps are ignored), and shortens later sleeps so
+the panel still refreshes on the intended wall-clock cadence.
+
 ## Endpoints
 
 | URL | Body |

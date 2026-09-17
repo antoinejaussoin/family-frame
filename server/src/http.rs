@@ -17,7 +17,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::assets;
 use crate::config::SettingsPatch;
-use crate::debug::{page_from_polls, DebugLog, Poll};
+use crate::debug::{page_from_polls_with_drift, DebugLog, Poll};
 use crate::frame::{checksum_matches, FrameCache};
 use crate::meross;
 use crate::sources;
@@ -148,7 +148,9 @@ async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
 async fn debug_page(State(state): State<AppState>) -> impl IntoResponse {
     let polls = state.debug.snapshot().await;
     let cfg = state.cache.snapshot_config().await;
-    let page = page_from_polls(&polls, cfg.tz(), |c| state.debug.has_frame(c));
+    let page = page_from_polls_with_drift(&polls, cfg.tz(), cfg.pico_drift, |c| {
+        state.debug.has_frame(c)
+    });
     match state.cache.templates().render_debug(&page) {
         Ok(html) => no_store_html(html),
         Err(err) => error_response(err),
@@ -441,6 +443,7 @@ async fn frame_bin_post(
             let unchanged =
                 checksum_matches(&frame, Some(offered.as_str()).filter(|s| !s.is_empty()));
             let status = if unchanged { 204 } else { 200 };
+            update_pico_drift(&state, &tel).await;
             let sleep_s = pico_sleep_secs(&state).await;
             let poll = Poll {
                 t: Utc::now(),
@@ -541,6 +544,51 @@ async fn pico_sleep_secs(state: &AppState) -> u64 {
         .snapshot_config()
         .await
         .pico_sleep_secs(Utc::now())
+}
+
+async fn update_pico_drift(state: &AppState, tel: &PicoTelemetry) {
+    let polls = state.debug.snapshot().await;
+    let Some(prev) = polls.last() else {
+        return;
+    };
+    match crate::schedule::drift_between_polls(
+        &prev.wake,
+        prev.usb,
+        prev.sleep_s,
+        prev.t,
+        &tel.wake,
+        tel.usb != 0,
+        Utc::now(),
+    ) {
+        crate::schedule::DriftSample::Skip => {}
+        crate::schedule::DriftSample::OutOfRange {
+            asked,
+            elapsed,
+            drift,
+        } => {
+            tracing::warn!(
+                asked,
+                elapsed,
+                drift,
+                "pico sleep drift exceeds 5%; leaving pico_drift unchanged"
+            );
+        }
+        crate::schedule::DriftSample::Measured(measured) => {
+            let cfg_lock = state.cache.config();
+            let mut cfg = cfg_lock.write().await;
+            match cfg.record_pico_drift(measured) {
+                Ok(true) => {
+                    tracing::info!(
+                        measured,
+                        stored = cfg.pico_drift,
+                        "updated pico_drift from timer polls"
+                    );
+                }
+                Ok(false) => {}
+                Err(err) => tracing::warn!(%err, "could not persist pico_drift"),
+            }
+        }
+    }
 }
 
 fn insert_sleep_header(headers: &mut HeaderMap, sleep_s: u64) {

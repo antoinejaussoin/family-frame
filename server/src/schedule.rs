@@ -3,6 +3,10 @@
 use chrono::{DateTime, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
 
+/// Largest stored/applied Pico timer error, as a fraction of the asked sleep.
+/// Bigger gaps usually mean a button wake, USB wait, or a missed poll.
+pub const MAX_PICO_DRIFT: f64 = 0.05;
+
 /// Seconds until the Pico should poll again.
 ///
 /// An empty `wake_ups` list uses `interval_secs`. Otherwise the next clock
@@ -46,6 +50,107 @@ fn resolve_local(tz: Tz, date: NaiveDate, time: NaiveTime) -> Option<DateTime<Tz
         chrono::LocalResult::Ambiguous(earliest, _) => Some(earliest),
         chrono::LocalResult::None => None,
     }
+}
+
+/// Result of comparing two Pico polls for LPOSC drift.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DriftSample {
+    /// Button, USB, cold boot, missing sleep, or a non-timer pair.
+    Skip,
+    /// `(elapsed - asked) / asked`. Positive means the Pico woke late.
+    Measured(f64),
+    /// Magnitude over [`MAX_PICO_DRIFT`] — leave the stored value alone.
+    OutOfRange {
+        asked: u64,
+        elapsed: i64,
+        drift: f64,
+    },
+}
+
+pub fn is_timer_wake(wake: &str) -> bool {
+    wake.eq_ignore_ascii_case("timer")
+}
+
+/// Measure drift only between two consecutive automatic timer polls.
+///
+/// Button wakes (early), USB waits (different clock), and cold boots are skipped.
+pub fn drift_between_polls(
+    prev_wake: &str,
+    prev_usb: bool,
+    prev_sleep_s: u64,
+    prev_at: DateTime<Utc>,
+    wake: &str,
+    usb: bool,
+    now: DateTime<Utc>,
+) -> DriftSample {
+    if !is_timer_wake(wake) || !is_timer_wake(prev_wake) || usb || prev_usb || prev_sleep_s == 0 {
+        return DriftSample::Skip;
+    }
+    let elapsed = now.signed_duration_since(prev_at).num_seconds();
+    if elapsed <= 0 {
+        return DriftSample::Skip;
+    }
+    measure_pico_drift(prev_sleep_s, elapsed)
+}
+
+/// Fractional error of a completed sleep: `(elapsed - asked) / asked`.
+pub fn measure_pico_drift(asked_secs: u64, elapsed_secs: i64) -> DriftSample {
+    if asked_secs == 0 || elapsed_secs <= 0 {
+        return DriftSample::Skip;
+    }
+    let drift = (elapsed_secs as f64 - asked_secs as f64) / asked_secs as f64;
+    if !drift.is_finite() {
+        return DriftSample::Skip;
+    }
+    if drift.abs() > MAX_PICO_DRIFT {
+        return DriftSample::OutOfRange {
+            asked: asked_secs,
+            elapsed: elapsed_secs,
+            drift,
+        };
+    }
+    DriftSample::Measured(drift)
+}
+
+pub fn clamp_pico_drift(drift: f64) -> f64 {
+    if !drift.is_finite() {
+        0.0
+    } else {
+        drift.clamp(-MAX_PICO_DRIFT, MAX_PICO_DRIFT)
+    }
+}
+
+/// Round to 0.01 percentage points so config.toml stays stable.
+pub fn round_pico_drift(drift: f64) -> f64 {
+    (clamp_pico_drift(drift) * 10_000.0).round() / 10_000.0
+}
+
+/// First sample replaces zero; later samples are averaged so one slow Wi-Fi
+/// join does not yank the stored value.
+pub fn blend_pico_drift(stored: f64, measured: f64) -> f64 {
+    let measured = clamp_pico_drift(measured);
+    let stored = clamp_pico_drift(stored);
+    if stored.abs() < 1e-12 {
+        return round_pico_drift(measured);
+    }
+    round_pico_drift(0.5 * stored + 0.5 * measured)
+}
+
+/// Shorten (or lengthen) the POWMAN sleep so wall-clock arrival matches `target_secs`.
+pub fn compensate_sleep_secs(target_secs: u64, drift: f64) -> u64 {
+    let target = target_secs.max(1) as f64;
+    let factor = 1.0 + clamp_pico_drift(drift);
+    if factor <= 0.5 {
+        return target_secs.max(1);
+    }
+    (target / factor).round().max(1.0) as u64
+}
+
+/// Expand a commanded POWMAN sleep back to expected wall-clock seconds.
+pub fn wall_secs_from_commanded(commanded_secs: u64, drift: f64) -> u64 {
+    let commanded = commanded_secs.max(1) as f64;
+    let factor = 1.0 + clamp_pico_drift(drift);
+    (commanded * factor).round().max(1.0) as u64
 }
 
 #[cfg(test)]
@@ -157,5 +262,86 @@ mod tests {
         let wakes = [t("01:30")];
         let secs = seconds_until_next_poll(now, london(), 3600, &wakes);
         assert_eq!(secs, 90 * 60);
+    }
+
+    #[test]
+    fn two_minutes_late_per_hour_is_under_five_percent() {
+        // 3720s wall vs 3600s asked ≈ 3.33% slow (LPOSC).
+        assert_eq!(
+            measure_pico_drift(3600, 3720),
+            DriftSample::Measured(120.0 / 3600.0)
+        );
+        assert_eq!(compensate_sleep_secs(3600, 120.0 / 3600.0), 3484);
+        assert_eq!(
+            wall_secs_from_commanded(compensate_sleep_secs(3600, 0.03), 0.03),
+            3600
+        );
+    }
+
+    #[test]
+    fn drift_over_five_percent_is_rejected() {
+        // 6% late, or a button cutting the interval in half.
+        assert!(matches!(
+            measure_pico_drift(3600, 3816),
+            DriftSample::OutOfRange {
+                asked: 3600,
+                elapsed: 3816,
+                ..
+            }
+        ));
+        assert_eq!(
+            measure_pico_drift(3600, 1800),
+            DriftSample::OutOfRange {
+                asked: 3600,
+                elapsed: 1800,
+                drift: -0.5,
+            }
+        );
+        assert_eq!(measure_pico_drift(0, 10), DriftSample::Skip);
+    }
+
+    #[test]
+    fn compensate_clamps_and_never_returns_zero() {
+        assert_eq!(compensate_sleep_secs(3600, 0.0), 3600);
+        assert_eq!(
+            compensate_sleep_secs(3600, 0.2),
+            compensate_sleep_secs(3600, 0.05)
+        );
+        assert_eq!(compensate_sleep_secs(3600, f64::NAN), 3600);
+        assert_eq!(compensate_sleep_secs(0, 0.03), 1);
+        // Clock runs fast: ask for a longer POWMAN nap.
+        assert_eq!(compensate_sleep_secs(3600, -0.05), 3789);
+    }
+
+    #[test]
+    fn blend_uses_first_sample_then_averages() {
+        assert_eq!(blend_pico_drift(0.0, 0.0333), 0.0333);
+        assert_eq!(blend_pico_drift(0.02, 0.04), 0.03);
+    }
+
+    #[test]
+    fn only_timer_to_timer_on_battery_counts() {
+        let t0 = at_london(2026, 9, 16, 12, 0, 0);
+        let t1 = at_london(2026, 9, 16, 13, 2, 0);
+        assert!(matches!(
+            drift_between_polls("timer", false, 3600, t0, "timer", false, t1),
+            DriftSample::Measured(_)
+        ));
+        assert_eq!(
+            drift_between_polls("timer", false, 3600, t0, "button", false, t1),
+            DriftSample::Skip
+        );
+        assert_eq!(
+            drift_between_polls("button", false, 3600, t0, "timer", false, t1),
+            DriftSample::Skip
+        );
+        assert_eq!(
+            drift_between_polls("timer", false, 3600, t0, "timer", true, t1),
+            DriftSample::Skip
+        );
+        assert_eq!(
+            drift_between_polls("cold", false, 3600, t0, "timer", false, t1),
+            DriftSample::Skip
+        );
     }
 }

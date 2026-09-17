@@ -61,6 +61,7 @@ pub struct DebugPage {
     pub power_label: String,
     pub eta_text: String,
     pub eta_kind: String,
+    pub pico_drift_label: String,
     pub graph_svg: String,
     pub polls: Vec<DebugPollView>,
 }
@@ -146,6 +147,15 @@ pub fn is_hex_checksum(s: &str) -> bool {
 }
 
 pub fn page_from_polls(polls: &[Poll], tz: Tz, has_frame: impl Fn(&str) -> bool) -> DebugPage {
+    page_from_polls_with_drift(polls, tz, 0.0, has_frame)
+}
+
+pub fn page_from_polls_with_drift(
+    polls: &[Poll],
+    tz: Tz,
+    pico_drift: f64,
+    has_frame: impl Fn(&str) -> bool,
+) -> DebugPage {
     let now = Utc::now();
     if polls.is_empty() {
         return DebugPage {
@@ -165,6 +175,7 @@ pub fn page_from_polls(polls: &[Poll], tz: Tz, has_frame: impl Fn(&str) -> bool)
             power_label: String::new(),
             eta_text: "No Pico polls yet.".into(),
             eta_kind: "empty".into(),
+            pico_drift_label: String::new(),
             graph_svg: String::new(),
             polls: Vec::new(),
         };
@@ -173,7 +184,7 @@ pub fn page_from_polls(polls: &[Poll], tz: Tz, has_frame: impl Fn(&str) -> bool)
     let last = polls.last().unwrap();
     let eta = discharge_eta(polls, now);
     let (eta_kind, eta_text) = eta_copy(eta, last.usb);
-    let (next_refresh, next_refresh_rel) = next_refresh_copy(last, now, tz);
+    let (next_refresh, next_refresh_rel) = next_refresh_copy(last, now, tz, pico_drift);
 
     DebugPage {
         has_polls: true,
@@ -196,6 +207,7 @@ pub fn page_from_polls(polls: &[Poll], tz: Tz, has_frame: impl Fn(&str) -> bool)
         },
         eta_text,
         eta_kind,
+        pico_drift_label: pico_drift_label(pico_drift),
         graph_svg: graph_svg(polls, eta),
         polls: polls
             .iter()
@@ -333,13 +345,26 @@ fn format_when(t: DateTime<Utc>, tz: Tz) -> String {
     t.with_timezone(&tz).format("%a %-d %b, %H:%M").to_string()
 }
 
-fn next_refresh_copy(last: &Poll, now: DateTime<Utc>, tz: Tz) -> (String, String) {
+fn next_refresh_copy(last: &Poll, now: DateTime<Utc>, tz: Tz, pico_drift: f64) -> (String, String) {
     if last.sleep_s == 0 {
         return (String::new(), String::new());
     }
-    let secs = i64::try_from(last.sleep_s).unwrap_or(i64::MAX);
+    let wall = crate::schedule::wall_secs_from_commanded(last.sleep_s, pico_drift);
+    let secs = i64::try_from(wall).unwrap_or(i64::MAX);
     let at = last.t + Duration::seconds(secs);
     (format_when(at, tz), format_until(at, now))
+}
+
+fn pico_drift_label(drift: f64) -> String {
+    if drift.abs() < 0.0005 {
+        return String::new();
+    }
+    let pct = drift * 100.0;
+    if pct > 0.0 {
+        format!("{pct:.1}% slow")
+    } else {
+        format!("{:.1}% fast", -pct)
+    }
 }
 
 fn format_until(then: DateTime<Utc>, now: DateTime<Utc>) -> String {
@@ -690,6 +715,19 @@ mod tests {
             page.next_refresh
         );
         assert!(!page.next_refresh_rel.is_empty());
+    }
+
+    #[test]
+    fn page_next_refresh_undoes_pico_drift() {
+        let mut polls = vec![poll_at(60, 78, false, 204, "deadbeef")];
+        polls[0].sleep_s = 3495; // 3600 wall-clock seconds at 3% slow
+        let page = page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.03, |_| true);
+        assert!(
+            page.next_refresh.contains("15:00"),
+            "got {}",
+            page.next_refresh
+        );
+        assert_eq!(page.pico_drift_label, "3.0% slow");
     }
 
     #[test]

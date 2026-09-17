@@ -111,6 +111,10 @@ pub struct Config {
     /// Which stored schedule is active. Omitted: `times` if `wake-up` is non-empty.
     #[serde(default, alias = "schedule-kind")]
     pub schedule_kind: Option<ScheduleKind>,
+    /// Fractional Pico timer error vs wall clock (`(elapsed - asked) / asked`).
+    /// Positive = woke late. Written automatically from timer polls; capped at ±5%.
+    #[serde(default)]
+    pub pico_drift: f64,
     pub chrome_path: String,
     pub icloud: IcloudConfig,
     pub todoist: TodoistConfig,
@@ -213,6 +217,7 @@ impl Default for Config {
             poll_interval_secs: DEFAULT_POLL_INTERVAL_SECS,
             wake_up: Vec::new(),
             schedule_kind: None,
+            pico_drift: 0.0,
             chrome_path: String::new(),
             icloud: IcloudConfig::default(),
             todoist: TodoistConfig::default(),
@@ -310,6 +315,8 @@ pub struct PublicSettings {
     pub timezone: String,
     pub family_name: String,
     pub next_sleep_secs: u64,
+    /// Auto-measured Pico timer error (fraction). See [`Config::pico_drift`].
+    pub pico_drift: f64,
     pub rotate: Vec<String>,
 }
 
@@ -341,6 +348,7 @@ impl Config {
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf();
         cfg.config_path = Some(path.to_path_buf());
+        cfg.pico_drift = crate::schedule::clamp_pico_drift(cfg.pico_drift);
         cfg.materialize_pictures_schedule();
         Ok(cfg)
     }
@@ -441,7 +449,8 @@ impl Config {
             pictures_schedule: Self::public_schedule(self.mode_schedule(FrameMode::Picture)),
             timezone: self.timezone.clone(),
             family_name: self.family_name.clone(),
-            next_sleep_secs: self.pico_sleep_secs(now),
+            next_sleep_secs: self.next_poll_secs(now),
+            pico_drift: self.pico_drift,
             rotate: self.pictures.rotate.clone(),
         }
     }
@@ -547,6 +556,7 @@ impl Config {
         doc["poll_interval_secs"] = Item::Value(Value::from(dash.interval_secs as i64));
         doc["wake-up"] = Item::Value(Value::Array(wake_toml_array(dash.wake_up)));
         doc["schedule_kind"] = Item::Value(Value::from(dash.kind.as_str()));
+        write_pico_drift(&mut doc, self.pico_drift);
 
         if !doc.as_table().contains_key("pictures") {
             doc["pictures"] = Item::Table(toml_edit::Table::new());
@@ -595,10 +605,43 @@ impl Config {
         self.timezone.parse().unwrap_or(chrono_tz::Europe::London)
     }
 
-    /// Seconds the Pico should POWMAN-sleep after this poll.
-    pub fn pico_sleep_secs(&self, now: DateTime<Utc>) -> u64 {
+    /// Wall-clock seconds until the next intended poll (no Pico timer compensation).
+    pub fn next_poll_secs(&self, now: DateTime<Utc>) -> u64 {
         let (interval, wakes) = self.schedule(self.effective_mode());
         crate::schedule::seconds_until_next_poll(now, self.tz(), interval, wakes)
+    }
+
+    /// Seconds the Pico should POWMAN-sleep after this poll, shortened if its
+    /// low-power oscillator runs slow.
+    pub fn pico_sleep_secs(&self, now: DateTime<Utc>) -> u64 {
+        crate::schedule::compensate_sleep_secs(self.next_poll_secs(now), self.pico_drift)
+    }
+
+    /// Blend a timer-poll measurement into [`Self::pico_drift`] and persist it.
+    /// Returns whether the stored value changed.
+    pub fn record_pico_drift(&mut self, measured: f64) -> Result<bool> {
+        let next = crate::schedule::blend_pico_drift(self.pico_drift, measured);
+        if (self.pico_drift - next).abs() < 5e-5 {
+            return Ok(false);
+        }
+        self.pico_drift = next;
+        self.persist_pico_drift()?;
+        Ok(true)
+    }
+
+    fn persist_pico_drift(&self) -> Result<()> {
+        let Some(path) = self.config_path.as_ref() else {
+            return Ok(());
+        };
+        let text =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let mut doc: DocumentMut = text
+            .parse()
+            .with_context(|| format!("parsing {} for edit", path.display()))?;
+        write_pico_drift(&mut doc, self.pico_drift);
+        std::fs::write(path, doc.to_string())
+            .with_context(|| format!("writing {}", path.display()))?;
+        Ok(())
     }
 }
 
@@ -621,6 +664,10 @@ fn format_wake_times(times: &[NaiveTime]) -> Vec<String> {
         .iter()
         .map(|t| t.format("%H:%M").to_string())
         .collect()
+}
+
+fn write_pico_drift(doc: &mut DocumentMut, drift: f64) {
+    doc["pico_drift"] = Item::Value(Value::from(crate::schedule::round_pico_drift(drift)));
 }
 
 fn wake_toml_array(times: &[NaiveTime]) -> Array {
@@ -1004,6 +1051,7 @@ rotate = ["photo-1"]
         assert_eq!(public.wake_up, vec!["06:00", "15:00"]);
         assert_eq!(public.dashboard_schedule.poll_interval_secs, 1800);
         assert_eq!(public.dashboard_schedule.schedule_kind, "interval");
+        assert_eq!(public.pico_drift, 0.0);
     }
 
     #[test]
@@ -1068,5 +1116,60 @@ wake-up = ["08:00"]
         assert_eq!(reloaded.poll_interval_secs, 900);
         assert_eq!(reloaded.wake_up.len(), 1);
         assert_eq!(reloaded.schedule_kind, Some(ScheduleKind::Times));
+    }
+
+    #[test]
+    fn pico_drift_shortens_sleep_but_public_next_is_wall_clock() {
+        use chrono::TimeZone;
+        let mut cfg: Config = toml::from_str(
+            r#"
+            timezone = "Europe/London"
+            poll_interval_secs = 3600
+            schedule_kind = "interval"
+            pico_drift = 0.03
+            "#,
+        )
+        .unwrap();
+        cfg.pico_drift = crate::schedule::clamp_pico_drift(cfg.pico_drift);
+        let now = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 16, 12, 0, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(cfg.next_poll_secs(now), 3600);
+        assert_eq!(cfg.pico_sleep_secs(now), 3495);
+        let public = cfg.public_settings(now);
+        assert_eq!(public.next_sleep_secs, 3600);
+        assert_eq!(public.pico_drift, 0.03);
+    }
+
+    #[test]
+    fn pico_drift_over_five_percent_is_clamped_on_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "pico_drift = 0.2\n").unwrap();
+        let cfg = Config::load(&path).unwrap();
+        assert_eq!(cfg.pico_drift, 0.05);
+    }
+
+    #[test]
+    fn record_pico_drift_preserves_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"# keep me
+family_name = "Family"
+poll_interval_secs = 3600
+"#,
+        )
+        .unwrap();
+        let mut cfg = Config::load(&path).unwrap();
+        assert!(cfg.record_pico_drift(0.03).unwrap());
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# keep me"));
+        assert!(text.contains("pico_drift"));
+        let reloaded = Config::load(&path).unwrap();
+        assert_eq!(reloaded.pico_drift, 0.03);
+        assert!(!cfg.record_pico_drift(0.03).unwrap());
     }
 }

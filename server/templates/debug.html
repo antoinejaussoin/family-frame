@@ -29,6 +29,9 @@
       {% if has_next_refresh %}
       <div><dt>Next refresh</dt><dd>{{ next_refresh }} · {{ next_refresh_rel }}</dd></div>
       {% endif %}
+      {% if pico_drift_label %}
+      <div><dt>Pico drift</dt><dd>{{ pico_drift_label }}</dd></div>
+      {% endif %}
     </dl>
     <p class="eta eta-{{ eta_kind }}">{{ eta_text }}</p>
   </section>

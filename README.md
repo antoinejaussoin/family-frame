@@ -187,6 +187,8 @@ The [firmware](firmware/) is the Pico LiPo 2 XL W Embassy / Rust client:
 USB-serial `wifi` / `psk` / `server` / `save` (same as the laser-tag
 nodes), then `POST /api/frame.bin` and paint on 200. Sleep length comes back
 on `X-Sleep-Seconds` from that mode’s `poll_interval_secs` or `wake-up` in
-`config.toml`. `make build` in `firmware/` and drop `family-frame.uf2`
+`config.toml` (shortened by a measured `pico_drift` so the low-power
+oscillator still hits the intended wall-clock time). `make build` in
+`firmware/` and drop `family-frame.uf2`
 on the `RP2350` drive. Without the board, [`pico-sim`](pico-sim/) speaks
 the same loop.

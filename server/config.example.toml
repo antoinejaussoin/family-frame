@@ -19,6 +19,9 @@ poll_interval_secs = 3600
 # "interval" (every N seconds) or "times" (the wake-up list). Omitted: times
 # if `wake-up` is non-empty, otherwise interval.
 # schedule_kind = "interval"
+# Fractional Pico timer error vs wall clock, written automatically from
+# consecutive timer polls (not buttons). Positive = woke late. Capped at ±5%.
+# pico_drift = 0.0
 
 # Optional Chromium / Chrome binary. Leave empty to auto-detect
 # google-chrome / chromium on PATH, or the usual macOS .app paths.
