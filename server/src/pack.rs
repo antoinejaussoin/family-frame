@@ -85,16 +85,16 @@ fn dist_to_segment2(p: [i32; 3], a: [u8; 3], b: [u8; 3]) -> i32 {
     d0 * d0 + d1 * d1 + d2 * d2
 }
 
-/// Black or white — the paper and the usual ink. Anti-aliased type is a
-/// blend with one of these; chromatic mixes (orange = yellow+red) are not.
-fn is_black_or_white(rgb: [u8; 3]) -> bool {
-    rgb == [0x00, 0x00, 0x00] || rgb == [0xff, 0xff, 0xff]
+/// Black — the usual ink. Anti-aliased type is a blend with paper;
+/// chromatic mixes (orange, light blue) are not.
+fn is_black(rgb: [u8; 3]) -> bool {
+    rgb == [0x00, 0x00, 0x00]
 }
 
 /// Chrome font/SVG anti-aliasing is a blend of two Spectra colours.
 /// Greys against paper must snap with no error diffusion, or letters grow
-/// a halo. Blends of two inks (sun orange, etc.) are left to Floyd–Steinberg
-/// so a real colour in the screenshot dithers at 1px after raster.
+/// a halo. A real colour in the screenshot (sun orange, light rain) is
+/// left to Floyd–Steinberg so it dithers at 1px after raster.
 fn is_antialiased_edge(r: i32, g: i32, b: i32) -> bool {
     const EDGE_DIST2: i32 = 48 * 48;
     let p = [r, g, b];
@@ -103,7 +103,9 @@ fn is_antialiased_edge(r: i32, g: i32, b: i32) -> bool {
             return true;
         }
         for &(_, c) in SPECTRA6.iter().skip(i + 1) {
-            if !is_black_or_white(a) && !is_black_or_white(c) {
+            // Snap ink↔paper (type, cloud strokes). White + a colour
+            // (light blue) must dither, not collapse to a primary.
+            if !is_black(a) && !is_black(c) {
                 continue;
             }
             if dist_to_segment2(p, a, c) <= EDGE_DIST2 {
@@ -316,6 +318,32 @@ mod tests {
         assert!(
             yellow > 800 && red > 800,
             "orange should dither to both inks, yellow={yellow} red={red}"
+        );
+    }
+
+    #[test]
+    fn light_blue_fill_dithers_blue_and_white() {
+        let mut img = RgbaImage::from_pixel(PANEL_WIDTH, PANEL_HEIGHT, Rgba([255, 255, 255, 255]));
+        for y in 200..280 {
+            for x in 200..280 {
+                img.put_pixel(x, y, Rgba([0x73, 0x73, 0xff, 255]));
+            }
+        }
+        let bin = pack_rgba(&img).unwrap();
+        let mut blue = 0;
+        let mut white = 0;
+        for y in 210..270 {
+            for x in 210..270 {
+                match nibble_at(&bin, x, y) {
+                    5 => blue += 1,
+                    1 => white += 1,
+                    other => panic!("unexpected nibble {other} inside light blue fill"),
+                }
+            }
+        }
+        assert!(
+            blue > 800 && white > 400,
+            "light blue should dither to blue+white, blue={blue} white={white}"
         );
     }
 }
