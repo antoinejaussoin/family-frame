@@ -115,7 +115,7 @@ impl FrameCache {
         let html = self.templates.render_dashboard(dash)?;
         let mut bytes = dash.content_bytes();
         bytes.extend_from_slice(html.as_bytes());
-        bytes.extend_from_slice(crate::assets::DASHBOARD_CSS.as_bytes());
+        bytes.extend_from_slice(&crate::assets::layout_bytes());
         Ok(sha256_hex(&bytes))
     }
 

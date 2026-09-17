@@ -75,7 +75,7 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         .route("/dashboard", get(dashboard))
         // Old bookmarks; the SPA lives at /debug.
         .route("/debug/frames/{checksum}", get(debug_frame))
-        .route("/static/{name}", get(static_asset))
+        .route("/static/{*path}", get(static_asset))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
@@ -110,9 +110,13 @@ async fn spa_missing() -> impl IntoResponse {
     )
 }
 
-async fn static_asset(Path(name): Path<String>) -> Response {
-    let (body, content_type) = match name.as_str() {
-        "dashboard.css" => (assets::DASHBOARD_CSS, "text/css; charset=utf-8"),
+async fn static_asset(Path(path): Path<String>) -> Response {
+    let (body, content_type): (&[u8], &str) = match path.as_str() {
+        "dashboard.css" => (assets::DASHBOARD_CSS.as_bytes(), "text/css; charset=utf-8"),
+        "fonts/AtkinsonHyperlegible-Regular.woff2" => (assets::FONT_REGULAR_WOFF2, "font/woff2"),
+        "fonts/AtkinsonHyperlegible-Bold.woff2" => (assets::FONT_BOLD_WOFF2, "font/woff2"),
+        "fonts/AtkinsonHyperlegible-Regular.ttf" => (assets::FONT_REGULAR_TTF, "font/ttf"),
+        "fonts/AtkinsonHyperlegible-Bold.ttf" => (assets::FONT_BOLD_TTF, "font/ttf"),
         _ => {
             return (StatusCode::NOT_FOUND, "not found\n").into_response();
         }

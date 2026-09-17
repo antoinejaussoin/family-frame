@@ -1,7 +1,30 @@
 /* Spectra 6 only: black, white, yellow, red, blue, green.
    This file is the layout source of truth. /dashboard is screenshotted
    at 1600×1200. Do not add clocks or checksums — they would force a
-   panel refresh every hour. */
+   panel refresh every hour.
+
+   Typeface is Atkinson Hyperlegible (Braille Institute, SIL OFL 1.1)
+   bundled in static/fonts/. Headless Chrome on macOS ships Verdana;
+   Debian does not, so a system stack would rasterize two different
+   panels. font-display:block so the screenshot does not catch a fallback. */
+
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: block;
+  src: url("/static/fonts/AtkinsonHyperlegible-Regular.woff2") format("woff2"),
+    url("/static/fonts/AtkinsonHyperlegible-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: block;
+  src: url("/static/fonts/AtkinsonHyperlegible-Bold.woff2") format("woff2"),
+    url("/static/fonts/AtkinsonHyperlegible-Bold.ttf") format("truetype");
+}
 
 :root {
   --black: #000000;
@@ -21,8 +44,9 @@ body {
   overflow: hidden;
   background: var(--white);
   color: var(--black);
-  font-family: Verdana, Geneva, sans-serif;
+  font-family: "Atkinson Hyperlegible", sans-serif;
   font-kerning: none;
+  font-synthesis: none;
   font-smooth: never;
   -webkit-font-smoothing: none;
   letter-spacing: 0;
