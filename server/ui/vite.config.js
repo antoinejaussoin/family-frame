@@ -1,21 +1,51 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 
-export default defineConfig({
-  plugins: [tailwindcss(), svelte()],
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': 'http://127.0.0.1:8765',
-      '/preview': 'http://127.0.0.1:8765',
-      '/debug': 'http://127.0.0.1:8765',
-      '/static': 'http://127.0.0.1:8765',
-      '/dashboard': 'http://127.0.0.1:8765',
+/** Paths owned by the Rust server. Leave `/` to Vite so HMR keeps working. */
+const BACKEND_PATHS = [
+  '/api',
+  '/preview',
+  '/debug',
+  '/static',
+  '/dashboard',
+  '/health',
+]
+
+function backendProxy(target) {
+  const toBackend = {
+    target,
+    changeOrigin: true,
+    // First dashboard raster waits on Chrome; photo uploads can be large.
+    timeout: 300_000,
+    proxyTimeout: 300_000,
+  }
+  return Object.fromEntries(BACKEND_PATHS.map((path) => [path, { ...toBackend }]))
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const target = env.EINK_API || process.env.EINK_API || 'http://127.0.0.1:8765'
+  const proxy = backendProxy(target)
+
+  return {
+    plugins: [tailwindcss(), svelte()],
+    clearScreen: false,
+    server: {
+      port: 5173,
+      strictPort: true,
+      host: true,
+      proxy,
     },
-  },
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true,
-  },
+    preview: {
+      port: 4173,
+      strictPort: true,
+      host: true,
+      proxy,
+    },
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
+    },
+  }
 })

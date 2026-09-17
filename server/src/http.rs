@@ -69,11 +69,6 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
 
     let mut app = Router::new()
         .nest("/api", api)
-        // Compatibility aliases for unflashed Picos / old bookmarks.
-        .route("/frame.bin", get(frame_bin_get).post(frame_bin_post))
-        .route("/frame.png", get(frame_png))
-        .route("/frame-dither.png", get(frame_dither))
-        .route("/frame.json", get(frame_json))
         .route("/health", get(health))
         .route("/preview", get(preview))
         .route("/dashboard", get(dashboard))
@@ -100,8 +95,12 @@ async fn spa_missing() -> impl IntoResponse {
 <html><head><meta charset="utf-8"><title>Family Frame</title></head>
 <body style="font-family:system-ui;max-width:40rem;margin:2rem auto;padding:0 1rem">
   <h1>Family Frame</h1>
-  <p>The family UI is not built yet. Run <code>npm ci &amp;&amp; npm run build</code> in
-  <code>server/ui</code>, or open the layout simulator.</p>
+  <p>The family UI is not built yet.</p>
+  <p>For hot reload, in another terminal: <code>cd ui &amp;&amp; npm run dev</code>
+  then open <a href="http://127.0.0.1:5173/">http://127.0.0.1:5173/</a>
+  (Vite proxies <code>/api</code> here).</p>
+  <p>Or run <code>npm ci &amp;&amp; npm run build</code> in <code>server/ui</code>
+  and refresh this page.</p>
   <p><a href="/preview">Layout simulator</a> · <a href="/debug">Debug</a></p>
 </body></html>"#,
     )

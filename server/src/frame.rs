@@ -379,7 +379,7 @@ impl FrameCache {
             }
             guard
                 .clone()
-                .context("Chrome/Chromium not found — install it to rasterise /frame.bin, or use /preview to edit the HTML layout")?
+                .context("Chrome/Chromium not found — install it to rasterise /api/frame.bin, or use /preview to edit the HTML layout")?
         };
         let url = format!("http://127.0.0.1:{}/dashboard?raster=1", self.listen_port);
         let png = screenshot::capture_dashboard(&chrome, &url).await?;

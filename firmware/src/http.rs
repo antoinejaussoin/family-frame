@@ -1,4 +1,4 @@
-//! Streaming HTTP/1.1 POST for `/frame.bin` into PSRAM.
+//! Streaming HTTP/1.1 POST for `/api/frame.bin` into PSRAM.
 
 use embassy_net::dns::DnsQueryType;
 use embassy_net::tcp::TcpSocket;

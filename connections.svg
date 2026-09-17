@@ -140,8 +140,8 @@
     <rect class="pin-bad" x="24" y="80" width="22" height="16"/>
     <text class="mono" x="56" y="93">Do not use Pico VBUS (5 V USB) as the battery feed.</text>
 
-    <text class="text" x="24" y="136">Pico hourly:  GET http://&lt;server&gt;:8765/frame.bin?checksum=&lt;etag&gt;</text>
-    <text class="text" x="24" y="164">304 Not Modified  -&gt;  skip Inky refresh.   200  -&gt;  960000-byte Spectra 6 frame.</text>
+    <text class="text" x="24" y="136">Pico hourly:  POST http://&lt;server&gt;:8765/api/frame.bin  (If-None-Match checksum)</text>
+    <text class="text" x="24" y="164">204 No Content  -&gt;  skip Inky refresh.   200  -&gt;  960000-byte Spectra 6 frame.</text>
     <text class="text" x="24" y="192">Layout: HTML/CSS on the server. Chromium screenshots /dashboard at 1600 x 1200.</text>
     <text class="text" x="24" y="220">iCloud Family calendar is CalDAV on the server. The Pico never sees Apple passwords.</text>
     <text class="text" x="24" y="256">2.4 GHz Wi-Fi only. Shut the CYW43439 before deep sleep or you will not get weeks.</text>

@@ -1,14 +1,23 @@
-.PHONY: serve watch test docker-build docker-run docker ui
+.PHONY: all serve watch test docker-build docker-run docker ui ui-dev
 
 IMAGE := antoinejaussoin/family-frame-server
 
 all: ui
 	cargo run
 
+# API only. Pair with `make ui-dev` for Svelte HMR on :5173.
+serve:
+	cargo run
+
 ui:
 	cd ui && npm ci && npm run build
 
+# Family SPA with hot reload. Proxies /api (and /preview, /debug) to :8765.
+ui-dev:
+	cd ui && npm run dev
+
 # Local only: rebuild and restart when source / templates change.
+# Does not watch ui/ — use `make ui-dev` for the family SPA.
 watch:
 	cargo run -- --watch
 

@@ -9,7 +9,7 @@
 //! you unplug. Hosts send a SOF every 1 ms; that count freezing is the
 //! disconnect signal.
 //!
-//! Between `/frame.bin` polls the switched-core is powered down (AON LPOSC
+//! Between `/api/frame.bin` polls the switched-core is powered down (AON LPOSC
 //! alarm wake) unless a USB host is sending SOFs. POWMAN resets the CPUs, so
 //! `main` runs again. cyw43 cannot be restarted in-place; reboot is the
 //! clean way to kill the radio. A USB host keeps the core up so CDC serial

@@ -27,22 +27,39 @@ This is being worked on, not working yet.
 
 ## Family UI
 
-Open <http://127.0.0.1:8765/> on a phone or laptop (trusted LAN — no auth).
-
-From there you can:
+Open the family app on a phone or laptop (trusted LAN — no auth). From there you can:
 
 - Switch between **dashboard** and **picture** mode
 - Edit the poll interval or wake-up times **per mode** (both are kept; the UI stores which one is selected)
 - Upload landscape photos (stored under `pictures/` next to the config)
 - Choose which photos to rotate each wake, and preview the dithered Spectra 6 look
 
-Build the SPA once (Docker does this automatically):
+### Iterate with hot reload
+
+Run the API and the Svelte app as two processes. Vite proxies `/api` (and
+`/preview`, `/debug`, `/dashboard`) to the server so you get HMR without
+`npm run build`.
+
+```bash
+# terminal 1 — Rust API
+cd server && cargo run -- --watch   # or: make watch
+
+# terminal 2 — family UI
+cd server/ui && npm ci && npm run dev   # or: make ui-dev
+```
+
+Open <http://127.0.0.1:5173/>. If the server is not on `:8765`, set `EINK_API`
+(for example `EINK_API=http://127.0.0.1:9000 npm run dev`).
+
+### Serve the built SPA from the API
+
+Docker does this automatically. Locally:
 
 ```bash
 cd server/ui && npm ci && npm run build
 ```
 
-Local Vite dev with API proxy: `cd server/ui && npm run dev` (proxies to `:8765`).
+Then <http://127.0.0.1:8765/> is the family UI.
 
 ## Layout workflow
 
@@ -66,22 +83,26 @@ Chrome or Chromium is required only for dashboard `/api/frame.bin` /
 ```bash
 cd server
 cp config.example.toml config.toml   # optional; demo data is the default
-cd ui && npm ci && npm run build && cd ..
-cargo run
+cargo run                            # or: make serve
 ```
 
-While iterating locally, `--watch` rebuilds and restarts on source, template,
-static, or fixture changes (not `config.toml` — the family UI edits that live).
-Do not use `--watch` in production (Docker `CMD` is the binary with no flags).
+The family SPA is optional for the API. Without `ui/dist`, `/` explains how to
+start Vite; `/preview`, `/debug`, and `/api/*` still work. `make` (no target)
+builds the SPA first, then runs the server.
+
+While iterating on Rust, templates, or dashboard CSS, `--watch` rebuilds and
+restarts (not `config.toml` — the family UI edits that live; not `ui/` — use
+Vite for that). Do not use `--watch` in production (Docker `CMD` is the binary
+with no flags).
 
 ```bash
 cargo run -- --watch
 # or: make watch
 ```
 
-Then open <http://127.0.0.1:8765/>, the layout simulator at
-<http://127.0.0.1:8765/preview>, or the debug page at
-<http://127.0.0.1:8765/debug>.
+Then open <http://127.0.0.1:5173/> (Vite) or <http://127.0.0.1:8765/> (built
+SPA), the layout simulator at <http://127.0.0.1:8765/preview>, or the debug
+page at <http://127.0.0.1:8765/debug>.
 
 ### Docker
 

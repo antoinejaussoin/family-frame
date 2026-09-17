@@ -1,3 +1,5 @@
+/** Relative URLs: Vite proxies these to the Rust server; production serves both on :8765. */
+
 async function json(res) {
   if (!res.ok) {
     const text = await res.text()

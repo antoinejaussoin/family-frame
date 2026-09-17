@@ -1,4 +1,4 @@
-//! HTTP/1.1 response framing for `/frame.bin` (status, checksum, sleep, body).
+//! HTTP/1.1 response framing for `/api/frame.bin` (status, checksum, sleep, body).
 
 use heapless::String;
 

@@ -88,7 +88,7 @@ pub fn telemetry_form(mv: u32, pct: u16, usb: bool, wake: &str) -> String<64> {
     body
 }
 
-/// Raw HTTP/1.1 POST for `/frame.bin` with telemetry in the body.
+/// Raw HTTP/1.1 POST for `/api/frame.bin` with telemetry in the body.
 pub fn post_frame_request<const N: usize>(
     host: &str,
     port: u16,

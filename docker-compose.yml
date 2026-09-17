@@ -6,7 +6,7 @@
 #
 # Family UI: http://<host>:8765/
 # Dev: /preview  /debug
-# Pico: POST /api/frame.bin  (legacy /frame.bin still works)
+# Pico: POST /api/frame.bin
 
 name: family-frame
 

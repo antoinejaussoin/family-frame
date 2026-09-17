@@ -21,9 +21,9 @@ pixels still return **204** so the glass is not refreshed for nothing.
 Buttons **C** and **D** share GP25 / GP24 with the RM2 radio and cannot
 be used.
 
-Browsers still `GET /api/frame.bin` (or the legacy `/frame.bin` alias) to
-download the packed file; those hits are not logged. Only POSTs from the
-Pico (or [`pico-sim`](../pico-sim/)) show up on `/debug`.
+Browsers still `GET /api/frame.bin` to download the packed file; those
+hits are not logged. Only POSTs from the Pico (or [`pico-sim`](../pico-sim/))
+show up on `/debug`.
 
 The implementation lives in this directory. See [`README.md`](README.md).
 
@@ -89,9 +89,7 @@ the panel still refreshes on the intended wall-clock cadence.
 | `GET /dashboard` | 1600×1200 HTML the server screenshots |
 | `GET /preview` | Layout workbench |
 | `GET /debug` | Battery graph and Pico request log |
-
-Legacy aliases: `/frame.bin`, `/frame.png`, `/frame-dither.png`, `/frame.json`,
-`/health` still work for older firmware and bookmarks.
+| `GET /health` | `{ "ok": true }` (also at `/api/health`) |
 
 ## Packed `.bin` (must match Tesserae / el133-pico-driver)
 

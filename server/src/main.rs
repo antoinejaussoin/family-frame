@@ -66,7 +66,10 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
     if ui.as_ref().is_some_and(|d| d.join("index.html").exists()) {
         info!("family UI         http://{addr}/");
     } else {
-        warn!("family UI not built — open /preview until server/ui is built");
+        warn!("family UI not built — npm run build in ui/, or npm run dev on :5173");
+    }
+    if cfg!(debug_assertions) {
+        info!("family UI (HMR)   http://127.0.0.1:5173/  — cd ui && npm run dev");
     }
     info!("layout simulator  http://{addr}/preview");
     info!("debug dashboard   http://{addr}/debug");
