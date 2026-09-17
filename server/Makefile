@@ -1,6 +1,7 @@
 .PHONY: all serve watch test docker-build docker-run docker ui ui-dev
 
 IMAGE := antoinejaussoin/family-frame-server
+VERSION := $(shell tr -d '[:space:]' < ../VERSION)
 
 all: ui
 	cargo run
@@ -26,7 +27,9 @@ test:
 
 docker-build:
 	docker build \
+		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE):local \
+		-t $(IMAGE):$(VERSION) \
 		-t $(IMAGE):latest \
 		.
 

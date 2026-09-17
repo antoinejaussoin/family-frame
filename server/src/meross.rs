@@ -651,7 +651,7 @@ async fn cloud_post(url: &str, params: Value, creds: Option<&CloudCreds>) -> Res
         .header("AppType", "MerossIOT")
         .header("AppVersion", "0.4.10.4")
         .header("AppLanguage", "EN")
-        .header("User-Agent", "eink-frame/0.1.0")
+        .header("User-Agent", format!("eink-frame/{}", crate::VERSION))
         .json(&json!({
             "params": encoded,
             "sign": sign,

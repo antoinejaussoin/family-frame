@@ -617,6 +617,24 @@ impl Config {
         crate::schedule::compensate_sleep_secs(self.next_poll_secs(now), self.pico_drift)
     }
 
+    /// Like [`Self::pico_sleep_secs`], but a timer poll within 10 minutes of
+    /// the planned wake counts as that wake.
+    pub fn pico_sleep_secs_for_timer(
+        &self,
+        now: DateTime<Utc>,
+        intended_wake: Option<DateTime<Utc>>,
+    ) -> u64 {
+        let (interval, wakes) = self.schedule(self.effective_mode());
+        let wall = crate::schedule::seconds_until_next_poll_for_timer(
+            now,
+            self.tz(),
+            interval,
+            wakes,
+            intended_wake,
+        );
+        crate::schedule::compensate_sleep_secs(wall, self.pico_drift)
+    }
+
     /// Blend a timer-poll measurement into [`Self::pico_drift`] and persist it.
     /// Returns whether the stored value changed.
     pub fn record_pico_drift(&mut self, measured: f64) -> Result<bool> {
@@ -935,6 +953,30 @@ rotate = []
             .unwrap()
             .with_timezone(&Utc);
         assert_eq!(cfg.pico_sleep_secs(now), 3 * 3600);
+    }
+
+    #[test]
+    fn pico_timer_sleep_skips_a_slot_the_frame_already_hit_early() {
+        use chrono::TimeZone;
+        let cfg: Config = toml::from_str(
+            r#"
+            timezone = "Europe/London"
+            poll_interval_secs = 3600
+            wake-up = ["06:00", "07:00"]
+            "#,
+        )
+        .unwrap();
+        let now = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 16, 5, 55, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        let intended = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 16, 6, 0, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(cfg.pico_sleep_secs(now), 5 * 60);
+        assert_eq!(cfg.pico_sleep_secs_for_timer(now, Some(intended)), 65 * 60);
+        assert_eq!(cfg.pico_sleep_secs_for_timer(now, None), 65 * 60);
     }
 
     #[test]

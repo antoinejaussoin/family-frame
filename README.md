@@ -122,7 +122,22 @@ Then <http://<host>:8765/>, <http://<host>:8765/preview>, or
 <http://<host>:8765/debug>. Meross login, BBC weather caches, uploaded
 photos, and Pico poll history stay in `data/` next to the config.
 
-Local one-off: `cd server && make docker-build && make docker-run`. Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`, same as compta).
+Local one-off: `cd server && make docker-build && make docker-run`. Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`, same as compta). Images are tagged `latest` and with the contents of [`VERSION`](VERSION).
+
+## Versioning
+
+The version is a single line in [`VERSION`](VERSION). That is the only file to edit when you cut a release — Cargo.toml, package.json, and Docker labels are filled in at **build time**, so there is no extra commit that rewrites manifests.
+
+1. Change `VERSION` (for example `0.1.0` → `0.2.0`) in a PR.
+2. Merge to `main`.
+3. CI builds `antoinejaussoin/family-frame-server:0.2.0` and `:latest`, and creates git tag `v0.2.0` if it does not already exist.
+
+Locally, `eink-frame --version`, `GET /health`, and the Debug page all read the same value (`make docker-build` passes it as a Docker build-arg).
+
+```bash
+# edit VERSION, then:
+cd server && cargo run -- --version
+```
 
 ## Pretend to be the Pico
 
@@ -209,7 +224,9 @@ USB-serial `wifi` / `psk` / `server` / `save` (same as the laser-tag
 nodes), then `POST /api/frame.bin` and paint on 200. Sleep length comes back
 on `X-Sleep-Seconds` from that mode’s `poll_interval_secs` or `wake-up` in
 `config.toml` (shortened by a measured `pico_drift` so the low-power
-oscillator still hits the intended wall-clock time). `make build` in
+oscillator still hits the intended wall-clock time). A timer poll within
+10 minutes before that planned wake is treated as the wake itself, so the
+Pico is not sent back for a few seconds or minutes. `make build` in
 `firmware/` and drop `family-frame.uf2`
 on the `RP2350` drive. Without the board, [`pico-sim`](pico-sim/) speaks
 the same loop.

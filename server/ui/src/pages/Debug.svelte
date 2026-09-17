@@ -4,6 +4,7 @@
   import PageNav from '../lib/PageNav.svelte'
   import { getDebug } from '../lib/api.js'
 
+  const builtVersion = import.meta.env.APP_VERSION
   let page = $state(null)
   let error = $state('')
   let loading = $state(true)
@@ -52,6 +53,9 @@
         >
           Debug
         </h1>
+        {#if page?.version || builtVersion}
+          <p class="mt-1 text-sm font-semibold text-muted">v{page?.version || builtVersion}</p>
+        {/if}
       </div>
     </div>
     <PageNav />

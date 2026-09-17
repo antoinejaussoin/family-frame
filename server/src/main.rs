@@ -16,7 +16,11 @@ use tracing::{info, warn};
 mod watch;
 
 #[derive(Parser, Debug)]
-#[command(name = "eink-frame", about = "Family e-ink frame server")]
+#[command(
+    name = "eink-frame",
+    version = env!("FAMILY_FRAME_VERSION"),
+    about = "Family e-ink frame server"
+)]
 struct Cli {
     #[arg(long)]
     config: Option<PathBuf>,
@@ -66,7 +70,7 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
     let app = http::router(AppState { cache, debug }, ui.clone());
 
     let listener = TcpListener::bind(addr).await?;
-    info!(%addr, "eink-frame listening");
+    info!(version = eink_frame::VERSION, %addr, "eink-frame listening");
     if ui.as_ref().is_some_and(|d| d.join("index.html").exists()) {
         info!("family UI         http://{addr}/");
     } else {
@@ -106,5 +110,11 @@ mod tests {
     fn cli_parses_watch() {
         let cli = Cli::try_parse_from(["eink-frame", "--watch"]).unwrap();
         assert!(cli.watch);
+    }
+
+    #[test]
+    fn cli_version_flag_uses_repo_version() {
+        let err = Cli::try_parse_from(["eink-frame", "--version"]).unwrap_err();
+        assert!(err.to_string().contains(eink_frame::VERSION));
     }
 }

@@ -17,6 +17,7 @@ use crate::board::Irqs;
 use crate::power;
 use crate::settings::{self, SharedFlash};
 use crate::wifi;
+use family_frame_fw::VERSION;
 
 type UsbDriver = Driver<'static, USB>;
 
@@ -65,11 +66,12 @@ async fn run_cli(mut class: CdcAcmClass<'static, UsbDriver>, flash: &'static Sha
         class.wait_connection().await;
         let mut line = String::<160>::new();
         let mut buf = [0u8; 64];
-        let _ = write_text(
-            &mut class,
-            "\r\nfamily-frame (Pico LiPo 2 XL W). Type help.\r\n> ",
-        )
-        .await;
+        let mut hello = String::<96>::new();
+        let _ = write!(
+            hello,
+            "\r\nfamily-frame {VERSION} (Pico LiPo 2 XL W). Type help.\r\n> ",
+        );
+        let _ = write_text(&mut class, hello.as_str()).await;
         loop {
             match class.read_packet(&mut buf).await {
                 Ok(n) => {

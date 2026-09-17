@@ -74,6 +74,14 @@ awake) the server compares wall-clock elapsed time to the previous
 (capped at ±5% — larger gaps are ignored), and shortens later sleeps so
 the panel still refreshes on the intended wall-clock cadence.
 
+Compensation can overshoot, so a timer poll may arrive a little **early**.
+If that POST is within 10 minutes before the planned wake (the previous
+`X-Sleep-Seconds` target, or the next `wake-up` clock time when there is
+no prior command), the server treats it as that wake and sleeps until the
+following slot — it does not send the Pico back for a few seconds or
+minutes just to hit the clock. Button and cold boots still wait for the
+upcoming time.
+
 ## Endpoints
 
 | URL | Body |
@@ -91,7 +99,7 @@ the panel still refreshes on the intended wall-clock cadence.
 | `GET /preview` | Layout workbench (same SPA) |
 | `GET /debug` | Battery graph and Pico request log (same SPA) |
 | `GET /dashboard` | 1600×1200 HTML the server screenshots |
-| `GET /health` | `{ "ok": true }` (also at `/api/health`) |
+| `GET /health` | `{ "ok": true, "version": "<VERSION>" }` (also at `/api/health`) |
 
 ## Packed `.bin` (must match Tesserae / el133-pico-driver)
 

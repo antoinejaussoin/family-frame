@@ -45,6 +45,7 @@ pub enum BatteryEta {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DebugPage {
+    pub version: &'static str,
     pub has_polls: bool,
     pub last_pct: u16,
     pub last_mv: u32,
@@ -159,6 +160,7 @@ pub fn page_from_polls_with_drift(
     let now = Utc::now();
     if polls.is_empty() {
         return DebugPage {
+            version: crate::VERSION,
             has_polls: false,
             last_pct: 0,
             last_mv: 0,
@@ -187,6 +189,7 @@ pub fn page_from_polls_with_drift(
     let (next_refresh, next_refresh_rel) = next_refresh_copy(last, now, tz, pico_drift);
 
     DebugPage {
+        version: crate::VERSION,
         has_polls: true,
         last_pct: last.pct,
         last_mv: last.mv,
@@ -706,6 +709,7 @@ mod tests {
     #[test]
     fn empty_page_has_no_graph() {
         let page = page_from_polls(&[], chrono_tz::Europe::London, |_| false);
+        assert_eq!(page.version, crate::VERSION);
         assert!(!page.has_polls);
         assert!(page.graph_svg.is_empty());
         assert!(page.eta_text.contains("No Pico"));

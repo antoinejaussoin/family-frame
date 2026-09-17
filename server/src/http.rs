@@ -440,7 +440,7 @@ async fn frame_bin_post(
                 checksum_matches(&frame, Some(offered.as_str()).filter(|s| !s.is_empty()));
             let status = if unchanged { 204 } else { 200 };
             update_pico_drift(&state, &tel).await;
-            let sleep_s = pico_sleep_secs(&state).await;
+            let sleep_s = pico_sleep_secs_for_wake(&state, &tel.wake).await;
             let poll = Poll {
                 t: Utc::now(),
                 status,
@@ -517,7 +517,7 @@ async fn frame_json(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn health() -> impl IntoResponse {
-    axum::Json(serde_json::json!({ "ok": true }))
+    axum::Json(serde_json::json!({ "ok": true, "version": crate::VERSION }))
 }
 
 fn no_store_html(html: String) -> Response {
@@ -540,6 +540,18 @@ async fn pico_sleep_secs(state: &AppState) -> u64 {
         .snapshot_config()
         .await
         .pico_sleep_secs(Utc::now())
+}
+
+async fn pico_sleep_secs_for_wake(state: &AppState, wake: &str) -> u64 {
+    if !crate::schedule::is_timer_wake(wake) {
+        return pico_sleep_secs(state).await;
+    }
+    let cfg = state.cache.snapshot_config().await;
+    let polls = state.debug.snapshot().await;
+    let intended = polls
+        .last()
+        .and_then(|p| crate::schedule::intended_wake_at(p.t, p.sleep_s, cfg.pico_drift));
+    cfg.pico_sleep_secs_for_timer(Utc::now(), intended)
 }
 
 async fn update_pico_drift(state: &AppState, tel: &PicoTelemetry) {

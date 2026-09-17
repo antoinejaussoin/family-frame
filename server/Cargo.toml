@@ -1,6 +1,7 @@
 [package]
 name = "eink-frame"
-version = "0.1.0"
+# Placeholder: the real version is the repo-root VERSION file, via build.rs.
+version = "0.0.0"
 edition = "2021"
 publish = false
 description = "Family wall-frame server: dashboard + picture mode, family UI, Spectra 6 for Pico LiPo 2 XL W"

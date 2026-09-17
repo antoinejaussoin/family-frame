@@ -1,23 +1,11 @@
-use std::env;
-use std::fs::File;
-use std::io::Write;
-use std::path::PathBuf;
+//! Stamp `FAMILY_FRAME_VERSION` from the repo-root `VERSION` file (or the
+//! `FAMILY_FRAME_VERSION` env, which Docker/CI set). Cargo.toml stays a
+//! placeholder so a bump is one file, not a commit that rewrites manifests.
 
 fn main() {
     inject_family_frame_version();
-    let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    File::create(out.join("memory.x"))
-        .unwrap()
-        .write_all(include_bytes!("memory.x"))
-        .unwrap();
-    println!("cargo:rustc-link-search={}", out.display());
-    println!("cargo:rerun-if-changed=memory.x");
-    println!("cargo:rustc-link-arg-bins=--nmagic");
-    println!("cargo:rustc-link-arg-bins=-Tlink.x");
 }
 
-/// Stamp `FAMILY_FRAME_VERSION` from the repo-root `VERSION` file (or the
-/// `FAMILY_FRAME_VERSION` env). Cargo.toml stays a placeholder.
 fn inject_family_frame_version() {
     println!("cargo:rerun-if-env-changed=FAMILY_FRAME_VERSION");
     let version = std::env::var("FAMILY_FRAME_VERSION")
@@ -31,12 +19,10 @@ fn inject_family_frame_version() {
         "VERSION must be a single line of printable text"
     );
     println!("cargo:rustc-env=FAMILY_FRAME_VERSION={version}");
-    // picotool `rp_cargo_version!()` reads this at rustc time.
-    println!("cargo:rustc-env=CARGO_PKG_VERSION={version}");
 }
 
 fn read_repo_version() -> Option<String> {
-    let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").ok()?);
+    let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").ok()?);
     let path = manifest.join("../VERSION");
     println!("cargo:rerun-if-changed={}", path.display());
     let raw = std::fs::read_to_string(path).ok()?;

@@ -8,6 +8,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   server:
     runs-on: ubuntu-latest
@@ -15,7 +18,13 @@ jobs:
       - uses: actions/checkout@v7
       - name: Read VERSION
         id: package
-        run: echo "content=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$'; then
+            echo "VERSION must be semver (got '$VERSION')" >&2
+            exit 1
+          fi
+          echo "content=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Echo VERSION
         run: echo ${{ steps.package.outputs.content }}
       - name: Setup BuildX
@@ -32,9 +41,21 @@ jobs:
           builder: ${{ steps.buildx.outputs.name }}
           file: server/Dockerfile
           context: server
+          build-args: |
+            VERSION=${{ steps.package.outputs.content }}
           tags: antoinejaussoin/family-frame-server:latest,antoinejaussoin/family-frame-server:${{ steps.package.outputs.content }}
           platforms: linux/amd64
           push: true
           provenance: false
           cache-from: type=gha,scope=family-frame-server
           cache-to: type=gha,mode=max,scope=family-frame-server
+      - name: Tag v${{ steps.package.outputs.content }}
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.package.outputs.content }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists"
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi

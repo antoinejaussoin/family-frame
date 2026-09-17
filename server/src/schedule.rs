@@ -7,6 +7,10 @@ use chrono_tz::Tz;
 /// Bigger gaps usually mean a button wake, USB wait, or a missed poll.
 pub const MAX_PICO_DRIFT: f64 = 0.05;
 
+/// A `wake=timer` poll this close before a planned wake still counts as that
+/// wake, so the Pico is not sent back to sleep for a few seconds or minutes.
+pub const TIMER_EARLY_TOLERANCE: Duration = Duration::minutes(10);
+
 /// Seconds until the Pico should poll again.
 ///
 /// An empty `wake_ups` list uses `interval_secs`. Otherwise the next clock
@@ -18,8 +22,82 @@ pub fn seconds_until_next_poll(
     wake_ups: &[NaiveTime],
 ) -> u64 {
     let interval = interval_secs.max(1);
+    match next_wake_after(now, tz, wake_ups) {
+        Some(dt) => {
+            let secs = dt
+                .signed_duration_since(now.with_timezone(&tz))
+                .num_seconds();
+            (secs.max(1)) as u64
+        }
+        None => interval,
+    }
+}
+
+/// Wall-clock seconds until the next poll after a `wake=timer` request.
+///
+/// If the Pico arrived a little early for the previously commanded wake (or,
+/// with no prior command, for the next `wake-up` clock time), this poll *is*
+/// that wake: sleep until the slot after it, not until the remaining seconds.
+pub fn seconds_until_next_poll_for_timer(
+    now: DateTime<Utc>,
+    tz: Tz,
+    interval_secs: u64,
+    wake_ups: &[NaiveTime],
+    intended_wake: Option<DateTime<Utc>>,
+) -> u64 {
+    let at = timer_schedule_instant(now, tz, wake_ups, intended_wake);
+    let rest = seconds_until_next_poll(at, tz, interval_secs, wake_ups);
+    let early = at.signed_duration_since(now).num_seconds().max(0) as u64;
+    rest.saturating_add(early)
+}
+
+/// Instant to treat as "now" when a timer poll landed early for a planned wake.
+pub fn timer_schedule_instant(
+    now: DateTime<Utc>,
+    tz: Tz,
+    wake_ups: &[NaiveTime],
+    intended_wake: Option<DateTime<Utc>>,
+) -> DateTime<Utc> {
+    if let Some(intended) = intended_wake {
+        if is_early_timer_hit(now, intended) {
+            return intended;
+        }
+        // On time, a bit late, or more than 10 minutes early for that command:
+        // keep `now`. A stale command (hours ago) falls through to the clock list.
+        if now.signed_duration_since(intended) <= TIMER_EARLY_TOLERANCE {
+            return now;
+        }
+    }
+    if let Some(next) = next_wake_after(now, tz, wake_ups) {
+        let next_utc = next.with_timezone(&Utc);
+        if is_early_timer_hit(now, next_utc) {
+            return next_utc;
+        }
+    }
+    now
+}
+
+/// Expected wall-clock wake from a previous `X-Sleep-Seconds` command.
+pub fn intended_wake_at(
+    prev_at: DateTime<Utc>,
+    prev_sleep_s: u64,
+    drift: f64,
+) -> Option<DateTime<Utc>> {
+    if prev_sleep_s == 0 {
+        return None;
+    }
+    let wall = wall_secs_from_commanded(prev_sleep_s, drift);
+    Some(prev_at + Duration::seconds(i64::try_from(wall).ok()?))
+}
+
+fn is_early_timer_hit(now: DateTime<Utc>, planned: DateTime<Utc>) -> bool {
+    let early = planned.signed_duration_since(now);
+    early > Duration::zero() && early <= TIMER_EARLY_TOLERANCE
+}
+
+fn next_wake_after(now: DateTime<Utc>, tz: Tz, wake_ups: &[NaiveTime]) -> Option<DateTime<Tz>> {
     if wake_ups.is_empty() {
-        return interval;
+        return None;
     }
 
     let mut times: Vec<NaiveTime> = wake_ups.to_vec();
@@ -36,12 +114,11 @@ pub fn seconds_until_next_poll(
                 continue;
             };
             if dt > now_local {
-                let secs = (dt - now_local).num_seconds();
-                return (secs.max(1)) as u64;
+                return Some(dt);
             }
         }
     }
-    interval
+    None
 }
 
 fn resolve_local(tz: Tz, date: NaiveDate, time: NaiveTime) -> Option<DateTime<Tz>> {
@@ -343,5 +420,109 @@ mod tests {
             drift_between_polls("cold", false, 3600, t0, "timer", false, t1),
             DriftSample::Skip
         );
+    }
+
+    #[test]
+    fn timer_five_minutes_early_counts_as_that_slot() {
+        let now = at_london(2026, 9, 16, 5, 55, 0);
+        let intended = at_london(2026, 9, 16, 6, 0, 0);
+        let wakes = [t("06:00"), t("07:00")];
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(intended)),
+            65 * 60
+        );
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, None),
+            65 * 60
+        );
+    }
+
+    #[test]
+    fn timer_ten_minutes_early_still_counts() {
+        let now = at_london(2026, 9, 16, 5, 50, 0);
+        let intended = at_london(2026, 9, 16, 6, 0, 0);
+        let wakes = [t("06:00"), t("07:00")];
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(intended)),
+            70 * 60
+        );
+    }
+
+    #[test]
+    fn timer_eleven_minutes_early_still_waits_for_the_slot() {
+        let now = at_london(2026, 9, 16, 5, 49, 0);
+        let intended = at_london(2026, 9, 16, 6, 0, 0);
+        let wakes = [t("06:00"), t("07:00")];
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(intended)),
+            11 * 60
+        );
+        assert_eq!(
+            seconds_until_next_poll(now, london(), 3600, &wakes),
+            11 * 60
+        );
+    }
+
+    #[test]
+    fn timer_on_time_does_not_skip_the_following_close_slot() {
+        // Arrived at 08:50 as commanded; 08:51 is the next real wake, not "early".
+        let now = at_london(2026, 9, 16, 8, 50, 0);
+        let intended = now;
+        let wakes = [t("08:50"), t("08:51"), t("08:55")];
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(intended)),
+            60
+        );
+    }
+
+    #[test]
+    fn timer_slightly_late_does_not_skip_the_next_close_slot() {
+        let now = at_london(2026, 9, 16, 8, 50, 30);
+        let intended = at_london(2026, 9, 16, 8, 50, 0);
+        let wakes = [t("08:50"), t("08:51"), t("08:55")];
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(intended)),
+            30
+        );
+    }
+
+    #[test]
+    fn timer_stale_command_still_snaps_to_the_next_clock_slot() {
+        let now = at_london(2026, 9, 16, 5, 55, 0);
+        let intended = at_london(2026, 9, 15, 23, 0, 0);
+        let wakes = [t("06:00"), t("07:00")];
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(intended)),
+            65 * 60
+        );
+    }
+
+    #[test]
+    fn timer_early_for_a_close_slot_uses_the_commanded_wake() {
+        let now = at_london(2026, 9, 16, 8, 50, 50);
+        let intended = at_london(2026, 9, 16, 8, 51, 0);
+        let wakes = [t("08:50"), t("08:51"), t("08:55")];
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(intended)),
+            4 * 60 + 10
+        );
+    }
+
+    #[test]
+    fn timer_interval_keeps_cadence_when_a_bit_early() {
+        let now = at_london(2026, 9, 16, 12, 58, 0);
+        let intended = at_london(2026, 9, 16, 13, 0, 0);
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &[], Some(intended)),
+            3600 + 2 * 60
+        );
+    }
+
+    #[test]
+    fn intended_wake_undoes_compensated_sleep() {
+        let prev = at_london(2026, 9, 16, 12, 0, 0);
+        let commanded = compensate_sleep_secs(3600, 0.03);
+        let intended = intended_wake_at(prev, commanded, 0.03).unwrap();
+        assert_eq!(intended, at_london(2026, 9, 16, 13, 0, 0));
     }
 }

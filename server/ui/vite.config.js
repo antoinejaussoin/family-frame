@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, loadEnv } from 'vite'
@@ -10,6 +13,17 @@ const BACKEND_PATHS = [
   '/health',
   '/debug/frames',
 ]
+
+function familyFrameVersion() {
+  const fromEnv = (process.env.FAMILY_FRAME_VERSION || '').trim()
+  if (fromEnv) return fromEnv
+  const here = dirname(fileURLToPath(import.meta.url))
+  try {
+    return readFileSync(resolve(here, '../../VERSION'), 'utf8').trim()
+  } catch {
+    return '0.0.0'
+  }
+}
 
 function backendProxy(target) {
   const toBackend = {
@@ -29,6 +43,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [tailwindcss(), svelte()],
+    define: {
+      'import.meta.env.APP_VERSION': JSON.stringify(familyFrameVersion()),
+    },
     clearScreen: false,
     server: {
       port: 5173,

@@ -1,10 +1,16 @@
 # Multi-stage: build the family SPA, then the Rust server.
+#
+# VERSION is passed as a build-arg (GitHub Actions / `make docker-build`) so
+# the image, `eink-frame --version`, and GET /health all match the repo-root
+# VERSION file without rewriting Cargo.toml.
 
 FROM node:22-bookworm AS ui
 WORKDIR /ui
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci
 COPY ui/ ./
+ARG VERSION=0.0.0
+ENV FAMILY_FRAME_VERSION=$VERSION
 RUN npm run build
 
 FROM rust:1-bookworm AS builder
@@ -24,10 +30,18 @@ RUN mkdir src \
 COPY src ./src
 COPY templates ./templates
 COPY static ./static
+COPY build.rs ./
+ARG VERSION=0.0.0
+ENV FAMILY_FRAME_VERSION=$VERSION
 RUN touch src/lib.rs src/main.rs \
     && cargo build --release --locked
 
 FROM debian:bookworm-slim
+
+ARG VERSION=0.0.0
+LABEL org.opencontainers.image.title="family-frame-server"
+LABEL org.opencontainers.image.version="$VERSION"
+LABEL org.opencontainers.image.source="https://github.com/antoinejaussoin/family-frame"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \

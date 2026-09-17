@@ -13,6 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Read VERSION
+        id: package
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$'; then
+            echo "VERSION must be semver (got '$VERSION')" >&2
+            exit 1
+          fi
+          echo "content=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Setup BuildX
         id: buildx
         uses: docker/setup-buildx-action@v4
@@ -22,6 +31,8 @@ jobs:
           builder: ${{ steps.buildx.outputs.name }}
           file: server/Dockerfile
           context: server
+          build-args: |
+            VERSION=${{ steps.package.outputs.content }}
           tags: family-frame-server:pr-${{ github.event.pull_request.number }}
           platforms: linux/amd64
           push: false

@@ -9,6 +9,7 @@ mod unpack;
 #[derive(Parser, Debug)]
 #[command(
     name = "pico-sim",
+    version = env!("FAMILY_FRAME_VERSION"),
     about = "Behave like the Pico: POST /api/frame.bin with battery diagnostics"
 )]
 struct Cli {
@@ -70,7 +71,7 @@ async fn main() -> Result<()> {
 async fn run(cli: Cli) -> Result<()> {
     let out_dir = cli.out.unwrap_or_else(default_out_dir);
     std::fs::create_dir_all(&out_dir).with_context(|| format!("creating {}", out_dir.display()))?;
-    info!(dir = %out_dir.display(), "writing timestamped frame PNGs");
+    info!(version = env!("FAMILY_FRAME_VERSION"), dir = %out_dir.display(), "writing timestamped frame PNGs");
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -206,6 +207,12 @@ fn save_frame(dir: &Path, checksum: &str, bin: &[u8]) -> Result<PathBuf> {
 mod tests {
     use super::*;
     use unpack::PANEL_BYTES;
+
+    #[test]
+    fn version_matches_repo_file() {
+        let file = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../VERSION"));
+        assert_eq!(env!("FAMILY_FRAME_VERSION"), file.trim());
+    }
 
     #[test]
     fn frame_url_has_no_checksum_query() {
