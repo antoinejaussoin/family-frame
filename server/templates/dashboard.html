@@ -104,69 +104,7 @@
           <rect x="34" y="6" width="16" height="14" rx="7" fill="#0000ff"/>
           <rect x="28" y="8" width="8" height="12" rx="2" fill="#ff0000"/>
         </symbol>
-        <symbol id="wx-sun" viewBox="0 0 64 64">
-            <g fill="#ffff00">
-              <circle cx="32" cy="32" r="13"/>
-              <rect x="29" y="3" width="6" height="13" rx="3"/>
-              <rect x="29" y="3" width="6" height="13" rx="3" transform="rotate(45 32 32)"/>
-              <rect x="29" y="3" width="6" height="13" rx="3" transform="rotate(90 32 32)"/>
-              <rect x="29" y="3" width="6" height="13" rx="3" transform="rotate(135 32 32)"/>
-              <rect x="29" y="3" width="6" height="13" rx="3" transform="rotate(180 32 32)"/>
-              <rect x="29" y="3" width="6" height="13" rx="3" transform="rotate(225 32 32)"/>
-              <rect x="29" y="3" width="6" height="13" rx="3" transform="rotate(270 32 32)"/>
-              <rect x="29" y="3" width="6" height="13" rx="3" transform="rotate(315 32 32)"/>
-            </g>
-          </symbol>
-          <symbol id="wx-moon" viewBox="0 0 64 64">
-            <path fill="#ffff00" d="M42 10a22 22 0 1 0 8 40 18 18 0 1 1-8-40z"/>
-          </symbol>
-          <symbol id="wx-partly-cloudy" viewBox="0 0 64 64">
-            <g fill="#ffff00">
-              <circle cx="24" cy="22" r="10"/>
-              <rect x="22" y="2" width="4" height="9" rx="2"/>
-              <rect x="22" y="2" width="4" height="9" rx="2" transform="rotate(45 24 22)"/>
-              <rect x="22" y="2" width="4" height="9" rx="2" transform="rotate(90 24 22)"/>
-              <rect x="22" y="2" width="4" height="9" rx="2" transform="rotate(315 24 22)"/>
-            </g>
-            <path fill="#000000" d="M22 50h28a11 11 0 0 0 1-22 13 13 0 0 0-24-5 11 11 0 0 0-5 27z"/>
-          </symbol>
-          <symbol id="wx-partly-cloudy-night" viewBox="0 0 64 64">
-            <path fill="#ffff00" d="M28 10a16 16 0 1 0 6 28 13 13 0 1 1-6-28z"/>
-            <path fill="#000000" d="M22 50h28a11 11 0 0 0 1-22 13 13 0 0 0-24-5 11 11 0 0 0-5 27z"/>
-          </symbol>
-          <symbol id="wx-cloud" viewBox="0 0 64 64">
-            <path fill="#000000" d="M16 48h34a13 13 0 0 0 1-26 16 16 0 0 0-30-5A13 13 0 0 0 16 48z"/>
-          </symbol>
-          <symbol id="wx-rain" viewBox="0 0 64 64">
-            <path fill="#000000" d="M14 36h34a12 12 0 0 0 1-24 15 15 0 0 0-28-5A12 12 0 0 0 14 36z"/>
-            <g fill="#0000ff">
-              <path d="M18 42l4 14a3.2 3.2 0 0 0 6.2 0L24 42z"/>
-              <path d="M30 42l4 14a3.2 3.2 0 0 0 6.2 0L36 42z"/>
-              <path d="M42 42l4 14a3.2 3.2 0 0 0 6.2 0L48 42z"/>
-            </g>
-          </symbol>
-          <symbol id="wx-storm" viewBox="0 0 64 64">
-            <path fill="#000000" d="M14 34h34a12 12 0 0 0 1-23 15 15 0 0 0-28-5A12 12 0 0 0 14 34z"/>
-            <polygon fill="#ffff00" points="34,32 20,50 29,50 24,64 44,42 34,42"/>
-          </symbol>
-          <symbol id="wx-snow" viewBox="0 0 64 64">
-            <path fill="#000000" d="M14 34h34a12 12 0 0 0 1-23 15 15 0 0 0-28-5A12 12 0 0 0 14 34z"/>
-            <g fill="#0000ff">
-              <circle cx="20" cy="46" r="4"/>
-              <circle cx="32" cy="54" r="4"/>
-              <circle cx="44" cy="46" r="4"/>
-            </g>
-          </symbol>
-          <symbol id="wx-fog" viewBox="0 0 64 64">
-            <g fill="#000000">
-              <rect x="8" y="16" width="48" height="8" rx="4"/>
-              <rect x="2" y="30" width="50" height="8" rx="4"/>
-              <rect x="12" y="44" width="48" height="8" rx="4"/>
-            </g>
-          </symbol>
-          <symbol id="wx-unknown" viewBox="0 0 64 64">
-            <rect x="16" y="29" width="32" height="6" rx="3" fill="#000000"/>
-          </symbol>
+        {% include "wx-sprite.html" %}
         </defs>
     </svg>
 

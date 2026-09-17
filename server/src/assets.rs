@@ -7,6 +7,9 @@
 //! Verdana cannot be redistributed, and Debian images do not ship it.
 
 pub const DASHBOARD_HTML: &str = include_str!("../templates/dashboard.html");
+pub const WX_SPRITE_HTML: &str = include_str!("../templates/wx-sprite.html");
+pub const WEATHER_ICONS_HTML: &str = include_str!("../templates/weather-icons.html");
+pub const WEATHER_ICONS_VIEW_HTML: &str = include_str!("../templates/weather-icons-view.html");
 pub const DASHBOARD_CSS: &str = include_str!("../static/dashboard.css");
 
 pub const FONT_REGULAR_WOFF2: &[u8] =

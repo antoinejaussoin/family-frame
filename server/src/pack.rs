@@ -85,16 +85,66 @@ fn dist_to_segment2(p: [i32; 3], a: [u8; 3], b: [u8; 3]) -> i32 {
     d0 * d0 + d1 * d1 + d2 * d2
 }
 
-/// Chrome font/SVG anti-aliasing is a blend of two Spectra colours.
-/// Those greys must snap with no error diffusion, or letters grow a halo.
-fn is_antialiased_edge(r: i32, g: i32, b: i32) -> bool {
-    const EDGE_DIST2: i32 = 48 * 48;
-    let p = [r, g, b];
-    for (i, &(_, a)) in SPECTRA6.iter().enumerate() {
-        if color_dist2(r, g, b, a) <= EDGE_DIST2 {
+const EDGE_DIST2: i32 = 48 * 48;
+
+/// Black — the usual ink. Anti-aliased type is a blend with paper;
+/// chromatic mixes (orange, light blue) are not.
+fn is_black(rgb: [u8; 3]) -> bool {
+    rgb == [0x00, 0x00, 0x00]
+}
+
+fn is_white(rgb: [u8; 3]) -> bool {
+    rgb == [0xff, 0xff, 0xff]
+}
+
+fn near_primary(r: i32, g: i32, b: i32) -> bool {
+    SPECTRA6
+        .iter()
+        .any(|&(_, rgb)| color_dist2(r, g, b, rgb) <= EDGE_DIST2)
+}
+
+fn neighbor_near_primary(img: &RgbaImage, x: u32, y: u32) -> bool {
+    let w = img.width() as i32;
+    let h = img.height() as i32;
+    for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+        let nx = x as i32 + dx;
+        let ny = y as i32 + dy;
+        if nx < 0 || ny < 0 || nx >= w || ny >= h {
+            continue;
+        }
+        let Rgba([r, g, b, _]) = img[(nx as u32, ny as u32)];
+        if near_primary(r as i32, g as i32, b as i32) {
             return true;
         }
+    }
+    false
+}
+
+/// Chrome font/SVG anti-aliasing is a blend of two Spectra colours.
+/// Greys against paper must snap with no error diffusion, or letters grow
+/// a halo. A real colour in the screenshot (sun orange, light rain, overcast
+/// grey) is left to Floyd–Steinberg so it dithers at 1px after raster.
+fn is_antialiased_edge(img: &RgbaImage, x: u32, y: u32) -> bool {
+    let Rgba([sr, sg, sb, _]) = img[(x, y)];
+    let r = sr as i32;
+    let g = sg as i32;
+    let b = sb as i32;
+    if near_primary(r, g, b) {
+        return true;
+    }
+    let p = [r, g, b];
+    for (i, &(_, a)) in SPECTRA6.iter().enumerate() {
         for &(_, c) in SPECTRA6.iter().skip(i + 1) {
+            let ink_paper = (is_black(a) && is_white(c)) || (is_white(a) && is_black(c));
+            if ink_paper {
+                // Interior of a grey fill has grey neighbours — dither.
+                // A 1px fringe next to paper or ink still snaps.
+                if !neighbor_near_primary(img, x, y) {
+                    continue;
+                }
+            } else if !is_black(a) && !is_black(c) {
+                continue;
+            }
             if dist_to_segment2(p, a, c) <= EDGE_DIST2 {
                 return true;
             }
@@ -127,7 +177,7 @@ fn dither_floyd_steinberg(img: &RgbaImage) -> Vec<u8> {
         for x in xs {
             let i = y * w + x;
             let Rgba([sr, sg, sb, _]) = img[(x as u32, y as u32)];
-            let snap = is_antialiased_edge(sr as i32, sg as i32, sb as i32);
+            let snap = is_antialiased_edge(img, x as u32, y as u32);
             let (idx, rgb) = if snap {
                 nearest_index(sr as i32, sg as i32, sb as i32)
             } else {
@@ -280,5 +330,83 @@ mod tests {
         ] {
             assert_eq!(nibble_at(&bin, x, y), 1, "halo at {x},{y}");
         }
+    }
+
+    #[test]
+    fn orange_fill_dithers_yellow_and_red() {
+        let mut img = RgbaImage::from_pixel(PANEL_WIDTH, PANEL_HEIGHT, Rgba([255, 255, 255, 255]));
+        for y in 200..280 {
+            for x in 200..280 {
+                img.put_pixel(x, y, Rgba([255, 136, 0, 255]));
+            }
+        }
+        let bin = pack_rgba(&img).unwrap();
+        let mut yellow = 0;
+        let mut red = 0;
+        for y in 210..270 {
+            for x in 210..270 {
+                match nibble_at(&bin, x, y) {
+                    2 => yellow += 1,
+                    3 => red += 1,
+                    other => panic!("unexpected nibble {other} inside orange fill"),
+                }
+            }
+        }
+        assert!(
+            yellow > 800 && red > 800,
+            "orange should dither to both inks, yellow={yellow} red={red}"
+        );
+    }
+
+    #[test]
+    fn light_blue_fill_dithers_blue_and_white() {
+        let mut img = RgbaImage::from_pixel(PANEL_WIDTH, PANEL_HEIGHT, Rgba([255, 255, 255, 255]));
+        for y in 200..280 {
+            for x in 200..280 {
+                img.put_pixel(x, y, Rgba([0x73, 0x73, 0xff, 255]));
+            }
+        }
+        let bin = pack_rgba(&img).unwrap();
+        let mut blue = 0;
+        let mut white = 0;
+        for y in 210..270 {
+            for x in 210..270 {
+                match nibble_at(&bin, x, y) {
+                    5 => blue += 1,
+                    1 => white += 1,
+                    other => panic!("unexpected nibble {other} inside light blue fill"),
+                }
+            }
+        }
+        assert!(
+            blue > 800 && white > 400,
+            "light blue should dither to blue+white, blue={blue} white={white}"
+        );
+    }
+
+    #[test]
+    fn grey_fill_dithers_black_and_white() {
+        let mut img = RgbaImage::from_pixel(PANEL_WIDTH, PANEL_HEIGHT, Rgba([255, 255, 255, 255]));
+        for y in 200..280 {
+            for x in 200..280 {
+                img.put_pixel(x, y, Rgba([0x90, 0x90, 0x90, 255]));
+            }
+        }
+        let bin = pack_rgba(&img).unwrap();
+        let mut black = 0;
+        let mut white = 0;
+        for y in 210..270 {
+            for x in 210..270 {
+                match nibble_at(&bin, x, y) {
+                    0 => black += 1,
+                    1 => white += 1,
+                    other => panic!("unexpected nibble {other} inside grey fill"),
+                }
+            }
+        }
+        assert!(
+            black > 400 && white > 400,
+            "overcast grey should dither to black+white, black={black} white={white}"
+        );
     }
 }

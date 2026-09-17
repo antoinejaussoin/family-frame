@@ -10,6 +10,7 @@ const BACKEND_PATHS = [
   '/api',
   '/static',
   '/dashboard',
+  '/weather-icons',
   '/health',
   '/debug/frames',
 ]
