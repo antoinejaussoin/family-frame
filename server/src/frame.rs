@@ -8,7 +8,7 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::info;
 
 use crate::config::{Config, FrameMode};
-use crate::model::{Dashboard, FrameInfo};
+use crate::model::{refresh_until_at, Dashboard, FrameInfo};
 use crate::pack::{self, PANEL_BYTES};
 use crate::pictures::PictureStore;
 use crate::screenshot;
@@ -16,7 +16,8 @@ use crate::sources;
 use crate::template::Templates;
 
 /// Reuse a previously rendered dashboard for this long when switching back
-/// (Chrome raster is slow). Older than this, render a fresh one.
+/// (Chrome raster is slow). Older than this, render a fresh one. A bitmap
+/// is never reused after the poll window it painted in the header.
 pub const DASHBOARD_CACHE_MAX_AGE: chrono::TimeDelta = chrono::TimeDelta::minutes(10);
 
 #[derive(Clone)]
@@ -27,6 +28,9 @@ pub struct Frame {
     pub checksum: String,
     pub content_hash: String,
     pub generated_at: chrono::DateTime<Utc>,
+    /// When the painted `next_refresh` is due. `None` on picture frames and
+    /// on dashboard caches written before this field existed.
+    pub refresh_until: Option<chrono::DateTime<Utc>>,
     pub dashboard: Dashboard,
 }
 
@@ -63,6 +67,8 @@ struct DashboardDiskMeta {
     generated_at: chrono::DateTime<Utc>,
     checksum: String,
     content_hash: String,
+    #[serde(default)]
+    refresh_until: Option<chrono::DateTime<Utc>>,
 }
 
 pub fn dashboard_cache_fresh(
@@ -71,6 +77,14 @@ pub fn dashboard_cache_fresh(
 ) -> bool {
     let age = now.signed_duration_since(generated_at);
     age >= chrono::TimeDelta::zero() && age <= DASHBOARD_CACHE_MAX_AGE
+}
+
+/// Whether this bitmap's header times are still the current poll window.
+pub fn dashboard_refresh_current(
+    refresh_until: Option<chrono::DateTime<Utc>>,
+    now: chrono::DateTime<Utc>,
+) -> bool {
+    refresh_until.is_some_and(|until| now < until)
 }
 
 impl FrameCache {
@@ -99,12 +113,14 @@ impl FrameCache {
         *self.pico_pct.lock().await = Some(pct.min(100));
     }
 
-    pub async fn stamp_status(&self, cfg: &Config, dash: &mut Dashboard) {
+    pub async fn stamp_status(&self, cfg: &Config, dash: &mut Dashboard) -> chrono::DateTime<Utc> {
         let now = Utc::now();
-        dash.set_refresh_window(now, cfg.next_poll_secs(now), cfg.tz());
+        let next_secs = cfg.next_poll_secs(now);
+        dash.set_refresh_window(now, next_secs, cfg.tz());
         if let Some(pct) = *self.pico_pct.lock().await {
             dash.set_battery(pct);
         }
+        refresh_until_at(now, next_secs)
     }
 
     pub fn templates(&self) -> &Templates {
@@ -136,17 +152,19 @@ impl FrameCache {
         Ok(sha256_hex(&bytes))
     }
 
-    /// Current frame for GET (no playlist advance).
+    /// Current frame for GET (no playlist advance). May reuse a dashboard
+    /// rasterised for a recent Pico poll.
     pub async fn current(&self) -> Result<Frame> {
         self.current_inner(false, false).await
     }
 
-    /// Current frame for Pico POST; advances picture playlist after the frame is chosen.
+    /// Pico POST: always reload live sources and re-raster. The web UI GET
+    /// path is the one that reuses a cached dashboard.
     pub async fn current_for_pico(&self) -> Result<Frame> {
-        self.current_inner(true, false).await
+        self.current_inner(true, true).await
     }
 
-    /// Button wake: skip the dashboard TTL cache and rebuild from live sources.
+    /// Button wake: same live rebuild; HTTP also drops the Meross room TTL.
     pub async fn current_for_pico_fresh(&self) -> Result<Frame> {
         *self.inner.lock().await = None;
         self.current_inner(true, true).await
@@ -201,6 +219,7 @@ impl FrameCache {
                 if let Some(cached) = guard.as_ref() {
                     if cached.mode_key.starts_with("dashboard:")
                         && dashboard_cache_fresh(cached.frame.generated_at, now)
+                        && dashboard_refresh_current(cached.frame.refresh_until, now)
                     {
                         info!(
                             age_secs = now
@@ -214,7 +233,9 @@ impl FrameCache {
                 }
             }
             if let Some(frame) = self.load_dashboard_disk(cfg) {
-                if dashboard_cache_fresh(frame.generated_at, now) {
+                if dashboard_cache_fresh(frame.generated_at, now)
+                    && dashboard_refresh_current(frame.refresh_until, now)
+                {
                     info!(
                         age_secs = now
                             .signed_duration_since(frame.generated_at)
@@ -231,24 +252,43 @@ impl FrameCache {
                 }
             }
         }
+        if bypass_cache {
+            info!("Pico poll — rebuilding dashboard from live sources");
+        }
         let mut dash = sources::load_dashboard(cfg).await?;
-        self.stamp_status(cfg, &mut dash).await;
+        let refresh_until = self.stamp_status(cfg, &mut dash).await;
         let content_hash = self.layout_hash(&dash)?;
-        if let Some(frame) = self.load_dashboard_disk(cfg) {
-            if frame.content_hash == content_hash {
-                info!(
-                    checksum = %frame.checksum,
-                    "reusing dashboard — layout unchanged"
-                );
-                let mut guard = self.inner.lock().await;
-                *guard = Some(Cached {
-                    frame: frame.clone(),
-                    mode_key: mode_key.to_string(),
-                });
-                return Ok(frame);
+        // Pico POSTs pass `bypass_cache` so the panel always gets a newly
+        // stamped header (and freshly fetched calendar / weather / rooms).
+        // GET /preview and /api/frame.png may still skip Chromium when the
+        // family layout has not changed inside the current poll window.
+        if !bypass_cache {
+            if let Some(frame) = self.load_dashboard_disk(cfg) {
+                if frame.content_hash == content_hash
+                    && dashboard_refresh_current(frame.refresh_until, Utc::now())
+                {
+                    info!(
+                        checksum = %frame.checksum,
+                        "reusing dashboard — layout unchanged"
+                    );
+                    let mut guard = self.inner.lock().await;
+                    *guard = Some(Cached {
+                        frame: frame.clone(),
+                        mode_key: mode_key.to_string(),
+                    });
+                    return Ok(frame);
+                }
+                if frame.content_hash == content_hash {
+                    info!(
+                        checksum = %frame.checksum,
+                        "dashboard layout unchanged; refresh window elapsed"
+                    );
+                }
             }
         }
-        let frame = self.render_dashboard(dash, content_hash).await?;
+        let frame = self
+            .render_dashboard(dash, content_hash, refresh_until)
+            .await?;
         self.save_dashboard_disk(cfg, &frame);
         let mut guard = self.inner.lock().await;
         *guard = Some(Cached {
@@ -298,6 +338,7 @@ impl FrameCache {
             checksum: meta.checksum,
             content_hash: meta.content_hash,
             generated_at: meta.generated_at,
+            refresh_until: meta.refresh_until,
             dashboard: dash,
         })
     }
@@ -314,6 +355,7 @@ impl FrameCache {
             generated_at: frame.generated_at,
             checksum: frame.checksum.clone(),
             content_hash: frame.content_hash.clone(),
+            refresh_until: frame.refresh_until,
         };
         if let Err(err) = std::fs::write(bin_path, &frame.bin) {
             tracing::warn!(%err, "could not write dashboard cache bin");
@@ -370,6 +412,7 @@ impl FrameCache {
             checksum,
             content_hash,
             generated_at: Utc::now(),
+            refresh_until: None,
             dashboard: dash,
         };
         info!(
@@ -417,7 +460,12 @@ impl FrameCache {
         Ok(pair)
     }
 
-    async fn render_dashboard(&self, dash: Dashboard, content_hash: String) -> Result<Frame> {
+    async fn render_dashboard(
+        &self,
+        dash: Dashboard,
+        content_hash: String,
+        refresh_until: chrono::DateTime<Utc>,
+    ) -> Result<Frame> {
         let png = self.capture_panel("/dashboard?raster=1").await?;
         let bin = pack::pack_png_to_spectra6(&png)?;
         let preview_png = pack::unpack_preview_png(&bin)?;
@@ -436,6 +484,7 @@ impl FrameCache {
             checksum,
             content_hash,
             generated_at: Utc::now(),
+            refresh_until: Some(refresh_until),
             dashboard: dash,
         })
     }
@@ -513,6 +562,7 @@ mod tests {
             checksum: "abc123".into(),
             content_hash: "fff".into(),
             generated_at: Utc::now(),
+            refresh_until: None,
             dashboard: dash,
         };
         assert!(checksum_matches(&frame, Some("abc123")));
@@ -536,6 +586,32 @@ mod tests {
         ));
         assert!(!dashboard_cache_fresh(
             now + chrono::TimeDelta::minutes(1),
+            now
+        ));
+    }
+
+    #[test]
+    fn dashboard_refresh_current_follows_painted_next() {
+        let now = Utc::now();
+        assert!(dashboard_refresh_current(
+            Some(now + chrono::TimeDelta::minutes(5)),
+            now
+        ));
+        assert!(!dashboard_refresh_current(Some(now), now));
+        assert!(!dashboard_refresh_current(
+            Some(now - chrono::TimeDelta::seconds(1)),
+            now
+        ));
+        assert!(!dashboard_refresh_current(None, now));
+    }
+
+    #[test]
+    fn ten_minute_ttl_does_not_reuse_past_the_refresh_window() {
+        let now = Utc::now();
+        let generated = now - chrono::TimeDelta::minutes(5);
+        assert!(dashboard_cache_fresh(generated, now));
+        assert!(!dashboard_refresh_current(
+            Some(now - chrono::TimeDelta::seconds(1)),
             now
         ));
     }

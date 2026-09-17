@@ -209,8 +209,7 @@ impl Dashboard {
     pub fn set_refresh_window(&mut self, now: DateTime<Utc>, next_secs: u64, tz: Tz) {
         let local = now.with_timezone(&tz);
         self.last_refresh = local.format("%H:%M").to_string();
-        let secs = i64::try_from(next_secs).unwrap_or(i64::MAX);
-        let next_local = (now + chrono::Duration::seconds(secs)).with_timezone(&tz);
+        let next_local = refresh_until_at(now, next_secs).with_timezone(&tz);
         self.next_refresh = if next_local.date_naive() == local.date_naive() {
             next_local.format("%H:%M").to_string()
         } else {
@@ -218,8 +217,10 @@ impl Dashboard {
         };
     }
 
-    /// Drop last/next times so a painted clock does not force Chromium.
-    /// Battery stays — a drop should be allowed to wake the panel.
+    /// Drop last/next times so a painted clock does not force Chromium
+    /// *inside* the current poll window. Battery stays — a drop should
+    /// be allowed to wake the panel. The bitmap is still discarded once
+    /// [`refresh_until_at`] elapses so the header can advance.
     pub fn for_layout_hash(&self) -> Self {
         let mut hashed = self.clone();
         hashed.last_refresh.clear();
@@ -274,6 +275,12 @@ impl Dashboard {
         self.fit_calendar_to_panel();
         self.fit_sidebar_to_panel();
     }
+}
+
+/// Instant the painted `next_refresh` refers to (`now + next_secs`).
+pub fn refresh_until_at(now: DateTime<Utc>, next_secs: u64) -> DateTime<Utc> {
+    let secs = i64::try_from(next_secs).unwrap_or(i64::MAX);
+    now + chrono::Duration::seconds(secs)
 }
 
 fn sidebar_block_px(rows: usize, row_px: i32) -> i32 {
@@ -480,6 +487,21 @@ mod tests {
         assert_eq!(dash.content_bytes(), later.content_bytes());
         later.set_battery(61);
         assert_ne!(dash.content_bytes(), later.content_bytes());
+    }
+
+    #[test]
+    fn refresh_until_matches_next_refresh() {
+        let tz = chrono_tz::Europe::London;
+        let now = tz
+            .with_ymd_and_hms(2026, 9, 17, 20, 54, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        let until = refresh_until_at(now, 300);
+        assert_eq!(
+            until.with_timezone(&tz).format("%H:%M").to_string(),
+            "20:59"
+        );
+        assert!(now < until);
     }
 
     #[test]

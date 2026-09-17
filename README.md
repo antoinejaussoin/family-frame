@@ -68,12 +68,9 @@ Then <http://127.0.0.1:8765/> is the family UI.
 2. Open `/preview` in a browser. The iframe is the real 1600×1200 panel.
 3. On the LAN, Chromium screenshots `/dashboard`, the server dithers to
    Spectra 6, and the Pico POSTs `/api/frame.bin` with battery diagnostics.
-4. If the family data has not changed, the checksum matches and the Pico
-   does **not** refresh the glass. Open `/debug` on a phone to see battery
-   history and every Pico poll.
-
-The dashboard HTML must not include a ticking clock. A changing “updated at”
-would make every hour look like a new image.
+4. Each Pico POST rebuilds the dashboard from live sources. If the new
+   bitmap matches the last checksum, the Pico does **not** refresh the glass.
+   Open `/debug` on a phone to see battery history and every Pico poll.
 
 ## Run the server
 

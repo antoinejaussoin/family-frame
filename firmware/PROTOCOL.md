@@ -15,11 +15,13 @@ wake) it:
 
 Inky **A** or **B** (the two buttons on the 13.3″ PCB) are POWMAN GPIO
 wake sources. A press powers the switched-core back up, the Pico POSTs
-with `wake=button`, and the server skips its dashboard TTL cache so the
-next image is built from live calendar / to-do / weather data. Unchanged
-pixels still return **204** so the glass is not refreshed for nothing.
-Buttons **C** and **D** share GP25 / GP24 with the RM2 radio and cannot
-be used.
+with `wake=button`, and the server drops cached thermometer readings so
+the next image is built from live hub data. **Every** Pico POST (timer,
+cold boot, or button) reloads calendar / to-do / weather and re-rasters
+the dashboard; GET from a browser may still reuse a cached frame.
+Unchanged pixels still return **204** so the glass is not refreshed for
+nothing. Buttons **C** and **D** share GP25 / GP24 with the RM2 radio
+and cannot be used.
 
 Browsers still `GET /api/frame.bin` to download the packed file; those
 hits are not logged. Only POSTs from the Pico (or [`pico-sim`](../pico-sim/))
