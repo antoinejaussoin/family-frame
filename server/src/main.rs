@@ -82,6 +82,7 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
     info!("layout simulator  http://{addr}/preview");
     info!("debug dashboard   http://{addr}/debug");
     info!("dashboard only    http://{addr}/dashboard");
+    info!("weather icons     http://{addr}/weather-icons");
     info!("Pico endpoint     POST http://{addr}/api/frame.bin");
     {
         let guard = cfg.read().await;

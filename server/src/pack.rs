@@ -85,8 +85,16 @@ fn dist_to_segment2(p: [i32; 3], a: [u8; 3], b: [u8; 3]) -> i32 {
     d0 * d0 + d1 * d1 + d2 * d2
 }
 
+/// Black or white — the paper and the usual ink. Anti-aliased type is a
+/// blend with one of these; chromatic mixes (orange = yellow+red) are not.
+fn is_black_or_white(rgb: [u8; 3]) -> bool {
+    rgb == [0x00, 0x00, 0x00] || rgb == [0xff, 0xff, 0xff]
+}
+
 /// Chrome font/SVG anti-aliasing is a blend of two Spectra colours.
-/// Those greys must snap with no error diffusion, or letters grow a halo.
+/// Greys against paper must snap with no error diffusion, or letters grow
+/// a halo. Blends of two inks (sun orange, etc.) are left to Floyd–Steinberg
+/// so a real colour in the screenshot dithers at 1px after raster.
 fn is_antialiased_edge(r: i32, g: i32, b: i32) -> bool {
     const EDGE_DIST2: i32 = 48 * 48;
     let p = [r, g, b];
@@ -95,6 +103,9 @@ fn is_antialiased_edge(r: i32, g: i32, b: i32) -> bool {
             return true;
         }
         for &(_, c) in SPECTRA6.iter().skip(i + 1) {
+            if !is_black_or_white(a) && !is_black_or_white(c) {
+                continue;
+            }
             if dist_to_segment2(p, a, c) <= EDGE_DIST2 {
                 return true;
             }
@@ -280,5 +291,31 @@ mod tests {
         ] {
             assert_eq!(nibble_at(&bin, x, y), 1, "halo at {x},{y}");
         }
+    }
+
+    #[test]
+    fn orange_fill_dithers_yellow_and_red() {
+        let mut img = RgbaImage::from_pixel(PANEL_WIDTH, PANEL_HEIGHT, Rgba([255, 255, 255, 255]));
+        for y in 200..280 {
+            for x in 200..280 {
+                img.put_pixel(x, y, Rgba([255, 136, 0, 255]));
+            }
+        }
+        let bin = pack_rgba(&img).unwrap();
+        let mut yellow = 0;
+        let mut red = 0;
+        for y in 210..270 {
+            for x in 210..270 {
+                match nibble_at(&bin, x, y) {
+                    2 => yellow += 1,
+                    3 => red += 1,
+                    other => panic!("unexpected nibble {other} inside orange fill"),
+                }
+            }
+        }
+        assert!(
+            yellow > 800 && red > 800,
+            "orange should dither to both inks, yellow={yellow} red={red}"
+        );
     }
 }

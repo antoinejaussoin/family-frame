@@ -259,6 +259,67 @@ pub fn demo_weather() -> Weather {
     }
 }
 
+/// Drawn `wx-*` symbols. Keep in sync with `templates/wx-sprite.html`.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct IconSpec {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub codes: &'static str,
+}
+
+pub const ICONS: &[IconSpec] = &[
+    IconSpec {
+        id: "sun",
+        label: "Sunny",
+        codes: "1",
+    },
+    IconSpec {
+        id: "moon",
+        label: "Clear night",
+        codes: "0",
+    },
+    IconSpec {
+        id: "partly-cloudy",
+        label: "Sunny intervals",
+        codes: "3",
+    },
+    IconSpec {
+        id: "partly-cloudy-night",
+        label: "Clear intervals (night)",
+        codes: "2",
+    },
+    IconSpec {
+        id: "cloud",
+        label: "Cloudy / overcast",
+        codes: "7, 8",
+    },
+    IconSpec {
+        id: "rain",
+        label: "Rain / drizzle / showers",
+        codes: "9–15, 39",
+    },
+    IconSpec {
+        id: "storm",
+        label: "Thunder",
+        codes: "28–30",
+    },
+    IconSpec {
+        id: "snow",
+        label: "Snow / sleet / hail",
+        codes: "16–27",
+    },
+    IconSpec {
+        id: "fog",
+        label: "Fog / mist",
+        codes: "5, 6",
+    },
+    IconSpec {
+        id: "unknown",
+        label: "Missing slot",
+        codes: "—",
+    },
+];
+
 pub fn icon_for(code: i64, text: &str) -> &'static str {
     match code {
         0 => "moon",
@@ -629,6 +690,27 @@ mod tests {
         assert_eq!(icon_for(6, ""), "fog");
         assert_eq!(icon_for(39, "Light Rain"), "rain");
         assert_eq!(icon_for(99, "Thundery showers"), "storm");
+    }
+
+    #[test]
+    fn sprite_defines_every_catalog_icon() {
+        let ids: Vec<_> = ICONS.iter().map(|i| i.id).collect();
+        let sprite = crate::assets::WX_SPRITE_HTML;
+        assert!(sprite.contains("fill=\"#ff8800\""));
+        assert!(!sprite.contains("id=\"wx-orange\""));
+        assert!(sprite.contains("stroke=\"#000000\""));
+        for icon in ICONS {
+            assert!(
+                sprite.contains(&format!("id=\"wx-{}\"", icon.id)),
+                "missing symbol wx-{}",
+                icon.id
+            );
+        }
+        for code in 0..40 {
+            let id = icon_for(code, "");
+            assert!(ids.contains(&id), "BBC {code} maps to {id}, not in ICONS");
+        }
+        assert!(ids.contains(&"unknown"));
     }
 
     #[test]

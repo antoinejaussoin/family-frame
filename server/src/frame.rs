@@ -50,6 +50,7 @@ pub struct FrameCache {
     chrome: Mutex<Option<std::path::PathBuf>>,
     inner: Mutex<Option<Cached>>,
     pico_pct: Mutex<Option<u16>>,
+    weather_icons: Mutex<Option<(Vec<u8>, Vec<u8>)>>,
 }
 
 struct Cached {
@@ -90,6 +91,7 @@ impl FrameCache {
             chrome: Mutex::new(chrome),
             inner: Mutex::new(None),
             pico_pct: Mutex::new(None),
+            weather_icons: Mutex::new(None),
         }))
     }
 
@@ -384,20 +386,39 @@ impl FrameCache {
         Ok(frame)
     }
 
-    async fn render_dashboard(&self, dash: Dashboard, content_hash: String) -> Result<Frame> {
-        let chrome = {
-            let mut guard = self.chrome.lock().await;
-            if guard.is_none() {
-                let cfg = self.cfg.read().await;
-                *guard = screenshot::detect_chrome(&cfg.chrome_path);
-            }
-            guard
-                .clone()
-                .context("Chrome/Chromium not found — install it to rasterise /api/frame.bin, or use /preview to edit the HTML layout")?
-        };
-        let url = format!("http://127.0.0.1:{}/dashboard?raster=1", self.listen_port);
+    async fn chrome_path(&self) -> Result<std::path::PathBuf> {
+        let mut guard = self.chrome.lock().await;
+        if guard.is_none() {
+            let cfg = self.cfg.read().await;
+            *guard = screenshot::detect_chrome(&cfg.chrome_path);
+        }
+        guard.clone().context(
+            "Chrome/Chromium not found — install it to rasterise /api/frame.bin, or use /preview to edit the HTML layout",
+        )
+    }
+
+    async fn capture_panel(&self, path: &str) -> Result<Vec<u8>> {
+        let chrome = self.chrome_path().await?;
+        let url = format!("http://127.0.0.1:{}{path}", self.listen_port);
         let png = screenshot::capture_dashboard(&chrome, &url).await?;
-        let png = ensure_panel_size(&png)?;
+        ensure_panel_size(&png)
+    }
+
+    /// Chrome screenshot + Floyd–Steinberg preview of `/weather-icons/sheet`.
+    pub async fn weather_icon_sheet(&self) -> Result<(Vec<u8>, Vec<u8>)> {
+        if let Some(cached) = self.weather_icons.lock().await.clone() {
+            return Ok(cached);
+        }
+        let png = self.capture_panel("/weather-icons/sheet?raster=1").await?;
+        let bin = pack::pack_png_to_spectra6(&png)?;
+        let preview_png = pack::unpack_preview_png(&bin)?;
+        let pair = (png, preview_png);
+        *self.weather_icons.lock().await = Some(pair.clone());
+        Ok(pair)
+    }
+
+    async fn render_dashboard(&self, dash: Dashboard, content_hash: String) -> Result<Frame> {
+        let png = self.capture_panel("/dashboard?raster=1").await?;
         let bin = pack::pack_png_to_spectra6(&png)?;
         let preview_png = pack::unpack_preview_png(&bin)?;
         let checksum = sha256_hex(&bin);
