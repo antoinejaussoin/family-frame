@@ -35,6 +35,9 @@
   --red: #ff0000;
   --blue: #0000ff;
   --green: #00ff00;
+  /* Yellow-on-white type (Circle). Not a Spectra primary — Chrome paints
+     gold, then Floyd–Steinberg mixes yellow+red so the word reads darker. */
+  --yellow-ink: #ff9900;
 }
 
 html,
@@ -419,7 +422,7 @@ li:not(.tube-line):not(.todo-pill) {
 }
 
 .line-name.colour-black { color: var(--black); }
-.line-name.colour-yellow { color: var(--yellow); }
+.line-name.colour-yellow { color: var(--yellow-ink); }
 .line-name.colour-green { color: var(--green); }
 .line-name.colour-blue { color: var(--blue); }
 
