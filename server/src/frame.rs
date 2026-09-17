@@ -49,6 +49,7 @@ pub struct FrameCache {
     listen_port: u16,
     chrome: Mutex<Option<std::path::PathBuf>>,
     inner: Mutex<Option<Cached>>,
+    pico_pct: Mutex<Option<u16>>,
 }
 
 struct Cached {
@@ -88,7 +89,20 @@ impl FrameCache {
             listen_port,
             chrome: Mutex::new(chrome),
             inner: Mutex::new(None),
+            pico_pct: Mutex::new(None),
         }))
+    }
+
+    pub async fn note_pico_battery(&self, pct: u16) {
+        *self.pico_pct.lock().await = Some(pct.min(100));
+    }
+
+    pub async fn stamp_status(&self, cfg: &Config, dash: &mut Dashboard) {
+        let now = Utc::now();
+        dash.set_refresh_window(now, cfg.next_poll_secs(now), cfg.tz());
+        if let Some(pct) = *self.pico_pct.lock().await {
+            dash.set_battery(pct);
+        }
     }
 
     pub fn templates(&self) -> &Templates {
@@ -112,8 +126,9 @@ impl FrameCache {
     }
 
     pub fn layout_hash(&self, dash: &Dashboard) -> Result<String> {
-        let html = self.templates.render_dashboard(dash)?;
-        let mut bytes = dash.content_bytes();
+        let hashed = dash.for_layout_hash();
+        let html = self.templates.render_dashboard(&hashed)?;
+        let mut bytes = hashed.content_bytes();
         bytes.extend_from_slice(html.as_bytes());
         bytes.extend_from_slice(&crate::assets::layout_bytes());
         Ok(sha256_hex(&bytes))
@@ -214,22 +229,21 @@ impl FrameCache {
                 }
             }
         }
-        let dash = sources::load_dashboard(cfg).await?;
+        let mut dash = sources::load_dashboard(cfg).await?;
+        self.stamp_status(cfg, &mut dash).await;
         let content_hash = self.layout_hash(&dash)?;
-        if bypass_cache {
-            if let Some(frame) = self.load_dashboard_disk(cfg) {
-                if frame.content_hash == content_hash {
-                    info!(
-                        checksum = %frame.checksum,
-                        "button refresh: sources unchanged"
-                    );
-                    let mut guard = self.inner.lock().await;
-                    *guard = Some(Cached {
-                        frame: frame.clone(),
-                        mode_key: mode_key.to_string(),
-                    });
-                    return Ok(frame);
-                }
+        if let Some(frame) = self.load_dashboard_disk(cfg) {
+            if frame.content_hash == content_hash {
+                info!(
+                    checksum = %frame.checksum,
+                    "reusing dashboard — layout unchanged"
+                );
+                let mut guard = self.inner.lock().await;
+                *guard = Some(Cached {
+                    frame: frame.clone(),
+                    mode_key: mode_key.to_string(),
+                });
+                return Ok(frame);
             }
         }
         let frame = self.render_dashboard(dash, content_hash).await?;

@@ -130,10 +130,13 @@ async fn static_asset(Path(path): Path<String>) -> Response {
 async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
     let cfg = state.cache.snapshot_config().await;
     match sources::load_dashboard(&cfg).await {
-        Ok(dash) => match state.cache.templates().render_dashboard(&dash) {
-            Ok(html) => no_store_html(html),
-            Err(err) => error_response(err),
-        },
+        Ok(mut dash) => {
+            state.cache.stamp_status(&cfg, &mut dash).await;
+            match state.cache.templates().render_dashboard(&dash) {
+                Ok(html) => no_store_html(html),
+                Err(err) => error_response(err),
+            }
+        }
         Err(err) => error_response(err),
     }
 }
@@ -419,6 +422,7 @@ async fn frame_bin_post(
         meross::invalidate_rooms();
         tracing::info!("Pico button wake — reloading dashboard sources");
     }
+    state.cache.note_pico_battery(tel.pct).await;
     let frame_result = if fresh {
         state.cache.current_for_pico_fresh().await
     } else {

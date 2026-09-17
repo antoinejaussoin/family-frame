@@ -58,6 +58,10 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
         let guard = cfg.read().await;
         DebugLog::open(&guard.config_dir)?
     };
+    let polls = debug.snapshot().await;
+    if let Some(last) = polls.last() {
+        cache.note_pico_battery(last.pct).await;
+    }
     let ui = http::ui_dir();
     let app = http::router(AppState { cache, debug }, ui.clone());
 

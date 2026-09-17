@@ -55,6 +55,33 @@ mod tests {
         assert!(!html.contains("class=\"weather\""));
         assert!(html.contains("/static/fonts/AtkinsonHyperlegible-Regular.woff2"));
         assert!(html.contains("/static/fonts/AtkinsonHyperlegible-Bold.woff2"));
+        assert!(!html.contains("class=\"battery\""));
+        assert!(!html.contains("class=\"refresh\""));
+        assert!(html.contains("class=\"frame-meta\""));
+        assert!(html.contains("class=\"date\""));
+    }
+
+    #[test]
+    fn dashboard_shows_battery_and_refresh_times() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 17).unwrap());
+        dash.set_battery(62);
+        dash.last_refresh = "17:53".into();
+        dash.next_refresh = "18:53".into();
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("battery-ok"));
+        assert!(html.contains("62%"));
+        assert!(html.contains("17:53"));
+        assert!(html.contains("18:53"));
+        assert!(html.contains("class=\"refresh-arrow\""));
+        assert!(html.contains("class=\"refresh-dash\""));
+        assert!(html.contains("class=\"refresh\""));
+        dash.set_battery(24);
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("battery-low"));
+        dash.set_battery(10);
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("battery-critical"));
+        assert!(html.contains("10%"));
     }
 
     #[test]

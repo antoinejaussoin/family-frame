@@ -1,7 +1,9 @@
 /* Spectra 6 only: black, white, yellow, red, blue, green.
    This file is the layout source of truth. /dashboard is screenshotted
-   at 1600×1200. Do not add clocks or checksums — they would force a
-   panel refresh every hour.
+   at 1600×1200. Do not add a live clock or checksum — they would force a
+   panel refresh every hour. Last/next refresh times are painted onto the
+   bitmap and omitted from the layout hash; battery percent is hashed so a
+   drop can wake the panel.
 
    Typeface is Atkinson Hyperlegible (Braille Institute, SIL OFL 1.1)
    bundled in static/fonts/. Headless Chrome on macOS ships Verdana;
@@ -54,6 +56,7 @@ body {
 }
 
 .panel {
+  position: relative;
   box-sizing: border-box;
   width: 1600px;
   height: 1200px;
@@ -126,6 +129,45 @@ h1 {
   font-size: 32px;
   font-weight: 600;
 }
+
+.frame-meta {
+  position: absolute;
+  top: 5px;
+  right: 52px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  width: max-content;
+}
+
+.refresh {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.refresh-arrow {
+  width: 14px;
+  height: 11px;
+  display: block;
+  flex: 0 0 14px;
+}
+
+.refresh-dash {
+  margin: 0 1px;
+}
+
+.battery-ok { color: var(--green); }
+.battery-low { color: var(--yellow); } /* Spectra 6 has no orange */
+.battery-critical { color: var(--red); }
 
 h2 {
   display: flex;

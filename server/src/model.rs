@@ -1,4 +1,5 @@
-use chrono::{DateTime, NaiveDate};
+use chrono::{DateTime, NaiveDate, Utc};
+use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -159,6 +160,20 @@ pub struct Dashboard {
     pub weather: Weather,
     pub tube: Vec<TubeLine>,
     pub source_note: String,
+    /// Pico has reported a battery reading. Hidden on the panel until then.
+    #[serde(default)]
+    pub has_battery: bool,
+    #[serde(default)]
+    pub battery_pct: u16,
+    /// Spectra class: `ok` (green), `low` (yellow, <25%), `critical` (red, <15%).
+    #[serde(default)]
+    pub battery_level: String,
+    /// Local `HH:MM` when this bitmap was painted. Omitted from the layout hash.
+    #[serde(default)]
+    pub last_refresh: String,
+    /// Local `HH:MM`, or `Day HH:MM` when the next poll is tomorrow.
+    #[serde(default)]
+    pub next_refresh: String,
 }
 
 impl Dashboard {
@@ -176,13 +191,46 @@ impl Dashboard {
             weather: Weather::default(),
             tube: Vec::new(),
             source_note: String::new(),
+            has_battery: false,
+            battery_pct: 0,
+            battery_level: String::new(),
+            last_refresh: String::new(),
+            next_refresh: String::new(),
         }
+    }
+
+    pub fn set_battery(&mut self, pct: u16) {
+        let pct = pct.min(100);
+        self.has_battery = true;
+        self.battery_pct = pct;
+        self.battery_level = battery_level(pct).into();
+    }
+
+    pub fn set_refresh_window(&mut self, now: DateTime<Utc>, next_secs: u64, tz: Tz) {
+        let local = now.with_timezone(&tz);
+        self.last_refresh = local.format("%H:%M").to_string();
+        let secs = i64::try_from(next_secs).unwrap_or(i64::MAX);
+        let next_local = (now + chrono::Duration::seconds(secs)).with_timezone(&tz);
+        self.next_refresh = if next_local.date_naive() == local.date_naive() {
+            next_local.format("%H:%M").to_string()
+        } else {
+            next_local.format("%a %H:%M").to_string()
+        };
+    }
+
+    /// Drop last/next times so a painted clock does not force Chromium.
+    /// Battery stays — a drop should be allowed to wake the panel.
+    pub fn for_layout_hash(&self) -> Self {
+        let mut hashed = self.clone();
+        hashed.last_refresh.clear();
+        hashed.next_refresh.clear();
+        hashed
     }
 
     /// Canonical payload hashed so an unchanged family day skips Chromium
     /// and the Pico can skip the panel refresh.
     pub fn content_bytes(&self) -> Vec<u8> {
-        serde_json::to_vec(self).expect("dashboard json")
+        serde_json::to_vec(&self.for_layout_hash()).expect("dashboard json")
     }
 
     /// Sort the calendar and keep only the rows that fit the panel.
@@ -237,6 +285,16 @@ fn sidebar_block_px(rows: usize, row_px: i32) -> i32 {
         }
 }
 
+pub fn battery_level(pct: u16) -> &'static str {
+    if pct < 15 {
+        "critical"
+    } else if pct < 25 {
+        "low"
+    } else {
+        "ok"
+    }
+}
+
 fn todo_pill_width(title: &str) -> i32 {
     let text = (title.chars().count() as i32).saturating_mul(TODO_PILL_CHAR_PX);
     (TODO_PILL_PAD_X + TODO_PILL_BORDER_X + text).clamp(1, TODO_PILL_MAX_PX)
@@ -281,6 +339,7 @@ pub struct FrameInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
 
     #[test]
     fn short_title_is_unchanged() {
@@ -396,6 +455,61 @@ mod tests {
         dash.fit_sidebar_to_panel();
         assert_eq!(dash.todos.len(), 2);
         assert_eq!(dash.todos_more, 0);
+    }
+
+    #[test]
+    fn battery_level_thresholds() {
+        assert_eq!(battery_level(100), "ok");
+        assert_eq!(battery_level(25), "ok");
+        assert_eq!(battery_level(24), "low");
+        assert_eq!(battery_level(15), "low");
+        assert_eq!(battery_level(14), "critical");
+        assert_eq!(battery_level(0), "critical");
+    }
+
+    #[test]
+    fn refresh_times_are_omitted_from_the_layout_hash() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 17).unwrap());
+        dash.set_battery(62);
+        dash.last_refresh = "17:53".into();
+        dash.next_refresh = "18:53".into();
+        let hashed = dash.for_layout_hash();
+        assert!(hashed.has_battery);
+        assert_eq!(hashed.battery_pct, 62);
+        assert!(hashed.last_refresh.is_empty());
+        assert!(hashed.next_refresh.is_empty());
+        let mut later = dash.clone();
+        later.last_refresh = "18:00".into();
+        later.next_refresh = "19:00".into();
+        assert_eq!(dash.content_bytes(), later.content_bytes());
+        later.set_battery(61);
+        assert_ne!(dash.content_bytes(), later.content_bytes());
+    }
+
+    #[test]
+    fn refresh_window_same_day_is_hhmm() {
+        let tz = chrono_tz::Europe::London;
+        let now = tz
+            .with_ymd_and_hms(2026, 9, 17, 17, 53, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        let mut dash = Dashboard::empty("Family", now.date_naive());
+        dash.set_refresh_window(now, 300, tz);
+        assert_eq!(dash.last_refresh, "17:53");
+        assert_eq!(dash.next_refresh, "17:58");
+    }
+
+    #[test]
+    fn refresh_window_next_day_includes_weekday() {
+        let tz = chrono_tz::Europe::London;
+        let now = tz
+            .with_ymd_and_hms(2026, 9, 17, 23, 50, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        let mut dash = Dashboard::empty("Family", now.date_naive());
+        dash.set_refresh_window(now, 20 * 60, tz);
+        assert_eq!(dash.last_refresh, "23:50");
+        assert_eq!(dash.next_refresh, "Fri 00:10");
     }
 
     fn event(date: NaiveDate, start: &str, title: &str) -> CalendarEvent {
