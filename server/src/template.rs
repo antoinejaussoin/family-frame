@@ -92,6 +92,39 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_shows_school_day_hours() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.events_today.push(crate::model::CalendarEvent {
+            start: "08:30".into(),
+            title: "Léa (finishes at 16:30)".into(),
+            who: String::new(),
+            all_day: false,
+            day_label: "Today".into(),
+            date: "2026-09-18".into(),
+            birthday: false,
+            school: true,
+        });
+        dash.events_coming.push(crate::model::CalendarEvent {
+            start: "08:15".into(),
+            title: "Léa (finishes at 15:45)".into(),
+            who: String::new(),
+            all_day: false,
+            day_label: "Mon 21".into(),
+            date: "2026-09-21".into(),
+            birthday: false,
+            school: true,
+        });
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("class=\"school-day\""));
+        assert!(html.contains("Léa (finishes at 16:30)"));
+        assert!(html.contains("Léa (finishes at 15:45)"));
+        assert!(html.contains("08:30"));
+        assert!(html.contains("Mon 21 08:15"));
+        assert!(!html.contains(">School<"));
+    }
+
+    #[test]
     fn dashboard_shows_battery_and_refresh_times() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 17).unwrap());
         dash.set_battery(62);
@@ -127,6 +160,7 @@ mod tests {
             day_label: "Today".into(),
             date: "2026-09-14".into(),
             birthday: true,
+            school: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
@@ -136,6 +170,7 @@ mod tests {
             day_label: "Mon 28".into(),
             date: "2026-09-28".into(),
             birthday: true,
+            school: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"birthday\""));

@@ -213,6 +213,8 @@ pub struct PronoteConfig {
     pub account: String,
     /// Parent accounts: child's name as Pronote shows it. Empty = first child.
     pub child: String,
+    /// First name on Today / next school-day hours. Empty = Pronote / child name.
+    pub student: String,
     /// Optional 2FA PIN if Pronote asks for one.
     pub pin: String,
 }
@@ -299,6 +301,7 @@ impl Default for PronoteConfig {
             password: String::new(),
             account: String::new(),
             child: String::new(),
+            student: String::new(),
             pin: String::new(),
         }
     }

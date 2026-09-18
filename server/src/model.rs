@@ -14,6 +14,9 @@ pub struct CalendarEvent {
     /// Config birthdays, merged into Today / Coming next.
     #[serde(default)]
     pub birthday: bool,
+    /// Pronote school-day hours, merged into Today and the next school day.
+    #[serde(default)]
+    pub school: bool,
 }
 
 /// Today/week title column is ~570px (half of 1600 − padding − time − gaps)
@@ -159,6 +162,9 @@ pub struct School {
     pub homework: Vec<SchoolItem>,
     #[serde(default)]
     pub grades: Vec<SchoolItem>,
+    /// First and last lesson today and on the next school day.
+    #[serde(default)]
+    pub days: Vec<SchoolDay>,
 }
 
 impl School {
@@ -167,7 +173,15 @@ impl School {
             || !self.grades.is_empty()
             || !self.student.is_empty()
             || !self.average.is_empty()
+            || !self.days.is_empty()
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchoolDay {
+    pub date: String,
+    pub start: String,
+    pub end: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -558,6 +572,7 @@ mod tests {
             average: "14.2".into(),
             homework: vec![school_hw("Today", "Maths")],
             grades: vec![school_grade("Fri", "French", "15/20", "high")],
+            days: Vec::new(),
         };
         dash.tube = tube_lines(4);
         dash.rooms = ["Kitchen"].into_iter().map(room).collect();
@@ -660,6 +675,7 @@ mod tests {
             day_label: date.format("%a %-d").to_string(),
             date: date.format("%Y-%m-%d").to_string(),
             birthday: false,
+            school: false,
         }
     }
 

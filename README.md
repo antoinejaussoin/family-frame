@@ -226,12 +226,14 @@ as the web client (the flow documented by
 1. Open the **direct** Pronote space in a browser (`eleve.html` or `parent.html`),
    not the regional ENT / EduConnect login page.
 2. Put that URL, the Pronote username, and password in `config.toml` under
-   `[pronote]`. For a parent account set `account = "parent"` and optionally
-   `child = "Firstname"`.
+   `[pronote]`. Set `student` to the child’s first name (used on Today and
+   the next school day: “Léa (finishes at 16:30)”). For a parent
+   account set `account = "parent"` and optionally `child = "Firstname"`.
 3. If Pronote asks for a two-factor PIN, set `pronote.pin`.
 
 Leave `pronote.url` empty to show the built-in demo list. ENT-only schools are
-not supported yet.
+not supported yet. Today and the next day with lessons also get a school-hours
+line from the Pronote timetable.
 
 ## Pico side
 

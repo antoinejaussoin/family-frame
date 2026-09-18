@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine;
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, NaiveDate, NaiveTime};
 use md5::{Digest, Md5};
 use num_bigint::BigUint;
 use rand::RngCore;
@@ -23,7 +23,7 @@ use tracing::info;
 
 use crate::config::PronoteConfig;
 use crate::ics;
-use crate::model::{School, SchoolItem};
+use crate::model::{CalendarEvent, School, SchoolDay, SchoolItem};
 
 const FETCH_TTL: Duration = Duration::from_secs(15 * 60);
 const USER_AGENT: &str =
@@ -35,6 +35,7 @@ const RSA_EXPONENT: u32 = 65537;
 
 const HOMEWORK_TAB: i64 = 88;
 const GRADES_TAB: i64 = 198;
+const TIMETABLE_TAB: i64 = 16;
 const MAX_HOMEWORK: usize = 12;
 const MAX_GRADES: usize = 12;
 const SUBJECT_MAX: usize = 32;
@@ -83,6 +84,7 @@ pub async fn load_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School
         student = %school.student,
         homework = school.homework.len(),
         grades = school.grades.len(),
+        days = school.days.len(),
         "loaded Pronote school"
     );
     if let Ok(mut guard) = LAST.lock() {
@@ -134,7 +136,34 @@ pub fn demo_school(today: NaiveDate) -> School {
                 "low",
             ),
         ],
+        days: demo_school_days(today),
     }
+}
+
+fn demo_school_days(today: NaiveDate) -> Vec<SchoolDay> {
+    vec![
+        SchoolDay {
+            date: today.format("%Y-%m-%d").to_string(),
+            start: "08:30".into(),
+            end: "16:30".into(),
+        },
+        SchoolDay {
+            date: next_weekday(today).format("%Y-%m-%d").to_string(),
+            start: "08:15".into(),
+            end: "15:45".into(),
+        },
+    ]
+}
+
+fn next_weekday(today: NaiveDate) -> NaiveDate {
+    for i in 1..=7 {
+        let date = today + chrono::Duration::days(i);
+        match date.weekday() {
+            chrono::Weekday::Sat | chrono::Weekday::Sun => continue,
+            _ => return date,
+        }
+    }
+    today + chrono::Duration::days(1)
 }
 
 async fn fetch_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School> {
@@ -374,7 +403,18 @@ impl Session {
             None => (String::new(), Vec::new()),
         };
 
-        Ok(build_school(student, average, homework, grades, today))
+        let until = (today + chrono::Duration::days(14)).min(last_day);
+        let days = match self.timetable(today, until, start_day).await {
+            Ok(lessons) => day_spans(lessons),
+            Err(err) => {
+                tracing::warn!(%err, "Pronote timetable failed");
+                Vec::new()
+            }
+        };
+
+        Ok(build_school(
+            student, average, homework, grades, days, today,
+        ))
     }
 
     async fn homework(
@@ -479,6 +519,65 @@ impl Session {
         }
         grades.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         Ok((average, grades))
+    }
+
+    async fn timetable(
+        &mut self,
+        from: NaiveDate,
+        to: NaiveDate,
+        start_day: NaiveDate,
+    ) -> Result<Vec<(NaiveDate, NaiveTime, NaiveTime)>> {
+        let week_from = pronote_week(from, start_day);
+        let week_to = pronote_week(to, start_day).max(week_from);
+        let mut lessons = Vec::new();
+        for week in week_from..=week_to {
+            let resp = self
+                .call(
+                    "PageEmploiDuTemps",
+                    Some(TIMETABLE_TAB),
+                    json!({
+                        "ressource": self.ressource.clone(),
+                        "Ressource": self.ressource.clone(),
+                        "numeroSemaine": week,
+                        "NumeroSemaine": week,
+                        "avecAbsencesEleve": false,
+                        "avecConseilDeClasse": true,
+                        "estEDTPermanence": false,
+                        "avecAbsencesRessource": true,
+                        "avecDisponibilites": true,
+                        "avecInfosPrefsGrille": true
+                    }),
+                    None,
+                )
+                .await?;
+            let data = inner_data(&resp);
+            for item in list_field(data, "ListeCours") {
+                if json_truthy(item, "estAnnule") {
+                    continue;
+                }
+                let Some(raw) = item.get("DateDuCours").and_then(|v| json_str(v, &["V"])) else {
+                    continue;
+                };
+                let Some((date, start)) = parse_pronote_datetime(&raw) else {
+                    continue;
+                };
+                if date < from || date > to {
+                    continue;
+                }
+                let end = item
+                    .get("DateDuCoursFin")
+                    .and_then(|v| json_str(v, &["V"]))
+                    .and_then(|s| parse_pronote_datetime(&s))
+                    .and_then(|(end_date, time)| (end_date == date).then_some(time))
+                    .or_else(|| lesson_end_from_place(item, &self.general));
+                let Some(end) = end else { continue };
+                if end <= start {
+                    continue;
+                }
+                lessons.push((date, start, end));
+            }
+        }
+        Ok(lessons)
     }
 
     async fn call(
@@ -589,6 +688,7 @@ fn build_school(
     average: String,
     homework: Vec<(NaiveDate, String, bool)>,
     grades: Vec<(NaiveDate, String, String, String)>,
+    days: Vec<SchoolDay>,
     today: NaiveDate,
 ) -> School {
     let mut homework_rows = Vec::new();
@@ -613,6 +713,77 @@ fn build_school(
         average,
         homework: homework_rows,
         grades,
+        days,
+    }
+}
+
+/// Configured first name, then `child`, then the name Pronote returned.
+pub fn display_student(cfg: &PronoteConfig, fetched: &str) -> String {
+    let student = cfg.student.trim();
+    if !student.is_empty() {
+        return student.to_string();
+    }
+    let child = first_name(cfg.child.trim());
+    if !child.is_empty() {
+        return child;
+    }
+    fetched.trim().to_string()
+}
+
+/// Today (if there are lessons) and the next Pronote school day.
+pub fn school_day_events(
+    student: &str,
+    days: &[SchoolDay],
+    today: NaiveDate,
+) -> Vec<CalendarEvent> {
+    let student = student.trim();
+    if student.is_empty() {
+        return Vec::new();
+    }
+    let mut dated = days
+        .iter()
+        .filter_map(|day| {
+            let date = NaiveDate::parse_from_str(&day.date, "%Y-%m-%d").ok()?;
+            if day.start.is_empty() || day.end.is_empty() {
+                return None;
+            }
+            Some((date, day))
+        })
+        .collect::<Vec<_>>();
+    dated.sort_by_key(|(date, _)| *date);
+    let today_day = dated
+        .iter()
+        .find(|(date, _)| *date == today)
+        .map(|(_, d)| *d);
+    let next_day = dated
+        .iter()
+        .find(|(date, _)| *date > today)
+        .map(|(date, d)| (*date, *d));
+    let mut out = Vec::new();
+    if let Some(day) = today_day {
+        out.push(school_hours_event(student, day, today, today));
+    }
+    if let Some((date, day)) = next_day {
+        out.push(school_hours_event(student, day, date, today));
+    }
+    out
+}
+
+fn school_hours_event(
+    student: &str,
+    day: &SchoolDay,
+    date: NaiveDate,
+    today: NaiveDate,
+) -> CalendarEvent {
+    CalendarEvent {
+        start: day.start.clone(),
+        title: format!("{student} (finishes at {})", day.end),
+        who: String::new(),
+        all_day: false,
+        day_label: ics::day_label(date, today),
+        date: day.date.clone(),
+        birthday: false,
+        school: true,
     }
 }
 
@@ -824,6 +995,72 @@ fn parse_pronote_date(s: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(date, "%d/%m/%Y")
         .or_else(|_| NaiveDate::parse_from_str(date, "%d/%m/%y"))
         .ok()
+}
+
+fn parse_pronote_datetime(s: &str) -> Option<(NaiveDate, NaiveTime)> {
+    let s = s.trim();
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%d/%m/%Y %H:%M:%S") {
+        return Some((dt.date(), dt.time()));
+    }
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%d/%m/%Y %H:%M") {
+        return Some((dt.date(), dt.time()));
+    }
+    let mut parts = s.split_whitespace();
+    let date = parse_pronote_date(parts.next()?)?;
+    let time = parse_pronote_hour(parts.next()?)?;
+    Some((date, time))
+}
+
+fn parse_pronote_hour(s: &str) -> Option<NaiveTime> {
+    let s = s.trim();
+    let mut parts = s.split(|c| c == 'h' || c == 'H' || c == ':');
+    let hour: u32 = parts.next()?.trim().parse().ok()?;
+    let minute: u32 = parts.next().unwrap_or("0").trim().parse().ok()?;
+    NaiveTime::from_hms_opt(hour, minute, 0)
+}
+
+fn lesson_end_from_place(item: &Value, general: &Value) -> Option<NaiveTime> {
+    let place = item.get("place").and_then(|v| v.as_i64()).unwrap_or(0);
+    let duree = item.get("duree").and_then(|v| v.as_i64()).unwrap_or(1);
+    let hours = list_field(general, "ListeHeuresFin");
+    if hours.len() < 2 {
+        return None;
+    }
+    let span = (hours.len() as i64 - 1).max(1);
+    let end_place = place.rem_euclid(span) + duree - 1;
+    hours.iter().find_map(|hour| {
+        let g = json_str(hour, &["G"]).and_then(|s| s.parse::<i64>().ok())?;
+        (g == end_place)
+            .then(|| json_str(hour, &["L"]))
+            .flatten()
+            .and_then(|s| parse_pronote_hour(&s))
+    })
+}
+
+fn day_spans(lessons: Vec<(NaiveDate, NaiveTime, NaiveTime)>) -> Vec<SchoolDay> {
+    use std::collections::BTreeMap;
+    let mut by_day: BTreeMap<NaiveDate, (NaiveTime, NaiveTime)> = BTreeMap::new();
+    for (date, start, end) in lessons {
+        by_day
+            .entry(date)
+            .and_modify(|(earliest, latest)| {
+                if start < *earliest {
+                    *earliest = start;
+                }
+                if end > *latest {
+                    *latest = end;
+                }
+            })
+            .or_insert((start, end));
+    }
+    by_day
+        .into_iter()
+        .map(|(date, (start, end))| SchoolDay {
+            date: date.format("%Y-%m-%d").to_string(),
+            start: start.format("%H:%M").to_string(),
+            end: end.format("%H:%M").to_string(),
+        })
+        .collect()
 }
 
 fn format_grade_value(raw: &str) -> String {
@@ -1102,6 +1339,7 @@ mod tests {
                 "15.5/20".into(),
                 "high".into(),
             )],
+            Vec::new(),
             today,
         );
         assert_eq!(school.student, "Léa");
@@ -1120,6 +1358,111 @@ mod tests {
         assert!(school.is_visible());
         assert!(!school.homework.is_empty());
         assert!(!school.grades.is_empty());
+        assert_eq!(school.days.len(), 2);
+    }
+
+    #[test]
+    fn day_spans_take_first_and_last_lesson() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
+        let days = day_spans(vec![
+            (today, t(10, 0), t(11, 0)),
+            (today, t(8, 30), t(9, 25)),
+            (today, t(16, 0), t(17, 30)),
+            (today + chrono::Duration::days(1), t(9, 0), t(12, 0)),
+        ]);
+        assert_eq!(days[0].start, "08:30");
+        assert_eq!(days[0].end, "17:30");
+        assert_eq!(days[1].start, "09:00");
+        assert_eq!(days[1].end, "12:00");
+    }
+
+    #[test]
+    fn school_hours_skip_empty_weekend() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let events = school_day_events(
+            "Léa",
+            &[
+                SchoolDay {
+                    date: "2026-09-18".into(),
+                    start: "08:30".into(),
+                    end: "16:30".into(),
+                },
+                SchoolDay {
+                    date: "2026-09-21".into(),
+                    start: "08:00".into(),
+                    end: "12:00".into(),
+                },
+                SchoolDay {
+                    date: "2026-09-22".into(),
+                    start: "08:15".into(),
+                    end: "15:45".into(),
+                },
+            ],
+            today,
+        );
+        assert_eq!(events.len(), 2);
+        assert!(events[0].school);
+        assert_eq!(events[0].title, "Léa (finishes at 16:30)");
+        assert_eq!(events[0].start, "08:30");
+        assert_eq!(events[0].day_label, "Today");
+        assert_eq!(events[1].day_label, "Mon 21");
+        assert_eq!(events[1].title, "Léa (finishes at 12:00)");
+        assert!(school_day_events("", &events_as_days(), today).is_empty());
+    }
+
+    #[test]
+    fn school_hours_use_next_day_with_lessons() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let events = school_day_events(
+            "Léa",
+            &[
+                SchoolDay {
+                    date: "2026-09-18".into(),
+                    start: "08:30".into(),
+                    end: "16:30".into(),
+                },
+                SchoolDay {
+                    date: "2026-09-19".into(),
+                    start: "09:00".into(),
+                    end: "12:00".into(),
+                },
+            ],
+            today,
+        );
+        assert_eq!(events[1].day_label, "Tomorrow");
+        assert_eq!(events[1].title, "Léa (finishes at 12:00)");
+    }
+
+    fn events_as_days() -> Vec<SchoolDay> {
+        vec![SchoolDay {
+            date: "2026-09-18".into(),
+            start: "08:30".into(),
+            end: "16:30".into(),
+        }]
+    }
+
+    #[test]
+    fn display_student_prefers_config() {
+        let mut cfg = PronoteConfig::default();
+        cfg.student = "Apolline".into();
+        cfg.child = "Other".into();
+        assert_eq!(display_student(&cfg, "JAUSSOIN"), "Apolline");
+        cfg.student.clear();
+        assert_eq!(display_student(&cfg, "JAUSSOIN"), "Other");
+        cfg.child.clear();
+        assert_eq!(display_student(&cfg, "Léa Dupont"), "Léa Dupont");
+    }
+
+    #[test]
+    fn parses_lesson_datetimes() {
+        let (date, time) = parse_pronote_datetime("18/09/2026 08:30:00").unwrap();
+        assert_eq!(date, NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        assert_eq!(time, NaiveTime::from_hms_opt(8, 30, 0).unwrap());
+        assert_eq!(
+            parse_pronote_hour("17h30"),
+            NaiveTime::from_hms_opt(17, 30, 0)
+        );
     }
 
     #[tokio::test]
