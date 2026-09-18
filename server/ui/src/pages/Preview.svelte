@@ -10,6 +10,10 @@
   let checksumHint = $state('Checksum loads after the first raster…')
   let stageEl = $state(null)
   let scale = $state(0.5)
+  let rasterOpen = $state(false)
+  let rasterLoading = $state(false)
+  let rasterError = $state('')
+  let rasterSrc = $state('')
 
   function formatDateLong(timeZone) {
     try {
@@ -40,9 +44,37 @@
     return () => ro.disconnect()
   })
 
+  $effect(() => {
+    if (!rasterOpen) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e) => {
+      if (e.key === 'Escape') closeRaster()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKey)
+    }
+  })
+
   onMount(() => {
     loadMeta()
   })
+
+  function openRaster() {
+    rasterError = ''
+    rasterLoading = true
+    rasterSrc = `/api/frame-dither.png?v=${Date.now()}`
+    rasterOpen = true
+  }
+
+  function closeRaster() {
+    rasterOpen = false
+    rasterSrc = ''
+    rasterLoading = false
+    rasterError = ''
+  }
 
   async function loadMeta() {
     try {
@@ -141,13 +173,89 @@
             src="/dashboard?v=crisp-type"
             width="1600"
             height="1200"
-            class="block border-0 bg-white"
+            class="pointer-events-none block border-0 bg-white"
           ></iframe>
+          <button
+            type="button"
+            class="absolute inset-6 cursor-zoom-in"
+            aria-label="Open 1600 by 1200 Spectra raster sent to the Pico"
+            onclick={openRaster}
+          ></button>
         </div>
       </div>
       <p class="mt-3 text-xs font-extrabold tracking-wide text-muted uppercase">
-        Pimoroni Inky Impression 13.3″ · 1600×1200 · Spectra 6
+        Pimoroni Inky Impression 13.3″ · 1600×1200 · Spectra 6 · click for 1:1
+        raster
       </p>
     </section>
   </div>
 </main>
+
+{#if rasterOpen}
+  <div class="fixed inset-0 z-50 overflow-auto bg-ink">
+    <button
+      type="button"
+      class="fixed inset-0 cursor-default"
+      aria-label="Close e-ink raster"
+      onclick={closeRaster}
+    ></button>
+    <div class="relative z-10 mx-auto w-[1600px] px-0 pb-8">
+      <div
+        class="sticky top-0 z-20 mb-0 flex items-center justify-between gap-4 bg-ink px-1 py-3"
+      >
+        <div>
+          <p class="font-display text-lg font-semibold text-paper">E-ink raster</p>
+          <p class="text-sm font-semibold text-plaster">
+            1600×1200 · Spectra 6 · same pixels as /api/frame.bin
+          </p>
+        </div>
+        <button type="button" class="btn btn-ghost bg-paper" onclick={closeRaster}>
+          Close
+        </button>
+      </div>
+      <div
+        class="relative bg-white shadow-2xl"
+        style="width: 1600px; height: 1200px"
+        role="dialog"
+        aria-modal="true"
+        aria-label="1600 by 1200 Spectra 6 raster"
+      >
+        {#if rasterLoading}
+          <p
+            class="absolute inset-0 grid place-items-center text-sm font-semibold text-muted"
+          >
+            Rasterising with Chrome…
+          </p>
+        {/if}
+        {#if rasterError}
+          <p
+            class="absolute inset-0 grid place-items-center p-8 text-center text-sm font-semibold text-terracotta"
+          >
+            {rasterError}
+          </p>
+        {/if}
+        {#if rasterSrc}
+          <img
+            src={rasterSrc}
+            alt="Spectra 6 frame packed for the Pico"
+            width="1600"
+            height="1200"
+            draggable="false"
+            class="block"
+            style="width: 1600px; height: 1200px; image-rendering: pixelated"
+            class:opacity-0={rasterLoading || rasterError}
+            onload={() => {
+              rasterLoading = false
+              rasterError = ''
+            }}
+            onerror={() => {
+              rasterLoading = false
+              rasterError =
+                'Could not rasterise. Chrome is required for /api/frame-dither.png.'
+            }}
+          />
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
