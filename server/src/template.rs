@@ -55,7 +55,7 @@ mod tests {
         assert!(html.contains("06:33"));
         assert!(html.contains("19:18"));
         assert!(html.contains("pollen-low"));
-        assert!(html.contains("Coming next"));
+        assert!(html.contains("class=\"coming\""));
         assert!(html.contains("icon-today"));
         assert!(html.contains("icon-house"));
         assert!(html.contains("Northern"));
@@ -71,6 +71,57 @@ mod tests {
         assert!(!html.contains("class=\"refresh\""));
         assert!(html.contains("class=\"frame-meta\""));
         assert!(html.contains("class=\"date\""));
+    }
+
+    #[test]
+    fn dashboard_shows_school_homework_and_grades() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        dash.school = crate::pronote::demo_school(NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("icon-school"));
+        assert!(html.contains("icon-grades"));
+        assert!(html.contains("Homework"));
+        assert!(html.contains("Grades"));
+        assert!(!html.contains("Léa"));
+        assert!(html.contains("14.2"));
+        assert!(html.contains("Maths"));
+        assert!(!html.contains("exercises p.24"));
+        assert!(html.contains("15.5&#x2f;20"));
+        assert!(html.contains("grade-high"));
+        assert!(html.contains("class=\"todos\""));
+    }
+
+    #[test]
+    fn dashboard_shows_school_day_hours() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.events_today.push(crate::model::CalendarEvent {
+            start: "08:30".into(),
+            title: "School: Léa (finishes at 16:30)".into(),
+            who: String::new(),
+            all_day: false,
+            day_label: "Today".into(),
+            date: "2026-09-18".into(),
+            birthday: false,
+            school: true,
+        });
+        dash.events_coming.push(crate::model::CalendarEvent {
+            start: "08:15".into(),
+            title: "School: Léa (finishes at 15:45)".into(),
+            who: String::new(),
+            all_day: false,
+            day_label: "Mon 21".into(),
+            date: "2026-09-21".into(),
+            birthday: false,
+            school: true,
+        });
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("class=\"school-day\""));
+        assert!(html.contains("School: Léa (finishes at 16:30)"));
+        assert!(html.contains("School: Léa (finishes at 15:45)"));
+        assert!(html.contains("08:30"));
+        assert!(html.contains("Mon 21 08:15"));
+        assert!(!html.contains(">School<"));
     }
 
     #[test]
@@ -109,6 +160,7 @@ mod tests {
             day_label: "Today".into(),
             date: "2026-09-14".into(),
             birthday: true,
+            school: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
@@ -118,6 +170,7 @@ mod tests {
             day_label: "Mon 28".into(),
             date: "2026-09-28".into(),
             birthday: true,
+            school: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"birthday\""));

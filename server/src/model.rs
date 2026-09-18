@@ -14,12 +14,14 @@ pub struct CalendarEvent {
     /// Config birthdays, merged into Today / Coming next.
     #[serde(default)]
     pub birthday: bool,
+    /// Pronote school-day hours, merged into Today and the next school day.
+    #[serde(default)]
+    pub school: bool,
 }
 
-/// Today/week title column is ~830px (1600 panel − padding − 460px sidebar −
-/// 150px time − gaps) at 30px Noto Sans, ~15.5px per character → ~53 glyphs.
-/// 48 leaves room for wide letters and the ellipsis.
-pub const EVENT_TITLE_MAX_CHARS: usize = 48;
+/// Today/week title column is ~570px (half of 1600 − padding − time − gaps)
+/// at 30px Atkinson, ~15.5px per character → ~36 glyphs.
+pub const EVENT_TITLE_MAX_CHARS: usize = 36;
 
 /// How far ahead to pull events for Coming next. Today stays in Today.
 pub const EVENT_HORIZON_DAYS: i64 = 180;
@@ -38,17 +40,21 @@ pub const EVENT_ROW_PX: i32 = 60;
 pub const SECTION_GAP_PX: i32 = EVENT_ROW_PX;
 pub const EMPTY_SECTION_BODY_PX: i32 = 54;
 
-/// Sidebar column (same grid row as events). Keep in sync with
-/// `dashboard.css` (`.panel` padding/gaps, `.mast`, `.sidebar { gap }`,
-/// `h2`, `.todos li`, `.tube-line`, `.rooms li`, `.todos-more`).
+/// Right-hand columns (same grid row as events). Keep in sync with
+/// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/tube/rooms,
+/// `h2`, `.todos li`, `.school-item`, `.tube-line`, `.rooms li`, `.todos-more`).
 pub const SIDEBAR_PX: i32 = 1008;
 pub const SIDEBAR_GAP_PX: i32 = 28;
 pub const TUBE_ROW_PX: i32 = 44;
-pub const ROOM_ROW_PX: i32 = EVENT_ROW_PX;
+pub const COMING_ROW_PX: i32 = TUBE_ROW_PX;
+pub const SCHOOL_ROW_PX: i32 = 44;
+pub const ROOM_ROW_PX: i32 = TUBE_ROW_PX;
+pub const MAX_HOMEWORK_ROWS: usize = 8;
+pub const MAX_GRADE_ROWS: usize = 8;
 /// Compact “+ N other todos” line under the pills (margin + height).
 pub const TODOS_MORE_PX: i32 = 36;
-/// Sidebar inner width (`.panel` `460px` column).
-pub const TODO_PILL_MAX_PX: i32 = 460;
+/// To-do pills span both quarter columns (362 + 24 + 362).
+pub const TODO_PILL_MAX_PX: i32 = 748;
 pub const TODO_PILL_PAD_X: i32 = 24;
 pub const TODO_PILL_BORDER_X: i32 = 4;
 /// Conservative Noto Sans width at 22px (same ~0.55em as event titles).
@@ -66,16 +72,16 @@ pub fn coming_event_capacity(today_count: usize) -> usize {
     };
     let leftover =
         EVENTS_COLUMN_PX - SECTION_HEAD_PX - today_body - SECTION_GAP_PX - SECTION_HEAD_PX;
-    if leftover < EVENT_ROW_PX {
+    if leftover < COMING_ROW_PX {
         0
     } else {
-        (leftover / EVENT_ROW_PX) as usize
+        (leftover / COMING_ROW_PX) as usize
     }
 }
 
 /// Today is first, but always leave Coming next a heading plus one row.
 pub fn max_today_events() -> usize {
-    let reserved = SECTION_GAP_PX + SECTION_HEAD_PX + EVENT_ROW_PX;
+    let reserved = SECTION_GAP_PX + SECTION_HEAD_PX + COMING_ROW_PX;
     let body = EVENTS_COLUMN_PX - SECTION_HEAD_PX - reserved;
     (body / EVENT_ROW_PX) as usize
 }
@@ -144,6 +150,53 @@ pub struct TubeLine {
     pub colour: String,
 }
 
+/// Pronote homework and recent grades for the two school quarter-sections.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct School {
+    /// Child or student first name as Pronote shows it.
+    #[serde(default)]
+    pub student: String,
+    /// Period average, for example `14.2`. Empty when Pronote has none.
+    #[serde(default)]
+    pub average: String,
+    #[serde(default)]
+    pub homework: Vec<SchoolItem>,
+    #[serde(default)]
+    pub grades: Vec<SchoolItem>,
+    /// First and last lesson today and on the next school day.
+    #[serde(default)]
+    pub days: Vec<SchoolDay>,
+}
+
+impl School {
+    pub fn is_visible(&self) -> bool {
+        !self.homework.is_empty()
+            || !self.grades.is_empty()
+            || !self.student.is_empty()
+            || !self.average.is_empty()
+            || !self.days.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchoolDay {
+    pub date: String,
+    pub start: String,
+    pub end: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchoolItem {
+    pub when: String,
+    pub subject: String,
+    /// Grade mark, for example `15.5/20`. Empty on homework rows.
+    #[serde(default)]
+    pub detail: String,
+    /// CSS class for a grade: `high`, `mid`, `low`, or empty.
+    #[serde(default)]
+    pub level: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Dashboard {
     pub family_name: String,
@@ -159,6 +212,8 @@ pub struct Dashboard {
     pub rooms: Vec<RoomClimate>,
     pub weather: Weather,
     pub tube: Vec<TubeLine>,
+    #[serde(default)]
+    pub school: School,
     pub source_note: String,
     /// Pico has reported a battery reading. Hidden on the panel until then.
     #[serde(default)]
@@ -190,6 +245,7 @@ impl Dashboard {
             rooms: Vec::new(),
             weather: Weather::default(),
             tube: Vec::new(),
+            school: School::default(),
             source_note: String::new(),
             has_battery: false,
             battery_pct: 0,
@@ -249,18 +305,41 @@ impl Dashboard {
         self.events_coming.truncate(cap);
     }
 
-    /// Keep Tube and House in full; fill leftover sidebar height with to-do pills.
+    /// Keep Tube and House in full on the bottom row. Homework and grades
+    /// share the top row; leftover height is the two-column to-do band.
     pub fn fit_sidebar_to_panel(&mut self) {
-        let remaining = SIDEBAR_PX
-            - sidebar_block_px(self.tube.len(), TUBE_ROW_PX)
-            - sidebar_block_px(self.rooms.len(), ROOM_ROW_PX)
-            - SIDEBAR_GAP_PX * 2;
+        let school_on = self.school.is_visible();
+        let footer_px = sidebar_block_px(self.tube.len(), TUBE_ROW_PX)
+            .max(sidebar_block_px(self.rooms.len(), ROOM_ROW_PX));
+        let gaps = if school_on { 2 } else { 1 };
+        let todos_reserve = SECTION_HEAD_PX
+            + if self.todos.is_empty() {
+                EMPTY_SECTION_BODY_PX
+            } else {
+                TODO_PILL_TOP_PX + TODO_PILL_ROW_PX
+            };
+
+        if school_on {
+            let school_budget =
+                (SIDEBAR_PX - footer_px - todos_reserve - SIDEBAR_GAP_PX * gaps).max(0);
+            let cap = max_rows_in(school_budget, SCHOOL_ROW_PX);
+            self.school.homework.truncate(cap.min(MAX_HOMEWORK_ROWS));
+            self.school.grades.truncate(cap.min(MAX_GRADE_ROWS));
+        }
+
+        let school_row = if school_on {
+            sidebar_block_px(self.school.homework.len(), SCHOOL_ROW_PX)
+                .max(sidebar_block_px(self.school.grades.len(), SCHOOL_ROW_PX))
+        } else {
+            0
+        };
+        let todo_budget = SIDEBAR_PX - school_row - footer_px - SIDEBAR_GAP_PX * gaps;
         let total = self.todos.len();
         if total == 0 {
             self.todos_more = 0;
             return;
         }
-        let body = remaining - SECTION_HEAD_PX;
+        let body = todo_budget - SECTION_HEAD_PX;
         if todos_fitting_in(&self.todos, body) == total {
             self.todos_more = 0;
             return;
@@ -290,6 +369,15 @@ fn sidebar_block_px(rows: usize, row_px: i32) -> i32 {
         } else {
             (rows as i32).saturating_mul(row_px)
         }
+}
+
+fn max_rows_in(section_px: i32, row_px: i32) -> usize {
+    let body = section_px - SECTION_HEAD_PX;
+    if body < row_px {
+        0
+    } else {
+        (body / row_px) as usize
+    }
 }
 
 pub fn battery_level(pct: u16) -> &'static str {
@@ -356,11 +444,11 @@ mod tests {
 
     #[test]
     fn coming_next_fills_space_left_after_today() {
-        assert_eq!(coming_event_capacity(0), 12);
-        assert_eq!(coming_event_capacity(1), 12);
-        assert_eq!(coming_event_capacity(2), 11);
-        assert_eq!(coming_event_capacity(8), 5);
-        assert_eq!(max_today_events(), 12);
+        assert_eq!(coming_event_capacity(0), 17);
+        assert_eq!(coming_event_capacity(1), 17);
+        assert_eq!(coming_event_capacity(2), 16);
+        assert_eq!(coming_event_capacity(8), 7);
+        assert_eq!(max_today_events(), 13);
     }
 
     #[test]
@@ -373,9 +461,9 @@ mod tests {
             .collect();
         dash.fit_calendar_to_panel();
         assert_eq!(dash.events_today.len(), 1);
-        assert_eq!(dash.events_coming.len(), 12);
+        assert_eq!(dash.events_coming.len(), 17);
         assert_eq!(dash.events_coming[0].date, "2026-09-14");
-        assert_eq!(dash.events_coming[11].date, "2026-09-25");
+        assert_eq!(dash.events_coming[16].date, "2026-09-30");
     }
 
     fn todo(title: &str) -> TodoItem {
@@ -406,16 +494,39 @@ mod tests {
             .collect()
     }
 
+    fn school_hw(when: &str, subject: &str) -> SchoolItem {
+        SchoolItem {
+            when: when.into(),
+            subject: subject.into(),
+            detail: String::new(),
+            level: String::new(),
+        }
+    }
+
+    fn school_grade(when: &str, subject: &str, detail: &str, level: &str) -> SchoolItem {
+        SchoolItem {
+            when: when.into(),
+            subject: subject.into(),
+            detail: detail.into(),
+            level: level.into(),
+        }
+    }
+
     #[test]
     fn sidebar_keeps_tube_and_house_and_trims_todo_pills() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
         let mut dash = Dashboard::empty("Family", today);
+        dash.school.student = "Léa".into();
+        dash.school.homework = (0..12)
+            .map(|i| school_hw("Mon", &format!("Subject {i}")))
+            .collect();
         dash.tube = tube_lines(4);
         dash.rooms = ["A", "B", "C", "D", "E"].into_iter().map(room).collect();
         dash.todos = (0..50).map(|_| todo("Milk")).collect();
         dash.fit_sidebar_to_panel();
         assert_eq!(dash.tube.len(), 4);
         assert_eq!(dash.rooms.len(), 5);
+        assert_eq!(dash.school.homework.len(), MAX_HOMEWORK_ROWS);
         assert!(
             dash.todos.len() > 4,
             "pills should beat one-per-line packing"
@@ -437,17 +548,43 @@ mod tests {
     }
 
     #[test]
-    fn sidebar_shows_only_more_line_when_no_todo_row_fits() {
+    fn sidebar_trims_grades_to_fit_above_house() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
         let mut dash = Dashboard::empty("Family", today);
+        dash.school.student = "Léa".into();
+        dash.school.grades = (0..12)
+            .map(|i| school_grade("Fri", "Maths", &format!("{i}/20"), "mid"))
+            .collect();
         dash.tube = tube_lines(4);
         dash.rooms = (0..12).map(|i| room(&format!("R{i}"))).collect();
-        dash.todos = (0..5).map(|i| todo(&format!("Task {i}"))).collect();
         dash.fit_sidebar_to_panel();
         assert_eq!(dash.rooms.len(), 12);
         assert_eq!(dash.tube.len(), 4);
-        assert!(dash.todos.is_empty());
-        assert_eq!(dash.todos_more, 5);
+        assert!(dash.school.grades.len() < 12);
+        assert!(!dash.school.grades.is_empty());
+    }
+
+    #[test]
+    fn sidebar_keeps_school_tube_and_house() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.school = School {
+            student: "Léa".into(),
+            average: "14.2".into(),
+            homework: vec![school_hw("Today", "Maths")],
+            grades: vec![school_grade("Fri", "French", "15/20", "high")],
+            days: Vec::new(),
+        };
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.todos = (0..120).map(|_| todo("Milk")).collect();
+        dash.fit_sidebar_to_panel();
+        assert_eq!(dash.school.homework.len(), 1);
+        assert_eq!(dash.school.grades.len(), 1);
+        assert_eq!(dash.tube.len(), 4);
+        assert_eq!(dash.rooms.len(), 1);
+        assert!(dash.todos_more > 0);
+        assert_eq!(dash.todos.len() + dash.todos_more, 120);
     }
 
     #[test]
@@ -539,6 +676,7 @@ mod tests {
             day_label: date.format("%a %-d").to_string(),
             date: date.format("%Y-%m-%d").to_string(),
             birthday: false,
+            school: false,
         }
     }
 

@@ -20,11 +20,7 @@ rrule = "0.14"
 image = { version = "0.25.8", default-features = false, features = ["jpeg", "png", "webp"] }
 minijinja = { version = "2.12.0", features = ["loader"] }
 notify = "8.2.0"
-reqwest = { version = "0.12.23", default-features = false, features = [
-    "json",
-    "rustls-tls",
-    "charset",
-] }
+reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls", "charset", "cookies"] }
 rumqttc = { version = "0.24.0", default-features = false, features = ["use-rustls"] }
 roxmltree = "0.20.0"
 serde = { version = "1.0.219", features = ["derive"] }
@@ -40,6 +36,11 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 epaper-dithering-core = "5.0.0"
 toml_edit = "0.25.15"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+num-bigint = "0.4"
+rand = "0.8"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 
 [dev-dependencies]
 http-body-util = "0.1.3"

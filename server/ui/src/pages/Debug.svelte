@@ -2,21 +2,57 @@
   import { onMount } from 'svelte'
   import FrameMark from '../lib/FrameMark.svelte'
   import PageNav from '../lib/PageNav.svelte'
-  import { getDebug } from '../lib/api.js'
+  import { deleteDebug, getDebug } from '../lib/api.js'
 
   const builtVersion = import.meta.env.APP_VERSION
   let page = $state(null)
+  let pollPage = $state(1)
   let error = $state('')
   let loading = $state(true)
+  let clearing = $state(false)
+  let fetchGen = 0
 
   async function refresh() {
+    const gen = ++fetchGen
+    const requested = pollPage
     try {
-      page = await getDebug()
+      const next = await getDebug(requested)
+      if (gen !== fetchGen) return
+      page = next
+      if (next?.page) pollPage = next.page
       error = ''
+    } catch (e) {
+      if (gen !== fetchGen) return
+      error = e.message || String(e)
+    } finally {
+      if (gen === fetchGen) loading = false
+    }
+  }
+
+  async function goPage(n) {
+    pollPage = n
+    await refresh()
+    document.getElementById('pico-requests')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  async function clearHistory() {
+    if (
+      !confirm(
+        'Are you sure you want to delete all Pico poll history and stored frames? This cannot be undone.',
+      )
+    ) {
+      return
+    }
+    clearing = true
+    error = ''
+    try {
+      await deleteDebug()
+      pollPage = 1
+      await refresh()
     } catch (e) {
       error = e.message || String(e)
     } finally {
-      loading = false
+      clearing = false
     }
   }
 
@@ -35,6 +71,32 @@
     empty: 'text-muted',
   }
 </script>
+
+{#snippet pager()}
+  {#if page?.page_count > 1}
+    <nav class="flex items-center justify-between gap-3" aria-label="Pico request pages">
+      <button
+        type="button"
+        class="btn btn-ghost"
+        disabled={page.page <= 1}
+        onclick={() => goPage(page.page - 1)}
+      >
+        Previous
+      </button>
+      <p class="text-sm font-semibold text-muted">
+        Page {page.page} of {page.page_count}
+      </p>
+      <button
+        type="button"
+        class="btn btn-ghost"
+        disabled={page.page >= page.page_count}
+        onclick={() => goPage(page.page + 1)}
+      >
+        Next
+      </button>
+    </nav>
+  {/if}
+{/snippet}
 
 <main class="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:py-12">
   <header class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -106,10 +168,22 @@
             <dd class="mt-0.5 font-semibold">{page.pico_drift_label}</dd>
           </div>
         {/if}
+        <div>
+          <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Debug storage</dt>
+          <dd class="mt-0.5 font-semibold">{page.debug_dir_label}</dd>
+        </div>
       </dl>
       <p class="mt-4 text-base font-semibold {etaClass[page.eta_kind] || 'text-muted'}">
         {page.eta_text}
       </p>
+      <button
+        type="button"
+        class="btn btn-ghost mt-5 text-terracotta-dark"
+        disabled={clearing}
+        onclick={clearHistory}
+      >
+        {clearing ? 'Deleting…' : 'Delete history'}
+      </button>
     </section>
 
     {#if page.graph_svg}
@@ -126,9 +200,13 @@
       </section>
     {/if}
 
-    <section class="card p-5 sm:p-6" aria-label="Pico requests">
-      <h2 class="mb-3 text-xs font-extrabold tracking-wide text-muted uppercase">Pico requests</h2>
-      <ol class="m-0 list-none p-0">
+    <section id="pico-requests" class="card p-5 sm:p-6" aria-label="Pico requests">
+      <h2 class="mb-1 text-xs font-extrabold tracking-wide text-muted uppercase">Pico requests</h2>
+      <p class="mb-3 text-sm font-semibold text-muted">
+        {page.poll_count} poll{page.poll_count === 1 ? '' : 's'}
+      </p>
+      {@render pager()}
+      <ol class="m-0 list-none p-0 {page.page_count > 1 ? 'mt-3' : ''}">
         {#each page.polls as p}
           <li class="border-t border-ink/10 py-4 first:border-t-0 first:pt-0">
             <div class="mb-2.5 flex flex-wrap gap-x-3 gap-y-1 text-sm font-semibold text-muted">
@@ -163,6 +241,11 @@
           </li>
         {/each}
       </ol>
+      {#if page.page_count > 1}
+        <div class="mt-3">
+          {@render pager()}
+        </div>
+      {/if}
     </section>
   {:else}
     <section class="card p-5 sm:p-6">
@@ -175,6 +258,24 @@
       <p class="mt-2 text-sm font-semibold text-muted">
         Use <code class="text-ink">pico-sim</code> to generate sample polls without hardware.
       </p>
+      {#if page}
+        <dl class="mt-4 text-sm">
+          <div>
+            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Debug storage</dt>
+            <dd class="mt-0.5 font-semibold">{page.debug_dir_label}</dd>
+          </div>
+        </dl>
+        {#if page.debug_dir_bytes > 0}
+          <button
+            type="button"
+            class="btn btn-ghost mt-5 text-terracotta-dark"
+            disabled={clearing}
+            onclick={clearHistory}
+          >
+            {clearing ? 'Deleting…' : 'Delete history'}
+          </button>
+        {/if}
+      {/if}
     </section>
   {/if}
 </main>

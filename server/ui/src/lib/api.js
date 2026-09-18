@@ -79,8 +79,13 @@ export async function normalizeUpload(file) {
   }
 }
 
-export function getDebug() {
-  return fetch('/api/debug').then(json)
+export function getDebug(page = 1) {
+  const q = page > 1 ? `?page=${page}` : ''
+  return fetch(`/api/debug${q}`).then(json)
+}
+
+export function deleteDebug() {
+  return fetch('/api/debug', { method: 'DELETE' }).then(json)
 }
 
 export function getFrameJson() {

@@ -65,12 +65,14 @@ body {
   height: 1200px;
   padding: 44px 52px 36px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 460px;
-  grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr auto;
   grid-template-areas:
-    "mast mast"
-    "events sidebar";
-  gap: 20px 40px;
+    "mast mast mast"
+    "events homework grades"
+    "events todos todos"
+    "events tube rooms";
+  gap: 20px 24px;
 }
 
 .mast {
@@ -89,20 +91,17 @@ body {
   min-height: 0;
   gap: 60px; /* minimum one event row; extra space sits above Coming next */
 }
-.sidebar {
-  grid-area: sidebar;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-width: 0;
-  min-height: 0;
-  gap: 28px;
-}
+.homework { grid-area: homework; }
+.grades { grid-area: grades; }
+.todos { grid-area: todos; overflow: hidden; }
+.tube { grid-area: tube; }
+.rooms { grid-area: rooms; }
 .today,
+.homework,
+.grades,
 .todos,
 .tube,
-.rooms { flex: 0 0 auto; min-width: 0; }
-.todos { overflow: hidden; }
+.rooms { min-width: 0; }
 .coming {
   flex: 0 1 auto;
   margin-top: auto;
@@ -200,6 +199,8 @@ h2 {
 
 .rooms h2,
 .todos h2,
+.homework h2,
+.grades h2,
 .tube h2 {
   color: var(--black);
   border-bottom-color: var(--black);
@@ -217,7 +218,7 @@ h2 {
 .day-meta {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 8px;
   margin-left: auto;
   min-width: 0;
   text-transform: none;
@@ -228,7 +229,7 @@ h2 {
 .slots {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .slot {
@@ -321,9 +322,17 @@ li {
   line-height: 1.2;
 }
 
-li:not(.tube-line):not(.todo-pill) {
+.today li {
   box-sizing: border-box;
   height: 60px;
+}
+
+.coming li {
+  box-sizing: border-box;
+  height: 44px;
+  padding: 4px 0;
+  font-size: 20px;
+  gap: 10px;
 }
 
 .today ol,
@@ -347,7 +356,16 @@ li:not(.tube-line):not(.todo-pill) {
 .what { flex: 1 1 auto; min-width: 0; }
 
 .coming .when {
-  flex-basis: 210px;
+  flex-basis: 176px;
+  font-size: 20px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.coming .present-icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
 }
 
 .today .what,
@@ -373,10 +391,21 @@ li:not(.tube-line):not(.todo-pill) {
   display: block;
 }
 .rooms li {
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 108px 60px;
+  grid-template-columns: minmax(0, 1fr) 72px 44px;
   align-items: center;
-  column-gap: 10px;
+  height: 44px;
+  padding: 4px 0;
+  font-size: 20px;
+  column-gap: 8px;
+}
+.rooms .what {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 700;
 }
 .rooms .temp,
 .rooms .humidity {
@@ -388,11 +417,11 @@ li:not(.tube-line):not(.todo-pill) {
 }
 .rooms .temp {
   color: var(--red);
-  font-size: 32px;
+  font-size: 20px;
 }
 .rooms .humidity {
   color: var(--blue);
-  font-size: 22px;
+  font-size: 18px;
 }
 
 .rooms li.offline .what {
@@ -410,7 +439,7 @@ li:not(.tube-line):not(.todo-pill) {
   height: 44px;
   padding: 6px 0;
   align-items: center;
-  font-size: 24px;
+  font-size: 20px;
   gap: 0;
 }
 
@@ -430,7 +459,7 @@ li:not(.tube-line):not(.todo-pill) {
   justify-self: center;
   text-align: center;
   font-weight: 700;
-  font-size: 22px;
+  font-size: 18px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -448,6 +477,97 @@ li:not(.tube-line):not(.todo-pill) {
   color: var(--white);
   padding: 2px 8px;
 }
+
+.homework h2,
+.grades h2 {
+  justify-content: flex-start;
+}
+
+.homework h2,
+.grades h2,
+.todos h2,
+.tube h2,
+.rooms h2,
+.coming h2 {
+  font-size: 22px;
+  gap: 8px;
+}
+
+.homework .section-icon,
+.grades .section-icon,
+.todos .section-icon,
+.tube .section-icon,
+.rooms .section-icon,
+.coming .section-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+}
+
+.school-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.school-avg { color: var(--red); }
+
+.homework li.school-item,
+.grades li.school-item {
+  box-sizing: border-box;
+  display: grid;
+  height: 44px;
+  padding: 4px 0;
+  align-items: center;
+  font-size: 20px;
+  gap: 8px;
+}
+
+.homework li.school-item {
+  grid-template-columns: 100px minmax(0, 1fr);
+}
+
+.grades li.school-item {
+  grid-template-columns: 100px minmax(0, 1fr) 70px;
+}
+
+.homework .when,
+.grades .when {
+  flex: none;
+  font-size: 18px;
+  font-weight: 700;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.homework .subject,
+.grades .subject {
+  min-width: 0;
+  font-weight: 700;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.grades .detail {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.grade-high .detail { color: var(--green); }
+.grade-mid .detail { color: var(--black); }
+.grade-low .detail { color: var(--red); }
 
 .todos ul {
   display: flex;
@@ -491,6 +611,16 @@ li:not(.tube-line):not(.todo-pill) {
 .empty {
   font-size: 28px;
   margin: 20px 0 0;
+}
+
+.homework .empty,
+.grades .empty,
+.todos .empty,
+.tube .empty,
+.rooms .empty,
+.coming .empty {
+  font-size: 22px;
+  margin: 12px 0 0;
 }
 
 .today li:first-child .when {

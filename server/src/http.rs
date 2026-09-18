@@ -64,7 +64,7 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         .route("/pictures/{id}/thumb.jpg", get(picture_thumb))
         .route("/pictures/{id}/dither.png", get(picture_dither))
         .route("/pictures/{id}/original", get(picture_original))
-        .route("/debug", get(get_debug))
+        .route("/debug", get(get_debug).delete(delete_debug))
         .route("/debug/frames/{id}", get(debug_frame))
         // Phone JPEGs routinely exceed Axum's 2 MiB default (multipart parse fails).
         .layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT));
@@ -181,15 +181,32 @@ async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-async fn get_debug(State(state): State<AppState>) -> impl IntoResponse {
+#[derive(Debug, Deserialize, Default)]
+struct DebugQuery {
+    page: Option<usize>,
+}
+
+async fn get_debug(
+    State(state): State<AppState>,
+    Query(q): Query<DebugQuery>,
+) -> impl IntoResponse {
     let polls = state.debug.snapshot().await;
     let cfg = state.cache.snapshot_config().await;
     Json(page_from_polls_with_drift(
         &polls,
         cfg.tz(),
         cfg.pico_drift,
+        q.page.unwrap_or(1),
+        state.debug.dir_bytes(),
         |c| state.debug.has_frame(c),
     ))
+}
+
+async fn delete_debug(State(state): State<AppState>) -> Response {
+    match state.debug.clear().await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(err) => error_response(err),
+    }
 }
 
 async fn debug_frame(State(state): State<AppState>, Path(name): Path<String>) -> Response {

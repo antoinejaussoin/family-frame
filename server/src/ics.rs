@@ -120,6 +120,7 @@ fn calendar_event(
         day_label: day_label(local.date_naive(), from),
         date: local.date_naive().format("%Y-%m-%d").to_string(),
         birthday: false,
+        school: false,
     }
 }
 

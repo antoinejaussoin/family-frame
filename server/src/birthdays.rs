@@ -28,6 +28,7 @@ pub fn upcoming_events(birthdays: &[Birthday], today: NaiveDate) -> Vec<Calendar
             day_label: ics::day_label(next, today),
             date: next.format("%Y-%m-%d").to_string(),
             birthday: true,
+            school: false,
         });
     }
     out

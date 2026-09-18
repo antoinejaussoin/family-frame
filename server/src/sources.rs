@@ -8,6 +8,7 @@ use crate::config::Config;
 use crate::ics;
 use crate::meross;
 use crate::model::Dashboard;
+use crate::pronote;
 use crate::tfl;
 use crate::todoist;
 use crate::weather;
@@ -127,6 +128,33 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
         }
     }
 
+    if cfg.pronote_enabled() {
+        match pronote::load_school(&cfg.pronote, today).await {
+            Ok(mut school) => {
+                school.student = pronote::display_student(&cfg.pronote, &school.student);
+                notes.push(if school.student.is_empty() {
+                    "Pronote".into()
+                } else {
+                    format!("Pronote “{}”", school.student)
+                });
+                dash.school = school;
+            }
+            Err(err) => {
+                warn!(%err, "Pronote failed; using demo school");
+                dash.school = pronote::demo_school(today);
+                dash.school.student = pronote::display_student(&cfg.pronote, &dash.school.student);
+                notes.push("Pronote unavailable".into());
+            }
+        }
+    } else {
+        dash.school = pronote::demo_school(today);
+        dash.school.student = pronote::display_student(&cfg.pronote, &dash.school.student);
+        notes.push("demo school (no Pronote credentials)".into());
+    }
+
+    let school_hours = pronote::school_day_events(&dash.school.student, &dash.school.days, today);
+    merge_events(&mut dash, school_hours);
+
     merge_events(
         &mut dash,
         crate::birthdays::upcoming_events(&cfg.birthdays, today),
@@ -207,7 +235,9 @@ async fn fetch_ics(url: &str) -> Result<String> {
 
 fn merge_events(dash: &mut Dashboard, events: Vec<crate::model::CalendarEvent>) {
     for mut ev in events {
-        ev.title = crate::model::truncate_event_title(&ev.title);
+        if !ev.school {
+            ev.title = crate::model::truncate_event_title(&ev.title);
+        }
         ev.who.clear();
         if ev.day_label == "Today" {
             dash.events_today.push(ev);
@@ -230,6 +260,7 @@ fn demo_events(today: chrono::NaiveDate) -> Vec<crate::model::CalendarEvent> {
             day_label: ics::day_label(date, today),
             date: date.format("%Y-%m-%d").to_string(),
             birthday: false,
+            school: false,
         }
     };
 

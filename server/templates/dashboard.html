@@ -5,7 +5,7 @@
   <title>{{ family_name }} frame</title>
   <link rel="preload" href="/static/fonts/AtkinsonHyperlegible-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/AtkinsonHyperlegible-Bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/static/dashboard.css?v=arrow">
+  <link rel="stylesheet" href="/static/dashboard.css?v=next44">
 </head>
 <body>
   <main class="panel">
@@ -61,6 +61,17 @@
           <rect x="30" y="16" width="26" height="8" rx="2" fill="#000000"/>
           <rect x="8" y="36" width="16" height="16" rx="3" fill="#000000"/>
           <rect x="30" y="40" width="26" height="8" rx="2" fill="#000000"/>
+        </symbol>
+        <symbol id="icon-school" viewBox="0 0 64 64">
+          <rect x="8" y="14" width="48" height="38" rx="4" fill="#000000"/>
+          <rect x="12" y="18" width="40" height="30" rx="2" fill="#ffff00"/>
+          <rect x="28" y="18" width="8" height="30" fill="#ff0000"/>
+          <rect x="24" y="10" width="16" height="10" rx="4" fill="#0000ff"/>
+        </symbol>
+        <symbol id="icon-grades" viewBox="0 0 64 64">
+          <rect x="10" y="36" width="10" height="18" fill="#0000ff"/>
+          <rect x="27" y="22" width="10" height="32" fill="#ffff00"/>
+          <rect x="44" y="10" width="10" height="44" fill="#00ff00"/>
         </symbol>
         <symbol id="icon-tube" viewBox="0 0 64 64">
           <circle cx="32" cy="32" r="22" fill="none" stroke="#ff0000" stroke-width="8"/>
@@ -154,7 +165,7 @@
         {% if events_today %}
         <ol>
           {% for ev in events_today %}
-          <li{% if ev.birthday %} class="birthday"{% endif %}>
+          <li{% if ev.birthday %} class="birthday"{% elif ev.school %} class="school-day"{% endif %}>
             <span class="when">{% if ev.birthday %}Birthday{% elif ev.all_day %}All day{% else %}{{ ev.start }}{% endif %}</span>
             <span class="what">
               {% if ev.birthday %}
@@ -174,7 +185,7 @@
         <h2>
           <span class="section-title">
             <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-week"/></svg>
-            Coming next
+            Next
           </span>
           {% if weather.days and weather.days|length > 1 %}
           {% set day = weather.days[1] %}
@@ -215,7 +226,7 @@
         {% if events_coming %}
         <ol>
           {% for ev in events_coming %}
-          <li{% if ev.birthday %} class="birthday"{% endif %}>
+          <li{% if ev.birthday %} class="birthday"{% elif ev.school %} class="school-day"{% endif %}>
             <span class="when">{{ ev.day_label }}{% if ev.start %} {{ ev.start }}{% endif %}</span>
             <span class="what">
               {% if ev.birthday %}
@@ -232,65 +243,113 @@
       </section>
     </div>
 
-    <div class="sidebar">
-      <section class="todos">
-        <h2>
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-todo"/></svg>
-          To do
-        </h2>
-        {% if todos %}
-        <ul>
-          {% for item in todos %}
-          <li class="todo-pill{% if item.done %} done{% endif %}">{{ item.title }}</li>
-          {% endfor %}
-        </ul>
-        {% elif todos_more == 0 %}
-        <p class="empty">No open family tasks.</p>
-        {% endif %}
-        {% if todos_more > 0 %}
-        <p class="todos-more">+ {{ todos_more }} other todo{% if todos_more != 1 %}s{% endif %}</p>
-        {% endif %}
-      </section>
+    {% if school.homework or school.grades or school.student or school.average %}
+    <section class="homework">
+      <h2>
+        <span class="section-title">
+          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-school"/></svg>
+          Homework
+        </span>
+      </h2>
+      {% if school.homework %}
+      <ul>
+        {% for item in school.homework %}
+        <li class="school-item">
+          <span class="when">{{ item.when }}</span>
+          <span class="subject">{{ item.subject }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">No homework due.</p>
+      {% endif %}
+    </section>
 
-      <section class="tube">
-        <h2>
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-tube"/></svg>
-          Tube
-        </h2>
-        {% if tube %}
-        <ul>
-          {% for line in tube %}
-          <li class="tube-line severity-{{ line.severity }}">
-            <span class="line-name colour-{{ line.colour }}">{{ line.name }}</span>
-            <span class="line-status">{{ line.status }}</span>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <p class="empty">No Tube status yet.</p>
+    <section class="grades">
+      <h2>
+        <span class="section-title">
+          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-grades"/></svg>
+          Grades
+        </span>
+        {% if school.average %}
+        <span class="school-meta">
+          <span class="school-avg">{{ school.average }}</span>
+        </span>
         {% endif %}
-      </section>
+      </h2>
+      {% if school.grades %}
+      <ul>
+        {% for item in school.grades %}
+        <li class="school-item{% if item.level %} grade-{{ item.level }}{% endif %}">
+          <span class="when">{{ item.when }}</span>
+          <span class="subject">{{ item.subject }}</span>
+          <span class="detail">{{ item.detail }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">No grades yet.</p>
+      {% endif %}
+    </section>
+    {% endif %}
 
-      <section class="rooms">
-        <h2>
-          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-house"/></svg>
-          House
-        </h2>
-        {% if rooms %}
-        <ul>
-          {% for room in rooms %}
-          <li class="{% if not room.online %}offline{% endif %}">
-            <span class="what">{{ room.name }}</span>
-            <span class="temp">{{ room.temperature }}</span>
-            <span class="humidity">{{ room.humidity }}</span>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <p class="empty">No thermometer readings yet.</p>
-        {% endif %}
-      </section>
-    </div>
+    <section class="todos">
+      <h2>
+        <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-todo"/></svg>
+        To do
+      </h2>
+      {% if todos %}
+      <ul>
+        {% for item in todos %}
+        <li class="todo-pill{% if item.done %} done{% endif %}">{{ item.title }}</li>
+        {% endfor %}
+      </ul>
+      {% elif todos_more == 0 %}
+      <p class="empty">No open family tasks.</p>
+      {% endif %}
+      {% if todos_more > 0 %}
+      <p class="todos-more">+ {{ todos_more }} other todo{% if todos_more != 1 %}s{% endif %}</p>
+      {% endif %}
+    </section>
+
+    <section class="tube">
+      <h2>
+        <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-tube"/></svg>
+        Tube
+      </h2>
+      {% if tube %}
+      <ul>
+        {% for line in tube %}
+        <li class="tube-line severity-{{ line.severity }}">
+          <span class="line-name colour-{{ line.colour }}">{{ line.name }}</span>
+          <span class="line-status">{{ line.status }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">No Tube status yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="rooms">
+      <h2>
+        <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-house"/></svg>
+        House
+      </h2>
+      {% if rooms %}
+      <ul>
+        {% for room in rooms %}
+        <li class="{% if not room.online %}offline{% endif %}">
+          <span class="what">{{ room.name }}</span>
+          <span class="temp">{{ room.temperature }}</span>
+          <span class="humidity">{{ room.humidity }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">No thermometer readings yet.</p>
+      {% endif %}
+    </section>
   </main>
 </body>
 </html>

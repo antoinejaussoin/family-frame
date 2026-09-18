@@ -19,6 +19,7 @@ pub mod model;
 pub mod pack;
 pub mod photo;
 pub mod pictures;
+pub mod pronote;
 pub mod schedule;
 pub mod screenshot;
 pub mod sources;
