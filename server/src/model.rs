@@ -209,6 +209,11 @@ pub struct Dashboard {
     pub month: String,
     pub date_long: String,
     pub date_iso: String,
+    /// `Saint` / `Sainte` / `Saints`, empty for named feasts (Noël, Toussaint).
+    #[serde(default)]
+    pub saint_title: String,
+    #[serde(default)]
+    pub saint_name: String,
     pub events_today: Vec<CalendarEvent>,
     pub events_coming: Vec<CalendarEvent>,
     pub todos: Vec<TodoItem>,
@@ -239,6 +244,7 @@ pub struct Dashboard {
 
 impl Dashboard {
     pub fn empty(family_name: &str, date: NaiveDate) -> Self {
+        let saint = crate::saints::of_date(date);
         Self {
             family_name: family_name.to_string(),
             weekday: date.format("%A").to_string(),
@@ -246,6 +252,8 @@ impl Dashboard {
             month: date.format("%B").to_string(),
             date_long: date.format("%-d %B").to_string(),
             date_iso: date.format("%Y-%m-%d").to_string(),
+            saint_title: saint.title.to_string(),
+            saint_name: saint.name.to_string(),
             events_today: Vec::new(),
             events_coming: Vec::new(),
             todos: Vec::new(),
@@ -462,6 +470,8 @@ mod tests {
         assert_eq!(dash.day, "18");
         assert_eq!(dash.month, "September");
         assert_eq!(dash.date_long, "18 September");
+        assert_eq!(dash.saint_title, "Sainte");
+        assert_eq!(dash.saint_name, "Nadège");
     }
 
     #[test]
