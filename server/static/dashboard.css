@@ -66,13 +66,21 @@ body {
   padding: 44px 52px 36px;
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "mast mast mast"
+    "events todos todos"
+    "events tube rooms";
+  gap: 20px 24px;
+}
+
+.panel.with-school {
   grid-template-rows: auto auto 1fr auto;
   grid-template-areas:
     "mast mast mast"
     "events homework grades"
     "events todos todos"
     "events tube rooms";
-  gap: 20px 24px;
 }
 
 .mast {

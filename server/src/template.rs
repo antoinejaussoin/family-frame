@@ -25,7 +25,10 @@ impl Templates {
             .env
             .get_template("dashboard.html")
             .context("templates/dashboard.html")?;
-        Ok(tmpl.render(dash)?)
+        Ok(tmpl.render(minijinja::context! {
+            show_school_sections => crate::model::SHOW_SCHOOL_SECTIONS,
+            ..minijinja::Value::from_serialize(dash),
+        })?)
     }
 
     pub fn render_weather_icons(&self) -> Result<String> {
@@ -74,20 +77,21 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_shows_school_homework_and_grades() {
+    fn dashboard_keeps_school_markup_hidden() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
         dash.school = crate::pronote::demo_school(NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("icon-school"));
         assert!(html.contains("icon-grades"));
-        assert!(html.contains("Homework"));
-        assert!(html.contains("Grades"));
+        assert!(!html.contains("class=\"panel with-school\""));
+        assert!(!html.contains("class=\"homework\""));
+        assert!(!html.contains("class=\"grades\""));
+        assert!(!html.contains("Homework"));
+        assert!(!html.contains("Grades"));
         assert!(!html.contains("Léa"));
-        assert!(html.contains("14.2"));
-        assert!(html.contains("Maths"));
-        assert!(!html.contains("exercises p.24"));
-        assert!(html.contains("15.5&#x2f;20"));
-        assert!(html.contains("grade-high"));
+        assert!(!html.contains("14.2"));
+        assert!(!html.contains("15.5&#x2f;20"));
+        assert!(!html.contains("grade-high"));
         assert!(html.contains("class=\"todos\""));
     }
 
