@@ -97,7 +97,7 @@ mod tests {
         let mut dash = Dashboard::empty("Family", today);
         dash.events_today.push(crate::model::CalendarEvent {
             start: "08:30".into(),
-            title: "Léa (finishes at 16:30)".into(),
+            title: "School: Léa (finishes at 16:30)".into(),
             who: String::new(),
             all_day: false,
             day_label: "Today".into(),
@@ -107,7 +107,7 @@ mod tests {
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: "08:15".into(),
-            title: "Léa (finishes at 15:45)".into(),
+            title: "School: Léa (finishes at 15:45)".into(),
             who: String::new(),
             all_day: false,
             day_label: "Mon 21".into(),
@@ -117,8 +117,8 @@ mod tests {
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"school-day\""));
-        assert!(html.contains("Léa (finishes at 16:30)"));
-        assert!(html.contains("Léa (finishes at 15:45)"));
+        assert!(html.contains("School: Léa (finishes at 16:30)"));
+        assert!(html.contains("School: Léa (finishes at 15:45)"));
         assert!(html.contains("08:30"));
         assert!(html.contains("Mon 21 08:15"));
         assert!(!html.contains(">School<"));

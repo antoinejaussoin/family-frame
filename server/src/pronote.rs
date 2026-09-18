@@ -777,7 +777,7 @@ fn school_hours_event(
 ) -> CalendarEvent {
     CalendarEvent {
         start: day.start.clone(),
-        title: format!("{student} (finishes at {})", day.end),
+        title: format!("School: {student} (finishes at {})", day.end),
         who: String::new(),
         all_day: false,
         day_label: ics::day_label(date, today),
@@ -1403,11 +1403,11 @@ mod tests {
         );
         assert_eq!(events.len(), 2);
         assert!(events[0].school);
-        assert_eq!(events[0].title, "Léa (finishes at 16:30)");
+        assert_eq!(events[0].title, "School: Léa (finishes at 16:30)");
         assert_eq!(events[0].start, "08:30");
         assert_eq!(events[0].day_label, "Today");
         assert_eq!(events[1].day_label, "Mon 21");
-        assert_eq!(events[1].title, "Léa (finishes at 12:00)");
+        assert_eq!(events[1].title, "School: Léa (finishes at 12:00)");
         assert!(school_day_events("", &events_as_days(), today).is_empty());
     }
 
@@ -1431,7 +1431,7 @@ mod tests {
             today,
         );
         assert_eq!(events[1].day_label, "Tomorrow");
-        assert_eq!(events[1].title, "Léa (finishes at 12:00)");
+        assert_eq!(events[1].title, "School: Léa (finishes at 12:00)");
     }
 
     fn events_as_days() -> Vec<SchoolDay> {

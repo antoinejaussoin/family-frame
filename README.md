@@ -227,7 +227,7 @@ as the web client (the flow documented by
    not the regional ENT / EduConnect login page.
 2. Put that URL, the Pronote username, and password in `config.toml` under
    `[pronote]`. Set `student` to the child’s first name (used on Today and
-   the next school day: “Léa (finishes at 16:30)”). For a parent
+   the next school day: “School: Léa (finishes at 16:30)”). For a parent
    account set `account = "parent"` and optionally `child = "Firstname"`.
 3. If Pronote asks for a two-factor PIN, set `pronote.pin`.
 

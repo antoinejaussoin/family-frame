@@ -97,7 +97,7 @@ password = ""
 account = ""
 # Parent accounts: child’s name as Pronote shows it. Empty = first child.
 child = ""
-# First name on Today / next school day (“Léa (finishes at 16:30)”).
+# First name on Today / next school day (“School: Léa (finishes at 16:30)”).
 student = ""
 # Optional 2FA PIN if Pronote asks for one.
 pin = ""

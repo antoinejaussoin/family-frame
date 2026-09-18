@@ -46,6 +46,7 @@ pub const EMPTY_SECTION_BODY_PX: i32 = 54;
 pub const SIDEBAR_PX: i32 = 1008;
 pub const SIDEBAR_GAP_PX: i32 = 28;
 pub const TUBE_ROW_PX: i32 = 44;
+pub const COMING_ROW_PX: i32 = TUBE_ROW_PX;
 pub const SCHOOL_ROW_PX: i32 = 44;
 pub const ROOM_ROW_PX: i32 = TUBE_ROW_PX;
 pub const MAX_HOMEWORK_ROWS: usize = 8;
@@ -71,16 +72,16 @@ pub fn coming_event_capacity(today_count: usize) -> usize {
     };
     let leftover =
         EVENTS_COLUMN_PX - SECTION_HEAD_PX - today_body - SECTION_GAP_PX - SECTION_HEAD_PX;
-    if leftover < EVENT_ROW_PX {
+    if leftover < COMING_ROW_PX {
         0
     } else {
-        (leftover / EVENT_ROW_PX) as usize
+        (leftover / COMING_ROW_PX) as usize
     }
 }
 
 /// Today is first, but always leave Coming next a heading plus one row.
 pub fn max_today_events() -> usize {
-    let reserved = SECTION_GAP_PX + SECTION_HEAD_PX + EVENT_ROW_PX;
+    let reserved = SECTION_GAP_PX + SECTION_HEAD_PX + COMING_ROW_PX;
     let body = EVENTS_COLUMN_PX - SECTION_HEAD_PX - reserved;
     (body / EVENT_ROW_PX) as usize
 }
@@ -443,11 +444,11 @@ mod tests {
 
     #[test]
     fn coming_next_fills_space_left_after_today() {
-        assert_eq!(coming_event_capacity(0), 12);
-        assert_eq!(coming_event_capacity(1), 12);
-        assert_eq!(coming_event_capacity(2), 11);
-        assert_eq!(coming_event_capacity(8), 5);
-        assert_eq!(max_today_events(), 12);
+        assert_eq!(coming_event_capacity(0), 17);
+        assert_eq!(coming_event_capacity(1), 17);
+        assert_eq!(coming_event_capacity(2), 16);
+        assert_eq!(coming_event_capacity(8), 7);
+        assert_eq!(max_today_events(), 13);
     }
 
     #[test]
@@ -460,9 +461,9 @@ mod tests {
             .collect();
         dash.fit_calendar_to_panel();
         assert_eq!(dash.events_today.len(), 1);
-        assert_eq!(dash.events_coming.len(), 12);
+        assert_eq!(dash.events_coming.len(), 17);
         assert_eq!(dash.events_coming[0].date, "2026-09-14");
-        assert_eq!(dash.events_coming[11].date, "2026-09-25");
+        assert_eq!(dash.events_coming[16].date, "2026-09-30");
     }
 
     fn todo(title: &str) -> TodoItem {

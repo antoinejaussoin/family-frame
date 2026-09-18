@@ -322,10 +322,17 @@ li {
   line-height: 1.2;
 }
 
-.today li,
-.coming li {
+.today li {
   box-sizing: border-box;
   height: 60px;
+}
+
+.coming li {
+  box-sizing: border-box;
+  height: 44px;
+  padding: 4px 0;
+  font-size: 20px;
+  gap: 10px;
 }
 
 .today ol,
@@ -350,8 +357,15 @@ li {
 
 .coming .when {
   flex-basis: 176px;
+  font-size: 20px;
   overflow: hidden;
   white-space: nowrap;
+}
+
+.coming .present-icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
 }
 
 .today .what,
@@ -473,7 +487,8 @@ li {
 .grades h2,
 .todos h2,
 .tube h2,
-.rooms h2 {
+.rooms h2,
+.coming h2 {
   font-size: 22px;
   gap: 8px;
 }
@@ -482,7 +497,8 @@ li {
 .grades .section-icon,
 .todos .section-icon,
 .tube .section-icon,
-.rooms .section-icon {
+.rooms .section-icon,
+.coming .section-icon {
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
@@ -601,7 +617,8 @@ li {
 .grades .empty,
 .todos .empty,
 .tube .empty,
-.rooms .empty {
+.rooms .empty,
+.coming .empty {
   font-size: 22px;
   margin: 12px 0 0;
 }
