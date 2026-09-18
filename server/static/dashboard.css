@@ -87,7 +87,7 @@ body {
   grid-area: mast;
   display: flex;
   align-items: baseline;
-  gap: 24px;
+  justify-content: flex-start;
   border-bottom: 8px solid var(--black);
   padding-bottom: 16px;
 }
@@ -118,26 +118,16 @@ body {
   overflow: hidden;
 }
 
-.kicker {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--red);
-}
-
 h1 {
   margin: 0;
   font-size: 72px;
   line-height: 0.95;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.date {
-  margin: 0 0 0 auto;
-  font-size: 32px;
-  font-weight: 600;
+.day-num {
+  color: var(--red);
 }
 
 .frame-meta {

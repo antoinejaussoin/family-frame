@@ -5,7 +5,7 @@
   <title>{{ family_name }} frame</title>
   <link rel="preload" href="/static/fonts/AtkinsonHyperlegible-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/AtkinsonHyperlegible-Bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/static/dashboard.css?v=next45">
+  <link rel="stylesheet" href="/static/dashboard.css?v=next46">
 </head>
 <body>
   <main class="panel{% if show_school_sections %} with-school{% endif %}">
@@ -25,9 +25,7 @@
       {% endif %}
     </div>
     <header class="mast">
-      <p class="kicker">{{ family_name }}</p>
-      <h1>{{ weekday }}</h1>
-      <p class="date">{{ date_long }}</p>
+      <h1>{{ weekday }} <span class="day-num">{{ day }}</span> {{ month }}</h1>
     </header>
 
     <svg class="wx-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
