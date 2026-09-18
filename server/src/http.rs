@@ -117,10 +117,8 @@ async fn spa_missing() -> impl IntoResponse {
 async fn static_asset(Path(path): Path<String>) -> Response {
     let (body, content_type): (&[u8], &str) = match path.as_str() {
         "dashboard.css" => (assets::DASHBOARD_CSS.as_bytes(), "text/css; charset=utf-8"),
-        "fonts/AtkinsonHyperlegible-Regular.woff2" => (assets::FONT_REGULAR_WOFF2, "font/woff2"),
-        "fonts/AtkinsonHyperlegible-Bold.woff2" => (assets::FONT_BOLD_WOFF2, "font/woff2"),
-        "fonts/AtkinsonHyperlegible-Regular.ttf" => (assets::FONT_REGULAR_TTF, "font/ttf"),
-        "fonts/AtkinsonHyperlegible-Bold.ttf" => (assets::FONT_BOLD_TTF, "font/ttf"),
+        "fonts/FusionPixel12-Regular.woff2" => (assets::FONT_WOFF2, "font/woff2"),
+        "fonts/FusionPixel12-Regular.otf" => (assets::FONT_OTF, "font/otf"),
         _ => {
             return (StatusCode::NOT_FOUND, "not found\n").into_response();
         }

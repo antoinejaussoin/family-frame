@@ -20,8 +20,8 @@ pub struct CalendarEvent {
 }
 
 /// Today/week title column is ~570px (half of 1600 − padding − time − gaps)
-/// at 30px Atkinson, ~15.5px per character → ~36 glyphs.
-pub const EVENT_TITLE_MAX_CHARS: usize = 36;
+/// at 36px Fusion Pixel, ~18px per character → ~31 glyphs.
+pub const EVENT_TITLE_MAX_CHARS: usize = 31;
 
 /// How far ahead to pull events for Coming next. Today stays in Today.
 pub const EVENT_HORIZON_DAYS: i64 = 180;
@@ -57,8 +57,8 @@ pub const TODOS_MORE_PX: i32 = 36;
 pub const TODO_PILL_MAX_PX: i32 = 748;
 pub const TODO_PILL_PAD_X: i32 = 24;
 pub const TODO_PILL_BORDER_X: i32 = 4;
-/// Conservative Noto Sans width at 22px (same ~0.55em as event titles).
-pub const TODO_PILL_CHAR_PX: i32 = 12;
+/// Conservative Fusion Pixel width at 24px (T is 16px; most lowercase 12px).
+pub const TODO_PILL_CHAR_PX: i32 = 16;
 pub const TODO_PILL_ROW_PX: i32 = 40;
 pub const TODO_PILL_GAP_PX: i32 = 8;
 pub const TODO_PILL_TOP_PX: i32 = 10;
@@ -437,8 +437,8 @@ mod tests {
     #[test]
     fn short_title_is_unchanged() {
         assert_eq!(
-            truncate_event_title("Household Waste and Recycling Centre"),
-            "Household Waste and Recycling Centre"
+            truncate_event_title("Household waste collection"),
+            "Household waste collection"
         );
     }
 

@@ -5,27 +5,21 @@
    bitmap and omitted from the layout hash; battery percent is hashed so a
    drop can wake the panel.
 
-   Typeface is Atkinson Hyperlegible (Braille Institute, SIL OFL 1.1)
-   bundled in static/fonts/. Headless Chrome on macOS ships Verdana;
-   Debian does not, so a system stack would rasterize two different
-   panels. font-display:block so the screenshot does not catch a fallback. */
+   Typeface is Fusion Pixel 12px proportional (TakWolf, SIL OFL 1.1)
+   bundled in static/fonts/. Drawn on a 12px grid; use only 12×n so every
+   glyph pixel is 1×1, 2×2, 3×3… on the panel. One weight — 700 maps to
+   the same face (no synthetic bold). font-display:block so the screenshot
+   does not catch a fallback.
+
+   Type scale is native 12px and integer multiples: 12 / 24 / 36 / 60. */
 
 @font-face {
-  font-family: "Atkinson Hyperlegible";
+  font-family: "Fusion Pixel 12px Prop latin";
   font-style: normal;
-  font-weight: 100 500;
+  font-weight: 100 900;
   font-display: block;
-  src: url("/static/fonts/AtkinsonHyperlegible-Regular.woff2") format("woff2"),
-    url("/static/fonts/AtkinsonHyperlegible-Regular.ttf") format("truetype");
-}
-
-@font-face {
-  font-family: "Atkinson Hyperlegible";
-  font-style: normal;
-  font-weight: 600 900;
-  font-display: block;
-  src: url("/static/fonts/AtkinsonHyperlegible-Bold.woff2") format("woff2"),
-    url("/static/fonts/AtkinsonHyperlegible-Bold.ttf") format("truetype");
+  src: url("/static/fonts/FusionPixel12-Regular.woff2") format("woff2"),
+    url("/static/fonts/FusionPixel12-Regular.otf") format("opentype");
 }
 
 :root {
@@ -38,6 +32,12 @@
   /* Yellow-on-white type (Circle). Not a Spectra primary — Chrome paints
      gold, then Floyd–Steinberg mixes yellow+red so the word reads darker. */
   --yellow-ink: #ff9900;
+  --type-xs: 12px;
+  --type-sm: 24px;
+  --type-md: 24px;
+  --type-body: 36px;
+  --type-date: 36px;
+  --type-display: 60px;
 }
 
 html,
@@ -49,13 +49,13 @@ body {
   overflow: hidden;
   background: var(--white);
   color: var(--black);
-  font-family: "Atkinson Hyperlegible", sans-serif;
+  font-family: "Fusion Pixel 12px Prop latin", sans-serif;
   font-kerning: none;
   font-synthesis: none;
   font-smooth: never;
   -webkit-font-smoothing: none;
   letter-spacing: 0;
-  word-spacing: 0.08em;
+  word-spacing: 0;
 }
 
 .panel {
@@ -112,23 +112,25 @@ body {
 
 .kicker {
   margin: 0;
-  font-size: 26px;
+  font-size: var(--type-md);
+  line-height: var(--type-md);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: var(--red);
 }
 
 h1 {
   margin: 0;
-  font-size: 72px;
-  line-height: 0.95;
+  font-size: var(--type-display);
+  line-height: var(--type-display);
   font-weight: 700;
 }
 
 .date {
   margin: 0 0 0 auto;
-  font-size: 32px;
+  font-size: var(--type-date);
+  line-height: var(--type-date);
   font-weight: 600;
 }
 
@@ -147,7 +149,7 @@ h1 {
   align-items: center;
   gap: 5px;
   margin: 0;
-  font-size: 15px;
+  font-size: var(--type-xs);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
@@ -175,8 +177,9 @@ h2 {
   align-items: center;
   gap: 12px;
   margin: 0;
-  font-size: 26px;
-  letter-spacing: 0.06em;
+  font-size: var(--type-md);
+  line-height: var(--type-md);
+  letter-spacing: 0;
   text-transform: uppercase;
   border-bottom: 4px solid var(--black);
   padding-bottom: 8px;
@@ -248,7 +251,7 @@ h2 {
 }
 
 .slot .degrees {
-  font-size: 24px;
+  font-size: var(--type-md);
   font-weight: 700;
   color: var(--red);
   line-height: 1;
@@ -265,7 +268,7 @@ h2 {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 20px;
+  font-size: var(--type-sm);
   font-weight: 700;
   line-height: 1;
 }
@@ -281,7 +284,7 @@ h2 {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 18px;
+  font-size: var(--type-sm);
   font-weight: 700;
   line-height: 1;
   padding: 4px 8px;
@@ -318,8 +321,8 @@ li {
   gap: 16px;
   padding: 11px 0;
   border-bottom: 2px dotted var(--black);
-  font-size: 30px;
-  line-height: 1.2;
+  font-size: var(--type-body);
+  line-height: var(--type-body);
 }
 
 .today li {
@@ -331,7 +334,8 @@ li {
   box-sizing: border-box;
   height: 44px;
   padding: 4px 0;
-  font-size: 20px;
+  font-size: var(--type-sm);
+  line-height: var(--type-sm);
   gap: 10px;
 }
 
@@ -350,14 +354,16 @@ li {
 .when {
   flex: 0 0 150px;
   font-weight: 700;
-  font-size: 24px;
+  font-size: var(--type-md);
+  line-height: var(--type-md);
 }
 
 .what { flex: 1 1 auto; min-width: 0; }
 
 .coming .when {
   flex-basis: 176px;
-  font-size: 20px;
+  font-size: var(--type-sm);
+  line-height: var(--type-sm);
   overflow: hidden;
   white-space: nowrap;
 }
@@ -397,7 +403,8 @@ li {
   align-items: center;
   height: 44px;
   padding: 4px 0;
-  font-size: 20px;
+  font-size: var(--type-sm);
+  line-height: var(--type-sm);
   column-gap: 8px;
 }
 .rooms .what {
@@ -417,11 +424,11 @@ li {
 }
 .rooms .temp {
   color: var(--red);
-  font-size: 20px;
+  font-size: var(--type-sm);
 }
 .rooms .humidity {
   color: var(--blue);
-  font-size: 18px;
+  font-size: var(--type-sm);
 }
 
 .rooms li.offline .what {
@@ -439,13 +446,14 @@ li {
   height: 44px;
   padding: 6px 0;
   align-items: center;
-  font-size: 20px;
+  font-size: var(--type-sm);
+  line-height: var(--type-sm);
   gap: 0;
 }
 
 .line-name {
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   text-align: left;
   min-width: 0;
 }
@@ -459,7 +467,7 @@ li {
   justify-self: center;
   text-align: center;
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--type-sm);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -489,7 +497,8 @@ li {
 .tube h2,
 .rooms h2,
 .coming h2 {
-  font-size: 22px;
+  font-size: var(--type-sm);
+  line-height: var(--type-sm);
   gap: 8px;
 }
 
@@ -513,7 +522,7 @@ li {
   text-transform: none;
   letter-spacing: 0;
   font-weight: 700;
-  font-size: 20px;
+  font-size: var(--type-sm);
 }
 
 .school-avg { color: var(--red); }
@@ -525,7 +534,8 @@ li {
   height: 44px;
   padding: 4px 0;
   align-items: center;
-  font-size: 20px;
+  font-size: var(--type-sm);
+  line-height: var(--type-sm);
   gap: 8px;
 }
 
@@ -540,7 +550,7 @@ li {
 .homework .when,
 .grades .when {
   flex: none;
-  font-size: 18px;
+  font-size: var(--type-sm);
   font-weight: 700;
   overflow: hidden;
   white-space: nowrap;
@@ -589,9 +599,9 @@ li {
   padding: 5px 12px;
   border: 2px solid var(--black);
   border-radius: 999px;
-  font-size: 22px;
+  font-size: var(--type-md);
   font-weight: 600;
-  line-height: 1.15;
+  line-height: var(--type-md);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -603,13 +613,14 @@ li {
 .todos-more {
   margin: 8px 0 0;
   height: 28px;
-  font-size: 20px;
+  font-size: var(--type-sm);
   font-weight: 700;
   line-height: 28px;
 }
 
 .empty {
-  font-size: 28px;
+  font-size: var(--type-body);
+  line-height: var(--type-body);
   margin: 20px 0 0;
 }
 
@@ -619,7 +630,8 @@ li {
 .tube .empty,
 .rooms .empty,
 .coming .empty {
-  font-size: 22px;
+  font-size: var(--type-sm);
+  line-height: var(--type-sm);
   margin: 12px 0 0;
 }
 

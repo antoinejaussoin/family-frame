@@ -138,7 +138,7 @@
         >
           <iframe
             title="Family dashboard at panel resolution"
-            src="/dashboard?v=crisp-type"
+            src="/dashboard?v=fusion12"
             width="1600"
             height="1200"
             class="block border-0 bg-white"

@@ -65,8 +65,7 @@ mod tests {
         assert!(html.contains("day-meta"));
         assert!(!html.contains("aria-label=\"Forecast\""));
         assert!(!html.contains("class=\"weather\""));
-        assert!(html.contains("/static/fonts/AtkinsonHyperlegible-Regular.woff2"));
-        assert!(html.contains("/static/fonts/AtkinsonHyperlegible-Bold.woff2"));
+        assert!(html.contains("/static/fonts/FusionPixel12-Regular.woff2"));
         assert!(!html.contains("class=\"battery\""));
         assert!(!html.contains("class=\"refresh\""));
         assert!(html.contains("class=\"frame-meta\""));
