@@ -73,7 +73,21 @@ mod tests {
         assert!(!html.contains("class=\"battery\""));
         assert!(!html.contains("class=\"refresh\""));
         assert!(html.contains("class=\"frame-meta\""));
-        assert!(html.contains("class=\"date\""));
+        assert!(html.contains("class=\"day-num\""));
+        assert!(!html.contains("class=\"kicker\""));
+        assert!(!html.contains("class=\"date\""));
+    }
+
+    #[test]
+    fn dashboard_mast_is_weekday_day_month() {
+        let dash = Dashboard::empty("Famille", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("<title>Famille frame</title>"));
+        assert!(html.contains("class=\"day-num\">18</span>"));
+        assert!(html.contains(">Friday <span class=\"day-num\">18</span> September</h1>"));
+        assert!(!html.contains("class=\"kicker\""));
+        assert!(!html.contains("Famille</p>"));
+        assert!(!html.contains("2026"));
     }
 
     #[test]

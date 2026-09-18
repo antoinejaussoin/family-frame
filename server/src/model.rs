@@ -205,6 +205,8 @@ pub struct SchoolItem {
 pub struct Dashboard {
     pub family_name: String,
     pub weekday: String,
+    pub day: String,
+    pub month: String,
     pub date_long: String,
     pub date_iso: String,
     pub events_today: Vec<CalendarEvent>,
@@ -240,7 +242,9 @@ impl Dashboard {
         Self {
             family_name: family_name.to_string(),
             weekday: date.format("%A").to_string(),
-            date_long: date.format("%-d %B %Y").to_string(),
+            day: date.format("%-d").to_string(),
+            month: date.format("%B").to_string(),
+            date_long: date.format("%-d %B").to_string(),
             date_iso: date.format("%Y-%m-%d").to_string(),
             events_today: Vec::new(),
             events_coming: Vec::new(),
@@ -450,6 +454,15 @@ pub struct FrameInfo {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn mast_date_is_weekday_day_month_without_year() {
+        let dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        assert_eq!(dash.weekday, "Friday");
+        assert_eq!(dash.day, "18");
+        assert_eq!(dash.month, "September");
+        assert_eq!(dash.date_long, "18 September");
+    }
 
     #[test]
     fn short_title_is_unchanged() {
