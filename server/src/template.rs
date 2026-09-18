@@ -85,6 +85,8 @@ mod tests {
         assert!(html.contains("<title>Famille frame</title>"));
         assert!(html.contains("class=\"day-num\">18</span>"));
         assert!(html.contains(">Friday <span class=\"day-num\">18</span> September</h1>"));
+        assert!(html.contains("class=\"saint\""));
+        assert!(html.contains("Sainte <span class=\"saint-name\">Nadège</span>"));
         assert!(!html.contains("class=\"kicker\""));
         assert!(!html.contains("Famille</p>"));
         assert!(!html.contains("2026"));

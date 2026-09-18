@@ -20,6 +20,7 @@ pub mod pack;
 pub mod photo;
 pub mod pictures;
 pub mod pronote;
+pub mod saints;
 pub mod schedule;
 pub mod screenshot;
 pub mod sources;
