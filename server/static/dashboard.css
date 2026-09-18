@@ -66,15 +66,34 @@ body {
   padding: 44px 52px 36px;
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   grid-template-areas:
     "mast mast mast"
     "events todos todos"
+    "events history history"
     "events tube rooms";
   gap: 20px 24px;
 }
 
 .panel.with-school {
+  grid-template-rows: auto auto auto 1fr auto;
+  grid-template-areas:
+    "mast mast mast"
+    "events homework grades"
+    "events todos todos"
+    "events history history"
+    "events tube rooms";
+}
+
+.panel.no-history {
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "mast mast mast"
+    "events todos todos"
+    "events tube rooms";
+}
+
+.panel.with-school.no-history {
   grid-template-rows: auto auto 1fr auto;
   grid-template-areas:
     "mast mast mast"
@@ -104,12 +123,14 @@ body {
 .homework { grid-area: homework; }
 .grades { grid-area: grades; }
 .todos { grid-area: todos; overflow: hidden; }
+.history { grid-area: history; overflow: hidden; min-height: 0; }
 .tube { grid-area: tube; }
 .rooms { grid-area: rooms; }
 .today,
 .homework,
 .grades,
 .todos,
+.history,
 .tube,
 .rooms { min-width: 0; }
 .coming {
@@ -353,10 +374,23 @@ li {
   gap: 10px;
 }
 
+.history li {
+  box-sizing: border-box;
+  height: auto;
+  min-height: 44px;
+  padding: 6px 0;
+  font-size: 20px;
+  line-height: 1.3;
+  gap: 12px;
+  align-items: flex-start;
+}
+
 .today ol,
 .coming ol,
+.history ul,
 .today li,
-.coming li {
+.coming li,
+.history li {
   min-width: 0;
 }
 
@@ -378,6 +412,20 @@ li {
   font-size: 20px;
   overflow: hidden;
   white-space: nowrap;
+}
+
+.history .when {
+  flex: 0 0 92px;
+  font-size: 20px;
+  line-height: 1.3;
+  color: var(--red);
+  font-variant-numeric: tabular-nums;
+}
+
+.history .what {
+  overflow: visible;
+  white-space: normal;
+  line-height: 1.3;
 }
 
 .coming .present-icon {
@@ -504,6 +552,7 @@ li {
 .homework h2,
 .grades h2,
 .todos h2,
+.history h2,
 .tube h2,
 .rooms h2,
 .coming h2 {
@@ -514,6 +563,7 @@ li {
 .homework .section-icon,
 .grades .section-icon,
 .todos .section-icon,
+.history .section-icon,
 .tube .section-icon,
 .rooms .section-icon,
 .coming .section-icon {
@@ -634,6 +684,7 @@ li {
 .homework .empty,
 .grades .empty,
 .todos .empty,
+.history .empty,
 .tube .empty,
 .rooms .empty,
 .coming .empty {

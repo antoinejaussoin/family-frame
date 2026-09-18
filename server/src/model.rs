@@ -45,7 +45,7 @@ pub const EMPTY_SECTION_BODY_PX: i32 = 54;
 pub const SHOW_SCHOOL_SECTIONS: bool = false;
 
 /// Right-hand columns (same grid row as events). Keep in sync with
-/// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/tube/rooms,
+/// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/history/tube/rooms,
 /// `h2`, `.todos li`, `.school-item`, `.tube-line`, `.rooms li`, `.todos-more`).
 pub const SIDEBAR_PX: i32 = 1008;
 pub const SIDEBAR_GAP_PX: i32 = 28;
@@ -53,6 +53,18 @@ pub const TUBE_ROW_PX: i32 = 44;
 pub const COMING_ROW_PX: i32 = TUBE_ROW_PX;
 pub const SCHOOL_ROW_PX: i32 = 44;
 pub const ROOM_ROW_PX: i32 = TUBE_ROW_PX;
+/// Wikipedia pool; the panel then keeps only facts that fit leftover height.
+pub const HISTORY_POOL: usize = 12;
+pub const MAX_HISTORY_FACTS: usize = 5;
+pub const HISTORY_MAX_LINES: usize = 3;
+/// 20px Atkinson at `line-height: 1.3`.
+pub const HISTORY_LINE_PX: i32 = 26;
+pub const HISTORY_ITEM_PAD_Y: i32 = 12;
+pub const HISTORY_ITEM_BORDER_PX: i32 = 2;
+pub const HISTORY_YEAR_PX: i32 = 92;
+pub const HISTORY_TEXT_GAP_PX: i32 = 12;
+/// Conservative 20px Atkinson (~0.55em). Prefer skipping a fact to clipping.
+pub const HISTORY_CHAR_PX: i32 = 11;
 pub const MAX_HOMEWORK_ROWS: usize = 8;
 pub const MAX_GRADE_ROWS: usize = 8;
 /// Compact “+ N other todos” line under the pills (margin + height).
@@ -66,6 +78,7 @@ pub const TODO_PILL_CHAR_PX: i32 = 12;
 pub const TODO_PILL_ROW_PX: i32 = 40;
 pub const TODO_PILL_GAP_PX: i32 = 8;
 pub const TODO_PILL_TOP_PX: i32 = 10;
+pub const HISTORY_TEXT_MAX_PX: i32 = TODO_PILL_MAX_PX - HISTORY_YEAR_PX - HISTORY_TEXT_GAP_PX;
 
 /// How many Coming next rows fit under Today on the 13.3″ panel.
 pub fn coming_event_capacity(today_count: usize) -> usize {
@@ -202,6 +215,12 @@ pub struct SchoolItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HistoryFact {
+    pub year: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Dashboard {
     pub family_name: String,
     pub weekday: String,
@@ -223,6 +242,8 @@ pub struct Dashboard {
     pub rooms: Vec<RoomClimate>,
     pub weather: Weather,
     pub tube: Vec<TubeLine>,
+    #[serde(default)]
+    pub history: Vec<HistoryFact>,
     #[serde(default)]
     pub school: School,
     pub source_note: String,
@@ -261,6 +282,7 @@ impl Dashboard {
             rooms: Vec::new(),
             weather: Weather::default(),
             tube: Vec::new(),
+            history: Vec::new(),
             school: School::default(),
             source_note: String::new(),
             has_battery: false,
@@ -331,8 +353,9 @@ impl Dashboard {
         self.events_coming.truncate(cap);
     }
 
-    /// Keep Tube and House in full on the bottom row. Homework and grades
-    /// share the top row; leftover height is the two-column to-do band.
+    /// Keep Tube and House in full on the bottom row. To do sizes to its
+    /// pills. Leftover height is On this day — facts are added only while
+    /// they still fit, up to three wrapped lines each.
     pub fn fit_sidebar_to_panel(&mut self) {
         self.fit_sidebar(SHOW_SCHOOL_SECTIONS && self.school.is_visible());
     }
@@ -340,7 +363,7 @@ impl Dashboard {
     fn fit_sidebar(&mut self, school_on: bool) {
         let footer_px = sidebar_block_px(self.tube.len(), TUBE_ROW_PX)
             .max(sidebar_block_px(self.rooms.len(), ROOM_ROW_PX));
-        let gaps = if school_on { 2 } else { 1 };
+        let gaps_rest = if school_on { 2 } else { 1 };
         let todos_reserve = SECTION_HEAD_PX
             + if self.todos.is_empty() {
                 EMPTY_SECTION_BODY_PX
@@ -350,7 +373,7 @@ impl Dashboard {
 
         if school_on {
             let school_budget =
-                (SIDEBAR_PX - footer_px - todos_reserve - SIDEBAR_GAP_PX * gaps).max(0);
+                (SIDEBAR_PX - footer_px - todos_reserve - SIDEBAR_GAP_PX * gaps_rest).max(0);
             let cap = max_rows_in(school_budget, SCHOOL_ROW_PX);
             self.school.homework.truncate(cap.min(MAX_HOMEWORK_ROWS));
             self.school.grades.truncate(cap.min(MAX_GRADE_ROWS));
@@ -362,21 +385,26 @@ impl Dashboard {
         } else {
             0
         };
-        let todo_budget = SIDEBAR_PX - school_row - footer_px - SIDEBAR_GAP_PX * gaps;
+        let todo_budget = SIDEBAR_PX - school_row - footer_px - SIDEBAR_GAP_PX * gaps_rest;
         let total = self.todos.len();
         if total == 0 {
             self.todos_more = 0;
-            return;
+        } else {
+            let body = todo_budget - SECTION_HEAD_PX;
+            if todos_fitting_in(&self.todos, body) == total {
+                self.todos_more = 0;
+            } else {
+                let shown = todos_fitting_in(&self.todos, body - TODOS_MORE_PX)
+                    .min(total.saturating_sub(1));
+                self.todos_more = total - shown;
+                self.todos.truncate(shown);
+            }
         }
-        let body = todo_budget - SECTION_HEAD_PX;
-        if todos_fitting_in(&self.todos, body) == total {
-            self.todos_more = 0;
-            return;
-        }
-        let shown =
-            todos_fitting_in(&self.todos, body - TODOS_MORE_PX).min(total.saturating_sub(1));
-        self.todos_more = total - shown;
-        self.todos.truncate(shown);
+
+        let todos_px = todos_block_px(&self.todos, self.todos_more);
+        let history_budget =
+            SIDEBAR_PX - school_row - todos_px - footer_px - SIDEBAR_GAP_PX * (gaps_rest + 1);
+        self.history = pack_history(&self.history, history_budget);
     }
 
     pub fn fit_to_panel(&mut self) {
@@ -449,6 +477,99 @@ fn todos_fitting_in(todos: &[TodoItem], body_px: i32) -> usize {
     shown
 }
 
+fn todos_block_px(todos: &[TodoItem], more: usize) -> i32 {
+    SECTION_HEAD_PX + todos_body_px(todos) + if more > 0 { TODOS_MORE_PX } else { 0 }
+}
+
+fn todos_body_px(todos: &[TodoItem]) -> i32 {
+    if todos.is_empty() {
+        return EMPTY_SECTION_BODY_PX;
+    }
+    let mut rows = 0i32;
+    let mut x = 0i32;
+    for todo in todos {
+        let w = todo_pill_width(&todo.title);
+        let new_row = rows == 0 || x + TODO_PILL_GAP_PX + w > TODO_PILL_MAX_PX;
+        if new_row {
+            rows += 1;
+            x = w;
+        } else {
+            x += TODO_PILL_GAP_PX + w;
+        }
+    }
+    TODO_PILL_TOP_PX + rows * TODO_PILL_ROW_PX + (rows - 1).max(0) * TODO_PILL_GAP_PX
+}
+
+fn pack_history(facts: &[HistoryFact], section_px: i32) -> Vec<HistoryFact> {
+    let body = section_px - SECTION_HEAD_PX;
+    if body <= 0 {
+        return Vec::new();
+    }
+    let mut facts = facts.to_vec();
+    facts.sort_by_key(|fact| history_year_sort_key(&fact.year));
+    let mut used = 0i32;
+    let mut out = Vec::new();
+    for fact in facts {
+        if out.len() == MAX_HISTORY_FACTS {
+            break;
+        }
+        let Some(height) = history_item_px(&fact.text) else {
+            continue;
+        };
+        if used + height > body {
+            continue;
+        }
+        used += height;
+        out.push(fact);
+    }
+    out
+}
+
+fn history_year_sort_key(year: &str) -> i32 {
+    if let Some(bc) = year.strip_suffix(" BC") {
+        return -bc.parse::<i32>().unwrap_or(0);
+    }
+    year.parse().unwrap_or(0)
+}
+
+fn history_item_px(text: &str) -> Option<i32> {
+    let lines = wrap_line_count(text, HISTORY_TEXT_MAX_PX, HISTORY_CHAR_PX);
+    if lines == 0 || lines > HISTORY_MAX_LINES {
+        return None;
+    }
+    Some(HISTORY_ITEM_PAD_Y + (lines as i32) * HISTORY_LINE_PX + HISTORY_ITEM_BORDER_PX)
+}
+
+fn wrap_line_count(text: &str, max_px: i32, char_px: i32) -> usize {
+    if text.is_empty() || max_px <= 0 || char_px <= 0 {
+        return 0;
+    }
+    let mut lines = 1usize;
+    let mut x = 0i32;
+    for word in text.split_whitespace() {
+        let w = (word.chars().count() as i32)
+            .saturating_mul(char_px)
+            .max(char_px);
+        if w > max_px {
+            if x > 0 {
+                lines += 1;
+            }
+            let chunks = ((w + max_px - 1) / max_px) as usize;
+            lines += chunks.saturating_sub(1);
+            x = w % max_px;
+            continue;
+        }
+        let need = if x == 0 { w } else { char_px + w };
+        if x > 0 && x + need > max_px {
+            lines += 1;
+            x = w;
+        } else {
+            x += need;
+        }
+    }
+    lines
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct FrameInfo {
     pub checksum: String,
@@ -510,6 +631,13 @@ mod tests {
         TodoItem {
             title: title.into(),
             done: false,
+        }
+    }
+
+    fn history_fact(year: &str, text: &str) -> HistoryFact {
+        HistoryFact {
+            year: year.into(),
+            text: text.into(),
         }
     }
 
@@ -640,6 +768,81 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_adds_history_facts_that_fit_leftover() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.todos = vec![todo("Milk"), todo("Eggs")];
+        dash.history = (1850..1862)
+            .map(|year| {
+                history_fact(
+                    &year.to_string(),
+                    "The New York Times is founded in New York City as the largest metropolitan newspaper in the United States and begins daily publication.",
+                )
+            })
+            .collect();
+        dash.fit_sidebar_to_panel();
+        assert_eq!(dash.todos.len(), 2);
+        assert_eq!(dash.history.len(), MAX_HISTORY_FACTS);
+        assert_eq!(dash.history[0].year, "1850");
+        assert_eq!(dash.history[4].year, "1854");
+    }
+
+    #[test]
+    fn sidebar_skips_history_facts_that_need_four_lines() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.todos = vec![todo("Milk")];
+        let too_long = "Word ".repeat(80);
+        dash.history = vec![
+            history_fact("1900", &too_long),
+            history_fact("1851", "The New York Times is founded."),
+        ];
+        dash.fit_sidebar_to_panel();
+        assert_eq!(dash.history.len(), 1);
+        assert_eq!(dash.history[0].year, "1851");
+    }
+
+    #[test]
+    fn sidebar_history_is_oldest_first_and_capped() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.todos = vec![todo("Milk")];
+        dash.history = vec![
+            history_fact("1964", "King Constantine II marries Princess Anne-Marie."),
+            history_fact("44 BC", "Julius Caesar is born."),
+            history_fact("1851", "The New York Times is founded."),
+            history_fact("1879", "Blackpool Illuminations are switched on."),
+            history_fact(
+                "1948",
+                "Australia's Invincibles complete their tour of England.",
+            ),
+            history_fact("2018", "A science museum opens a new gallery."),
+        ];
+        dash.fit_sidebar_to_panel();
+        let years: Vec<&str> = dash.history.iter().map(|f| f.year.as_str()).collect();
+        assert_eq!(years, ["44 BC", "1851", "1879", "1948", "1964"]);
+    }
+
+    #[test]
+    fn sidebar_omits_history_when_todos_fill_the_column() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = (0..12).map(|i| room(&format!("R{i}"))).collect();
+        dash.todos = (0..80).map(|_| todo("Milk")).collect();
+        dash.history = vec![history_fact("1851", "The New York Times is founded.")];
+        dash.fit_sidebar_to_panel();
+        assert!(dash.todos_more > 0);
+        assert!(dash.history.is_empty());
+    }
+
+    #[test]
     fn battery_level_thresholds() {
         assert_eq!(battery_level(100), "ok");
         assert_eq!(battery_level(25), "ok");
@@ -678,7 +881,9 @@ mod tests {
         };
         let before = dash.content_bytes();
         dash.school.homework.push(school_hw("Mon", "English"));
-        dash.school.grades.push(school_grade("Thu", "Maths", "12/20", "mid"));
+        dash.school
+            .grades
+            .push(school_grade("Thu", "Maths", "12/20", "mid"));
         dash.school.average = "13.8".into();
         assert_eq!(before, dash.content_bytes());
         dash.school.student = "Maya".into();

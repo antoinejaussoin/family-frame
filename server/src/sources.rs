@@ -5,6 +5,7 @@ use tracing::{info, warn};
 
 use crate::caldav::{self, CalDav};
 use crate::config::Config;
+use crate::history;
 use crate::ics;
 use crate::meross;
 use crate::model::Dashboard;
@@ -125,6 +126,18 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
             warn!(%err, "TfL failed; using demo tube");
             dash.tube = tfl::demo_tube();
             notes.push("TfL unavailable".into());
+        }
+    }
+
+    match history::load_facts(today).await {
+        Ok(facts) if !facts.is_empty() => {
+            dash.history = facts;
+            notes.push("Wikipedia on this day".into());
+        }
+        Ok(_) => notes.push("On this day empty".into()),
+        Err(err) => {
+            warn!(%err, "On this day failed");
+            notes.push("On this day unavailable".into());
         }
     }
 
