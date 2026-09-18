@@ -5,7 +5,7 @@
   <title>{{ family_name }} frame</title>
   <link rel="preload" href="/static/fonts/AtkinsonHyperlegible-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/AtkinsonHyperlegible-Bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/static/dashboard.css?v=next51">
+  <link rel="stylesheet" href="/static/dashboard.css?v=next52">
 </head>
 <body>
   <main class="panel{% if show_school_sections %} with-school{% endif %}{% if not history %} no-history{% endif %}{% if not joke %} no-joke{% endif %}">
@@ -258,7 +258,9 @@
       </section>
     </div>
 
+    <div class="sidebar">
     {% if show_school_sections and (school.homework or school.grades or school.student or school.average) %}
+    <div class="sidebar-pair">
     <section class="homework">
       <h2>
         <span class="section-title">
@@ -306,6 +308,7 @@
       <p class="empty">No grades yet.</p>
       {% endif %}
     </section>
+    </div>
     {% endif %}
 
     <section class="todos">
@@ -357,6 +360,7 @@
     </section>
     {% endif %}
 
+    <div class="sidebar-pair">
     <section class="tube">
       <h2>
         <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-tube"/></svg>
@@ -395,6 +399,8 @@
       <p class="empty">No thermometer readings yet.</p>
       {% endif %}
     </section>
+    </div>
+    </div>
   </main>
 </body>
 </html>
