@@ -32,3 +32,5 @@ Battery discharge curve
 Calculation on discharge:
 - Energy per refresh
 - Energy loss doing nothing
+
+Different timers for the weekend

@@ -15,6 +15,7 @@ pub mod frame;
 pub mod history;
 pub mod http;
 pub mod ics;
+pub mod jokes;
 pub mod meross;
 pub mod model;
 pub mod pack;

@@ -109,8 +109,9 @@ mod tests {
         assert!(!html.contains("15.5&#x2f;20"));
         assert!(!html.contains("grade-high"));
         assert!(html.contains("class=\"todos\""));
-        assert!(html.contains("class=\"panel no-history\""));
+        assert!(html.contains("class=\"panel no-history no-joke\""));
         assert!(!html.contains("On this day"));
+        assert!(!html.contains("Joke of the day"));
         assert!(!html.contains("No history for today."));
     }
 
@@ -231,6 +232,20 @@ mod tests {
         assert!(html.contains("The New York Times is founded."));
         assert!(!html.contains("No history for today."));
         assert!(!html.contains("no-history"));
+        assert!(html.contains("no-joke"));
+    }
+
+    #[test]
+    fn dashboard_shows_joke_of_the_day() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        dash.joke = Some(crate::jokes::demo_joke());
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("class=\"joke\""));
+        assert!(html.contains("Joke of the day"));
+        assert!(html.contains("icon-joke"));
+        assert!(html.contains("Why don&#x27;t scientists trust atoms?"));
+        assert!(html.contains("Because they make up everything."));
+        assert!(!html.contains("no-joke"));
     }
 
     #[test]

@@ -45,8 +45,8 @@ pub const EMPTY_SECTION_BODY_PX: i32 = 54;
 pub const SHOW_SCHOOL_SECTIONS: bool = false;
 
 /// Right-hand columns (same grid row as events). Keep in sync with
-/// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/history/tube/rooms,
-/// `h2`, `.todos li`, `.school-item`, `.tube-line`, `.rooms li`, `.todos-more`).
+/// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/joke/history/tube/rooms,
+/// `h2`, `.todos li`, `.joke`, `.school-item`, `.tube-line`, `.rooms li`, `.todos-more`).
 pub const SIDEBAR_PX: i32 = 1008;
 pub const SIDEBAR_GAP_PX: i32 = 28;
 pub const TUBE_ROW_PX: i32 = 44;
@@ -79,6 +79,13 @@ pub const TODO_PILL_ROW_PX: i32 = 40;
 pub const TODO_PILL_GAP_PX: i32 = 8;
 pub const TODO_PILL_TOP_PX: i32 = 10;
 pub const HISTORY_TEXT_MAX_PX: i32 = TODO_PILL_MAX_PX - HISTORY_YEAR_PX - HISTORY_TEXT_GAP_PX;
+/// 22px Atkinson at `line-height: 1.3`. Prefer skipping a joke to clipping.
+pub const JOKE_LINE_PX: i32 = 29;
+pub const JOKE_PAD_TOP_PX: i32 = 10;
+pub const JOKE_PUNCH_GAP_PX: i32 = 4;
+pub const JOKE_MAX_LINES: usize = 4;
+pub const JOKE_CHAR_PX: i32 = TODO_PILL_CHAR_PX;
+pub const JOKE_TEXT_MAX_PX: i32 = TODO_PILL_MAX_PX;
 
 /// How many Coming next rows fit under Today on the 13.3″ panel.
 pub fn coming_event_capacity(today_count: usize) -> usize {
@@ -220,6 +227,13 @@ pub struct HistoryFact {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct Joke {
+    pub setup: String,
+    #[serde(default)]
+    pub punchline: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Dashboard {
     pub family_name: String,
@@ -244,6 +258,8 @@ pub struct Dashboard {
     pub tube: Vec<TubeLine>,
     #[serde(default)]
     pub history: Vec<HistoryFact>,
+    #[serde(default)]
+    pub joke: Option<Joke>,
     #[serde(default)]
     pub school: School,
     pub source_note: String,
@@ -283,6 +299,7 @@ impl Dashboard {
             weather: Weather::default(),
             tube: Vec::new(),
             history: Vec::new(),
+            joke: None,
             school: School::default(),
             source_note: String::new(),
             has_battery: false,
@@ -354,7 +371,8 @@ impl Dashboard {
     }
 
     /// Keep Tube and House in full on the bottom row. To do sizes to its
-    /// pills. Leftover height is On this day — facts are added only while
+    /// pills, with a slot reserved for Joke of the day when we have one.
+    /// Leftover height is On this day — facts are added only while
     /// they still fit, up to three wrapped lines each.
     pub fn fit_sidebar_to_panel(&mut self) {
         self.fit_sidebar(SHOW_SCHOOL_SECTIONS && self.school.is_visible());
@@ -364,6 +382,18 @@ impl Dashboard {
         let footer_px = sidebar_block_px(self.tube.len(), TUBE_ROW_PX)
             .max(sidebar_block_px(self.rooms.len(), ROOM_ROW_PX));
         let gaps_rest = if school_on { 2 } else { 1 };
+        if self
+            .joke
+            .as_ref()
+            .is_some_and(|joke| joke_body_px(joke).is_none())
+        {
+            self.joke = None;
+        }
+        let joke_reserve = if self.joke.is_some() {
+            SIDEBAR_GAP_PX + joke_block_px(&self.joke)
+        } else {
+            0
+        };
         let todos_reserve = SECTION_HEAD_PX
             + if self.todos.is_empty() {
                 EMPTY_SECTION_BODY_PX
@@ -372,8 +402,12 @@ impl Dashboard {
             };
 
         if school_on {
-            let school_budget =
-                (SIDEBAR_PX - footer_px - todos_reserve - SIDEBAR_GAP_PX * gaps_rest).max(0);
+            let school_budget = (SIDEBAR_PX
+                - footer_px
+                - todos_reserve
+                - joke_reserve
+                - SIDEBAR_GAP_PX * gaps_rest)
+                .max(0);
             let cap = max_rows_in(school_budget, SCHOOL_ROW_PX);
             self.school.homework.truncate(cap.min(MAX_HOMEWORK_ROWS));
             self.school.grades.truncate(cap.min(MAX_GRADE_ROWS));
@@ -385,7 +419,8 @@ impl Dashboard {
         } else {
             0
         };
-        let todo_budget = SIDEBAR_PX - school_row - footer_px - SIDEBAR_GAP_PX * gaps_rest;
+        let todo_budget =
+            SIDEBAR_PX - school_row - footer_px - joke_reserve - SIDEBAR_GAP_PX * gaps_rest;
         let total = self.todos.len();
         if total == 0 {
             self.todos_more = 0;
@@ -402,8 +437,14 @@ impl Dashboard {
         }
 
         let todos_px = todos_block_px(&self.todos, self.todos_more);
-        let history_budget =
-            SIDEBAR_PX - school_row - todos_px - footer_px - SIDEBAR_GAP_PX * (gaps_rest + 1);
+        let joke_px = joke_block_px(&self.joke);
+        let joke_gap = if joke_px > 0 { 1 } else { 0 };
+        let history_budget = SIDEBAR_PX
+            - school_row
+            - todos_px
+            - joke_px
+            - footer_px
+            - SIDEBAR_GAP_PX * (gaps_rest + 1 + joke_gap);
         self.history = pack_history(&self.history, history_budget);
     }
 
@@ -538,6 +579,36 @@ fn history_item_px(text: &str) -> Option<i32> {
         return None;
     }
     Some(HISTORY_ITEM_PAD_Y + (lines as i32) * HISTORY_LINE_PX + HISTORY_ITEM_BORDER_PX)
+}
+
+fn joke_body_px(joke: &Joke) -> Option<i32> {
+    let setup_lines = wrap_line_count(&joke.setup, JOKE_TEXT_MAX_PX, JOKE_CHAR_PX);
+    let punch_lines = if joke.punchline.is_empty() {
+        0
+    } else {
+        wrap_line_count(&joke.punchline, JOKE_TEXT_MAX_PX, JOKE_CHAR_PX)
+    };
+    let lines = setup_lines + punch_lines;
+    if lines == 0 || lines > JOKE_MAX_LINES {
+        return None;
+    }
+    let gap = if punch_lines > 0 {
+        JOKE_PUNCH_GAP_PX
+    } else {
+        0
+    };
+    Some(JOKE_PAD_TOP_PX + (lines as i32) * JOKE_LINE_PX + gap)
+}
+
+pub fn joke_fits_panel(joke: &Joke) -> bool {
+    joke_body_px(joke).is_some()
+}
+
+fn joke_block_px(joke: &Option<Joke>) -> i32 {
+    match joke {
+        Some(j) => SECTION_HEAD_PX + joke_body_px(j).unwrap_or(0),
+        None => 0,
+    }
 }
 
 fn wrap_line_count(text: &str, max_px: i32, char_px: i32) -> usize {
@@ -840,6 +911,55 @@ mod tests {
         dash.fit_sidebar_to_panel();
         assert!(dash.todos_more > 0);
         assert!(dash.history.is_empty());
+    }
+
+    #[test]
+    fn sidebar_keeps_joke_between_todos_and_history() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.todos = vec![todo("Milk")];
+        dash.joke = Some(Joke {
+            setup: "Why don't scientists trust atoms?".into(),
+            punchline: "Because they make up everything.".into(),
+        });
+        dash.history = vec![history_fact("1851", "The New York Times is founded.")];
+        dash.fit_sidebar_to_panel();
+        assert!(dash.joke.is_some());
+        assert_eq!(dash.history.len(), 1);
+    }
+
+    #[test]
+    fn sidebar_keeps_joke_when_todos_fill_leftover() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = (0..12).map(|i| room(&format!("R{i}"))).collect();
+        dash.todos = (0..80).map(|_| todo("Milk")).collect();
+        dash.joke = Some(Joke {
+            setup: "What do you call a fake noodle?".into(),
+            punchline: "An impasta.".into(),
+        });
+        dash.history = vec![history_fact("1851", "The New York Times is founded.")];
+        dash.fit_sidebar_to_panel();
+        assert!(dash.joke.is_some());
+        assert!(dash.todos_more > 0);
+        assert!(dash.history.is_empty());
+    }
+
+    #[test]
+    fn sidebar_drops_a_joke_that_needs_five_lines() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.joke = Some(Joke {
+            setup: "Word ".repeat(80),
+            punchline: String::new(),
+        });
+        dash.fit_sidebar_to_panel();
+        assert!(dash.joke.is_none());
     }
 
     #[test]
