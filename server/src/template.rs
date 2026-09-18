@@ -74,6 +74,23 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_shows_school_homework_and_grades() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        dash.school = crate::pronote::demo_school(NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("icon-school"));
+        assert!(html.contains("School"));
+        assert!(html.contains("Léa"));
+        assert!(html.contains("14.2"));
+        assert!(html.contains("Maths"));
+        assert!(html.contains("exercises p.24"));
+        assert!(html.contains("15.5&#x2f;20"));
+        assert!(html.contains("school-homework"));
+        assert!(html.contains("school-grade"));
+        assert!(html.contains("grade-high"));
+    }
+
+    #[test]
     fn dashboard_shows_battery_and_refresh_times() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 17).unwrap());
         dash.set_battery(62);

@@ -100,6 +100,7 @@ body {
 }
 .today,
 .todos,
+.school,
 .tube,
 .rooms { flex: 0 0 auto; min-width: 0; }
 .todos { overflow: hidden; }
@@ -200,6 +201,7 @@ h2 {
 
 .rooms h2,
 .todos h2,
+.school h2,
 .tube h2 {
   color: var(--black);
   border-bottom-color: var(--black);
@@ -321,7 +323,7 @@ li {
   line-height: 1.2;
 }
 
-li:not(.tube-line):not(.todo-pill) {
+li:not(.tube-line):not(.todo-pill):not(.school-item) {
   box-sizing: border-box;
   height: 60px;
 }
@@ -448,6 +450,64 @@ li:not(.tube-line):not(.todo-pill) {
   color: var(--white);
   padding: 2px 8px;
 }
+
+.school h2 {
+  justify-content: flex-start;
+}
+
+.school-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 700;
+  font-size: 22px;
+}
+
+.school-name { color: var(--black); }
+.school-dot { color: var(--black); }
+.school-avg { color: var(--red); }
+
+.school li.school-item {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 110px minmax(0, 0.9fr) minmax(0, 1.2fr);
+  height: 48px;
+  padding: 6px 0;
+  align-items: center;
+  font-size: 22px;
+  gap: 10px;
+}
+
+.school .when {
+  flex: none;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.school .subject {
+  min-width: 0;
+  font-weight: 700;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.school .detail {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.school-grade .detail { font-variant-numeric: tabular-nums; font-weight: 700; }
+.grade-high .detail { color: var(--green); }
+.grade-mid .detail { color: var(--black); }
+.grade-low .detail { color: var(--red); }
 
 .todos ul {
   display: flex;

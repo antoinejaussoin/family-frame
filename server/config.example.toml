@@ -83,3 +83,19 @@ location_id = "2643743"
 # are fine — they are fetched as https://. Useful if you publish the
 # family calendar as a read-only link instead of using CalDAV.
 ics_urls = []
+
+[pronote]
+# Direct PRONOTE space URL (the eleve.html or parent.html page), not an ENT
+# portal. Index Education’s public demo:
+#   https://demo.index-education.net/pronote/eleve.html
+#   username demonstration / password pronotevs
+# Leave url empty to show the built-in demo school list.
+url = ""
+username = ""
+password = ""
+# "eleve" or "parent". Empty = infer from the URL.
+account = ""
+# Parent accounts: child’s name as Pronote shows it. Empty = first child.
+child = ""
+# Optional 2FA PIN if Pronote asks for one.
+pin = ""

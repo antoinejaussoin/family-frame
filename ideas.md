@@ -24,3 +24,11 @@ Quote
 Pollen / air quality — only if someone has asthma or hay fever.
 
 Ephemeride
+
+Font size matching the pixels
+
+Battery discharge curve
+
+Calculation on discharge:
+- Energy per refresh
+- Energy loss doing nothing

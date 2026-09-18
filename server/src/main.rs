@@ -98,6 +98,9 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
         if !guard.weather_enabled() {
             warn!("no BBC weather location_id — serving demo forecast");
         }
+        if !guard.pronote_enabled() {
+            warn!("no Pronote credentials — serving demo school homework");
+        }
     }
     axum::serve(listener, app).await?;
     Ok(())

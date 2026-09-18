@@ -40,10 +40,11 @@ pub const EMPTY_SECTION_BODY_PX: i32 = 54;
 
 /// Sidebar column (same grid row as events). Keep in sync with
 /// `dashboard.css` (`.panel` padding/gaps, `.mast`, `.sidebar { gap }`,
-/// `h2`, `.todos li`, `.tube-line`, `.rooms li`, `.todos-more`).
+/// `h2`, `.todos li`, `.school-item`, `.tube-line`, `.rooms li`, `.todos-more`).
 pub const SIDEBAR_PX: i32 = 1008;
 pub const SIDEBAR_GAP_PX: i32 = 28;
 pub const TUBE_ROW_PX: i32 = 44;
+pub const SCHOOL_ROW_PX: i32 = 48;
 pub const ROOM_ROW_PX: i32 = EVENT_ROW_PX;
 /// Compact “+ N other todos” line under the pills (margin + height).
 pub const TODOS_MORE_PX: i32 = 36;
@@ -144,6 +145,39 @@ pub struct TubeLine {
     pub colour: String,
 }
 
+/// Pronote homework and recent grades for the School sidebar section.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct School {
+    /// Child or student first name as Pronote shows it.
+    #[serde(default)]
+    pub student: String,
+    /// Period average, for example `14.2`. Empty when Pronote has none.
+    #[serde(default)]
+    pub average: String,
+    #[serde(default)]
+    pub items: Vec<SchoolItem>,
+}
+
+impl School {
+    pub fn is_visible(&self) -> bool {
+        !self.items.is_empty() || !self.student.is_empty() || !self.average.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchoolItem {
+    /// `homework` or `grade`.
+    pub kind: String,
+    pub when: String,
+    pub subject: String,
+    pub detail: String,
+    #[serde(default)]
+    pub done: bool,
+    /// CSS class for a grade: `high`, `mid`, `low`, or empty.
+    #[serde(default)]
+    pub level: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Dashboard {
     pub family_name: String,
@@ -159,6 +193,8 @@ pub struct Dashboard {
     pub rooms: Vec<RoomClimate>,
     pub weather: Weather,
     pub tube: Vec<TubeLine>,
+    #[serde(default)]
+    pub school: School,
     pub source_note: String,
     /// Pico has reported a battery reading. Hidden on the panel until then.
     #[serde(default)]
@@ -190,6 +226,7 @@ impl Dashboard {
             rooms: Vec::new(),
             weather: Weather::default(),
             tube: Vec::new(),
+            school: School::default(),
             source_note: String::new(),
             has_battery: false,
             battery_pct: 0,
@@ -249,12 +286,19 @@ impl Dashboard {
         self.events_coming.truncate(cap);
     }
 
-    /// Keep Tube and House in full; fill leftover sidebar height with to-do pills.
+    /// Keep School, Tube, and House in full; fill leftover height with to-do pills.
     pub fn fit_sidebar_to_panel(&mut self) {
+        let school_px = if self.school.is_visible() {
+            sidebar_block_px(self.school.items.len(), SCHOOL_ROW_PX)
+        } else {
+            0
+        };
+        let gaps = if self.school.is_visible() { 3 } else { 2 };
         let remaining = SIDEBAR_PX
+            - school_px
             - sidebar_block_px(self.tube.len(), TUBE_ROW_PX)
             - sidebar_block_px(self.rooms.len(), ROOM_ROW_PX)
-            - SIDEBAR_GAP_PX * 2;
+            - SIDEBAR_GAP_PX * gaps;
         let total = self.todos.len();
         if total == 0 {
             self.todos_more = 0;
@@ -448,6 +492,42 @@ mod tests {
         assert_eq!(dash.tube.len(), 4);
         assert!(dash.todos.is_empty());
         assert_eq!(dash.todos_more, 5);
+    }
+
+    #[test]
+    fn sidebar_keeps_school_tube_and_house() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.school = School {
+            student: "Léa".into(),
+            average: "14.2".into(),
+            items: vec![
+                SchoolItem {
+                    kind: "homework".into(),
+                    when: "Today".into(),
+                    subject: "Maths".into(),
+                    detail: "p.24".into(),
+                    done: false,
+                    level: String::new(),
+                },
+                SchoolItem {
+                    kind: "grade".into(),
+                    when: "Fri".into(),
+                    subject: "French".into(),
+                    detail: "15/20".into(),
+                    done: false,
+                    level: "high".into(),
+                },
+            ],
+        };
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.todos = (0..40).map(|_| todo("Milk")).collect();
+        dash.fit_sidebar_to_panel();
+        assert_eq!(dash.school.items.len(), 2);
+        assert_eq!(dash.tube.len(), 4);
+        assert_eq!(dash.rooms.len(), 1);
+        assert!(dash.todos_more > 0);
     }
 
     #[test]

@@ -5,8 +5,8 @@ An e-ink, battery-powered frame for the family.
 A 13.3″ Spectra 6 panel in a picture frame. A **Pimoroni Pico LiPo 2 XL W**
 wakes, downloads a packed image, and sleeps for however long the server
 says. A **Rust server** on the LAN builds that image from HTML/CSS plus
-the family calendar, to-dos, house temperatures, Tube status, and BBC
-weather in the section headers.
+the family calendar, to-dos, house temperatures, Tube status, Pronote
+homework and grades, and BBC weather in the section headers.
 
 Hardware to buy is in [`shopping.md`](shopping.md).
 
@@ -213,6 +213,23 @@ the day’s low and afternoon the high.
 The sidebar shows [TfL](https://api.tfl.gov.uk) status for Northern,
 Circle, District, and Victoria. No API key is required. On fetch failure
 the demo statuses are shown.
+
+## School (Pronote)
+
+Homework and recent grades come from [PRONOTE](https://www.index-education.com/),
+the French school portal. There is no official student/parent API; the server
+speaks the same session protocol as the web client (the flow documented by
+[pronotepy](https://github.com/bain3/pronotepy)).
+
+1. Open the **direct** Pronote space in a browser (`eleve.html` or `parent.html`),
+   not the regional ENT / EduConnect login page.
+2. Put that URL, the Pronote username, and password in `config.toml` under
+   `[pronote]`. For a parent account set `account = "parent"` and optionally
+   `child = "Firstname"`.
+3. If Pronote asks for a two-factor PIN, set `pronote.pin`.
+
+Leave `pronote.url` empty to show the built-in demo list. ENT-only schools are
+not supported yet.
 
 ## Pico side
 

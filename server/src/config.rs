@@ -120,6 +120,7 @@ pub struct Config {
     pub todoist: TodoistConfig,
     pub meross: MerossConfig,
     pub weather: WeatherConfig,
+    pub pronote: PronoteConfig,
     pub sources: SourcesConfig,
     #[serde(default)]
     pub pictures: PicturesConfig,
@@ -203,6 +204,21 @@ pub struct WeatherConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+pub struct PronoteConfig {
+    /// Direct PRONOTE space URL (`eleve.html` or `parent.html`), not an ENT portal.
+    pub url: String,
+    pub username: String,
+    pub password: String,
+    /// `"eleve"` or `"parent"`. Empty = infer from the URL.
+    pub account: String,
+    /// Parent accounts: child's name as Pronote shows it. Empty = first child.
+    pub child: String,
+    /// Optional 2FA PIN if Pronote asks for one.
+    pub pin: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct SourcesConfig {
     pub ics_urls: Vec<String>,
 }
@@ -223,6 +239,7 @@ impl Default for Config {
             todoist: TodoistConfig::default(),
             meross: MerossConfig::default(),
             weather: WeatherConfig::default(),
+            pronote: PronoteConfig::default(),
             sources: SourcesConfig::default(),
             pictures: PicturesConfig::default(),
             birthdays: Vec::new(),
@@ -270,6 +287,19 @@ impl Default for WeatherConfig {
     fn default() -> Self {
         Self {
             location_id: "2643743".into(),
+        }
+    }
+}
+
+impl Default for PronoteConfig {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            username: String::new(),
+            password: String::new(),
+            account: String::new(),
+            child: String::new(),
+            pin: String::new(),
         }
     }
 }
@@ -597,6 +627,12 @@ impl Config {
         !self.weather.location_id.trim().is_empty()
     }
 
+    pub fn pronote_enabled(&self) -> bool {
+        !self.pronote.url.trim().is_empty()
+            && !self.pronote.username.trim().is_empty()
+            && !self.pronote.password.trim().is_empty()
+    }
+
     pub fn weather_cache_path(&self) -> PathBuf {
         self.config_dir.join("weather-cache.json")
     }
@@ -781,6 +817,7 @@ mod tests {
         assert!(!cfg.meross_enabled());
         assert_eq!(cfg.weather.location_id, "2643743");
         assert!(cfg.weather_enabled());
+        assert!(!cfg.pronote_enabled());
         assert_eq!(cfg.birthdays.len(), 2);
         assert_eq!(cfg.birthdays[0].name, "Maya");
         assert_eq!(

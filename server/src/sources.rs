@@ -8,6 +8,7 @@ use crate::config::Config;
 use crate::ics;
 use crate::meross;
 use crate::model::Dashboard;
+use crate::pronote;
 use crate::tfl;
 use crate::todoist;
 use crate::weather;
@@ -125,6 +126,27 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
             dash.tube = tfl::demo_tube();
             notes.push("TfL unavailable".into());
         }
+    }
+
+    if cfg.pronote_enabled() {
+        match pronote::load_school(&cfg.pronote, today).await {
+            Ok(school) => {
+                notes.push(if school.student.is_empty() {
+                    "Pronote".into()
+                } else {
+                    format!("Pronote “{}”", school.student)
+                });
+                dash.school = school;
+            }
+            Err(err) => {
+                warn!(%err, "Pronote failed; using demo school");
+                dash.school = pronote::demo_school(today);
+                notes.push("Pronote unavailable".into());
+            }
+        }
+    } else {
+        dash.school = pronote::demo_school(today);
+        notes.push("demo school (no Pronote credentials)".into());
     }
 
     merge_events(
