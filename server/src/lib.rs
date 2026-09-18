@@ -12,6 +12,7 @@ pub mod caldav;
 pub mod config;
 pub mod debug;
 pub mod frame;
+pub mod history;
 pub mod http;
 pub mod ics;
 pub mod meross;

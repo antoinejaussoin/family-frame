@@ -109,6 +109,9 @@ mod tests {
         assert!(!html.contains("15.5&#x2f;20"));
         assert!(!html.contains("grade-high"));
         assert!(html.contains("class=\"todos\""));
+        assert!(html.contains("class=\"panel no-history\""));
+        assert!(!html.contains("On this day"));
+        assert!(!html.contains("No history for today."));
     }
 
     #[test]
@@ -214,6 +217,20 @@ mod tests {
         assert!(html.contains("Buy milk"));
         assert!(html.contains("+ 4 other todos"));
         assert!(!html.contains("No open family tasks"));
+    }
+
+    #[test]
+    fn dashboard_shows_on_this_day_facts() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        dash.history = crate::history::demo_history();
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("class=\"history\""));
+        assert!(html.contains("On this day"));
+        assert!(html.contains("icon-history"));
+        assert!(html.contains("1851"));
+        assert!(html.contains("The New York Times is founded."));
+        assert!(!html.contains("No history for today."));
+        assert!(!html.contains("no-history"));
     }
 
     #[test]
