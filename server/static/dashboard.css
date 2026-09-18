@@ -66,16 +66,64 @@ body {
   padding: 44px 52px 36px;
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto auto 1fr auto;
   grid-template-areas:
     "mast mast mast"
     "events todos todos"
+    "events joke joke"
     "events history history"
     "events tube rooms";
   gap: 20px 24px;
 }
 
 .panel.with-school {
+  grid-template-rows: auto auto auto auto 1fr auto;
+  grid-template-areas:
+    "mast mast mast"
+    "events homework grades"
+    "events todos todos"
+    "events joke joke"
+    "events history history"
+    "events tube rooms";
+}
+
+.panel.no-history {
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-areas:
+    "mast mast mast"
+    "events todos todos"
+    "events joke joke"
+    "events tube rooms";
+}
+
+.panel.no-joke {
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-areas:
+    "mast mast mast"
+    "events todos todos"
+    "events history history"
+    "events tube rooms";
+}
+
+.panel.no-joke.no-history {
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "mast mast mast"
+    "events todos todos"
+    "events tube rooms";
+}
+
+.panel.with-school.no-history {
+  grid-template-rows: auto auto auto 1fr auto;
+  grid-template-areas:
+    "mast mast mast"
+    "events homework grades"
+    "events todos todos"
+    "events joke joke"
+    "events tube rooms";
+}
+
+.panel.with-school.no-joke {
   grid-template-rows: auto auto auto 1fr auto;
   grid-template-areas:
     "mast mast mast"
@@ -85,15 +133,7 @@ body {
     "events tube rooms";
 }
 
-.panel.no-history {
-  grid-template-rows: auto 1fr auto;
-  grid-template-areas:
-    "mast mast mast"
-    "events todos todos"
-    "events tube rooms";
-}
-
-.panel.with-school.no-history {
+.panel.with-school.no-joke.no-history {
   grid-template-rows: auto auto 1fr auto;
   grid-template-areas:
     "mast mast mast"
@@ -123,6 +163,7 @@ body {
 .homework { grid-area: homework; }
 .grades { grid-area: grades; }
 .todos { grid-area: todos; overflow: hidden; }
+.joke { grid-area: joke; overflow: hidden; min-height: 0; }
 .history { grid-area: history; overflow: hidden; min-height: 0; }
 .tube { grid-area: tube; }
 .rooms { grid-area: rooms; }
@@ -130,6 +171,7 @@ body {
 .homework,
 .grades,
 .todos,
+.joke,
 .history,
 .tube,
 .rooms { min-width: 0; }
@@ -238,6 +280,7 @@ h2 {
 
 .rooms h2,
 .todos h2,
+.joke h2,
 .homework h2,
 .grades h2,
 .tube h2 {
@@ -552,6 +595,7 @@ li {
 .homework h2,
 .grades h2,
 .todos h2,
+.joke h2,
 .history h2,
 .tube h2,
 .rooms h2,
@@ -563,6 +607,7 @@ li {
 .homework .section-icon,
 .grades .section-icon,
 .todos .section-icon,
+.joke .section-icon,
 .history .section-icon,
 .tube .section-icon,
 .rooms .section-icon,
@@ -676,6 +721,24 @@ li {
   line-height: 28px;
 }
 
+.joke .setup,
+.joke .punchline {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.joke .setup {
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+.joke .punchline {
+  margin-top: 4px;
+  font-weight: 700;
+  color: var(--blue);
+}
+
 .empty {
   font-size: 28px;
   margin: 20px 0 0;
@@ -684,6 +747,7 @@ li {
 .homework .empty,
 .grades .empty,
 .todos .empty,
+.joke .empty,
 .history .empty,
 .tube .empty,
 .rooms .empty,

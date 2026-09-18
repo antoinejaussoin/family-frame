@@ -7,6 +7,7 @@ use crate::caldav::{self, CalDav};
 use crate::config::Config;
 use crate::history;
 use crate::ics;
+use crate::jokes;
 use crate::meross;
 use crate::model::Dashboard;
 use crate::pronote;
@@ -126,6 +127,18 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
             warn!(%err, "TfL failed; using demo tube");
             dash.tube = tfl::demo_tube();
             notes.push("TfL unavailable".into());
+        }
+    }
+
+    match jokes::load_joke().await {
+        Ok(joke) => {
+            dash.joke = Some(joke);
+            notes.push("icanhazdadjoke".into());
+        }
+        Err(err) => {
+            warn!(%err, "Joke of the day failed; using a classic");
+            dash.joke = Some(jokes::fallback_joke());
+            notes.push("demo joke".into());
         }
     }
 
