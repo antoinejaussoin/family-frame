@@ -2,6 +2,7 @@
 //!
 //! POST `/api/frame.bin` appends one JSONL row and, on 200, a dithered PNG keyed
 //! by checksum. GET `/api/frame.bin` from a browser is not recorded.
+//! `DELETE /api/debug` wipes `polls.jsonl` and `frames/` so history starts empty.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -18,6 +19,7 @@ use tokio::sync::Mutex;
 use tracing::warn;
 
 pub const MAX_POLLS: usize = 500;
+pub const POLLS_PER_PAGE: usize = 20;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Poll {
@@ -67,6 +69,12 @@ pub struct DebugPage {
     pub eta_kind: String,
     pub pico_drift_label: String,
     pub graph_svg: String,
+    pub debug_dir_bytes: u64,
+    pub debug_dir_label: String,
+    pub poll_count: usize,
+    pub page: usize,
+    pub page_size: usize,
+    pub page_count: usize,
     pub polls: Vec<DebugPollView>,
 }
 
@@ -104,6 +112,7 @@ impl DebugLog {
 
     pub async fn record(&self, mut poll: Poll, png: Option<&[u8]>) -> Result<()> {
         poll.pct = poll.pct.min(100);
+        let mut guard = self.inner.lock().await;
         if let Some(png) = png {
             if is_hex_checksum(&poll.checksum) {
                 let path = self.frame_path(&poll.checksum);
@@ -112,7 +121,6 @@ impl DebugLog {
                 }
             }
         }
-        let mut guard = self.inner.lock().await;
         guard.push(poll);
         if guard.len() > MAX_POLLS {
             let drop_n = guard.len() - MAX_POLLS;
@@ -127,6 +135,22 @@ impl DebugLog {
 
     pub async fn snapshot(&self) -> Vec<Poll> {
         self.inner.lock().await.clone()
+    }
+
+    pub fn dir_bytes(&self) -> u64 {
+        dir_size(&self.dir)
+    }
+
+    pub async fn clear(&self) -> Result<()> {
+        let mut guard = self.inner.lock().await;
+        guard.clear();
+        if self.dir.exists() {
+            fs::remove_dir_all(&self.dir)
+                .with_context(|| format!("removing {}", self.dir.display()))?;
+        }
+        fs::create_dir_all(self.dir.join("frames"))
+            .with_context(|| format!("creating {}", self.dir.display()))?;
+        Ok(())
     }
 
     pub fn has_frame(&self, checksum: &str) -> bool {
@@ -151,16 +175,20 @@ pub fn is_hex_checksum(s: &str) -> bool {
 }
 
 pub fn page_from_polls(polls: &[Poll], tz: Tz, has_frame: impl Fn(&str) -> bool) -> DebugPage {
-    page_from_polls_with_drift(polls, tz, 0.0, has_frame)
+    page_from_polls_with_drift(polls, tz, 0.0, 1, 0, has_frame)
 }
 
 pub fn page_from_polls_with_drift(
     polls: &[Poll],
     tz: Tz,
     pico_drift: f64,
+    page: usize,
+    dir_bytes: u64,
     has_frame: impl Fn(&str) -> bool,
 ) -> DebugPage {
     let now = Utc::now();
+    let (poll_count, page, page_count) = page_bounds(polls.len(), page);
+    let debug_dir_label = format_bytes(dir_bytes);
     if polls.is_empty() {
         return DebugPage {
             version: crate::VERSION,
@@ -182,6 +210,12 @@ pub fn page_from_polls_with_drift(
             eta_kind: "empty".into(),
             pico_drift_label: String::new(),
             graph_svg: String::new(),
+            debug_dir_bytes: dir_bytes,
+            debug_dir_label,
+            poll_count,
+            page,
+            page_size: POLLS_PER_PAGE,
+            page_count,
             polls: Vec::new(),
         };
     }
@@ -190,6 +224,7 @@ pub fn page_from_polls_with_drift(
     let eta = discharge_eta(polls, now);
     let (eta_kind, eta_text) = eta_copy(eta, last.usb);
     let (next_refresh, next_refresh_rel) = next_refresh_copy(last, now, tz, pico_drift);
+    let skip = (page - 1) * POLLS_PER_PAGE;
 
     DebugPage {
         version: crate::VERSION,
@@ -215,9 +250,17 @@ pub fn page_from_polls_with_drift(
         eta_kind,
         pico_drift_label: pico_drift_label(pico_drift),
         graph_svg: graph_svg(polls, eta),
+        debug_dir_bytes: dir_bytes,
+        debug_dir_label,
+        poll_count,
+        page,
+        page_size: POLLS_PER_PAGE,
+        page_count,
         polls: polls
             .iter()
             .rev()
+            .skip(skip)
+            .take(POLLS_PER_PAGE)
             .map(|p| DebugPollView {
                 when: format_when(p.t, tz),
                 status: p.status,
@@ -233,6 +276,16 @@ pub fn page_from_polls_with_drift(
             })
             .collect(),
     }
+}
+
+fn page_bounds(poll_count: usize, page: usize) -> (usize, usize, usize) {
+    let page_count = poll_count.div_ceil(POLLS_PER_PAGE);
+    let page = if page_count == 0 {
+        1
+    } else {
+        page.clamp(1, page_count)
+    };
+    (poll_count, page, page_count)
 }
 
 pub fn discharge_eta(polls: &[Poll], now: DateTime<Utc>) -> BatteryEta {
@@ -564,6 +617,42 @@ fn rewrite_jsonl(path: &Path, polls: &[Poll]) -> Result<()> {
     Ok(())
 }
 
+fn dir_size(path: &Path) -> u64 {
+    let Ok(rd) = fs::read_dir(path) else {
+        return 0;
+    };
+    let mut total = 0u64;
+    for entry in rd.flatten() {
+        let child = entry.path();
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        if meta.is_dir() {
+            total += dir_size(&child);
+        } else if meta.is_file() {
+            total += meta.len();
+        }
+    }
+    total
+}
+
+fn format_bytes(n: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+    let mut value = n as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{n} B")
+    } else if value >= 10.0 {
+        format!("{value:.0} {}", UNITS[unit])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
 fn prune_frames(dir: &Path, polls: &[Poll]) {
     let keep: HashSet<&str> = polls.iter().map(|p| p.checksum.as_str()).collect();
     let Ok(rd) = fs::read_dir(dir) else {
@@ -703,6 +792,10 @@ mod tests {
         let page = page_from_polls(&polls, chrono_tz::Europe::London, |c| c == "deadbeef");
         assert!(page.has_polls);
         assert_eq!(page.last_pct, 78);
+        assert_eq!(page.poll_count, 2);
+        assert_eq!(page.page, 1);
+        assert_eq!(page.page_size, POLLS_PER_PAGE);
+        assert_eq!(page.page_count, 1);
         assert_eq!(page.polls[0].status, 204);
         assert_eq!(page.polls[1].status, 200);
         assert!(page.polls[0].has_image);
@@ -720,6 +813,10 @@ mod tests {
         assert!(!page.has_polls);
         assert!(page.graph_svg.is_empty());
         assert!(page.eta_text.contains("No Pico"));
+        assert_eq!(page.poll_count, 0);
+        assert_eq!(page.page, 1);
+        assert_eq!(page.page_count, 0);
+        assert_eq!(page.debug_dir_label, "0 B");
     }
 
     #[test]
@@ -753,7 +850,8 @@ mod tests {
     fn page_next_refresh_undoes_pico_drift() {
         let mut polls = vec![poll_at(60, 78, false, 204, "deadbeef")];
         polls[0].sleep_s = 3495; // 3600 wall-clock seconds at 3% slow
-        let page = page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.03, |_| true);
+        let page =
+            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.03, 1, 0, |_| true);
         assert!(
             page.next_refresh.contains("15:00"),
             "got {}",
@@ -781,5 +879,84 @@ mod tests {
             format_until(now - Duration::minutes(5), now).as_str(),
             "5 min overdue"
         );
+    }
+
+    #[test]
+    fn page_paginates_newest_first() {
+        let polls: Vec<_> = (0..21)
+            .map(|i| poll_at(i as i64, i as u16, false, 200, "aa"))
+            .collect();
+        let page =
+            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 1, 0, |_| false);
+        assert_eq!(page.poll_count, 21);
+        assert_eq!(page.page, 1);
+        assert_eq!(page.page_count, 2);
+        assert_eq!(page.polls.len(), POLLS_PER_PAGE);
+        assert_eq!(page.polls[0].pct, 20);
+        assert_eq!(page.polls[19].pct, 1);
+
+        let page2 =
+            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 2, 0, |_| false);
+        assert_eq!(page2.page, 2);
+        assert_eq!(page2.polls.len(), 1);
+        assert_eq!(page2.polls[0].pct, 0);
+
+        let clamped =
+            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 99, 0, |_| false);
+        assert_eq!(clamped.page, 2);
+        assert_eq!(clamped.polls.len(), 1);
+    }
+
+    #[test]
+    fn format_bytes_uses_binary_units() {
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(512), "512 B");
+        assert_eq!(format_bytes(1024), "1.0 KB");
+        assert_eq!(format_bytes(1536), "1.5 KB");
+        assert_eq!(format_bytes(10 * 1024), "10 KB");
+        assert_eq!(format_bytes(1024 * 1024), "1.0 MB");
+    }
+
+    #[tokio::test]
+    async fn dir_bytes_counts_frames_and_jsonl() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = DebugLog::open(dir.path()).unwrap();
+        let png = b"\x89PNG\r\n\x1a\nfake-image-bytes";
+        log.record(poll_at(0, 80, false, 200, "aa11bb22"), Some(png))
+            .await
+            .unwrap();
+        let n = log.dir_bytes();
+        assert!(n >= png.len() as u64, "got {n}");
+        let page = page_from_polls_with_drift(
+            &log.snapshot().await,
+            chrono_tz::Europe::London,
+            0.0,
+            1,
+            n,
+            |_| true,
+        );
+        assert_eq!(page.debug_dir_bytes, n);
+        assert!(!page.debug_dir_label.is_empty());
+        assert_ne!(page.debug_dir_label, "0 B");
+    }
+
+    #[tokio::test]
+    async fn clear_wipes_polls_and_frames() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = DebugLog::open(dir.path()).unwrap();
+        log.record(poll_at(0, 80, false, 200, "aa11bb22"), Some(b"png"))
+            .await
+            .unwrap();
+        log.record(poll_at(60, 78, false, 204, "aa11bb22"), None)
+            .await
+            .unwrap();
+        assert_eq!(log.snapshot().await.len(), 2);
+        assert!(log.has_frame("aa11bb22"));
+        log.clear().await.unwrap();
+        assert!(log.snapshot().await.is_empty());
+        assert!(!log.has_frame("aa11bb22"));
+        assert!(!dir.path().join("debug/polls.jsonl").exists());
+        assert!(dir.path().join("debug/frames").is_dir());
+        assert_eq!(log.dir_bytes(), 0);
     }
 }

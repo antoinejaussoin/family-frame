@@ -95,7 +95,8 @@ store the new slot.
 | `GET /api/frame.json` | `{ checksum, bytes, content_hash, source_note }` |
 | `GET /api/settings` | Public schedule / mode (family UI) |
 | `GET /api/pictures` | Photo library |
-| `GET /api/debug` | Pico poll history, battery graph SVG, next-refresh copy |
+| `GET /api/debug` | Pico poll history (20 per page, `?page=`), battery graph SVG, debug-dir size, next-refresh copy |
+| `DELETE /api/debug` | Wipe poll JSONL and stored frame PNGs |
 | `GET /api/debug/frames/{checksum}.png` | Dithered frame stored for that checksum |
 | `GET /` | Family SPA (mode, schedule, photos) |
 | `GET /preview` | Layout workbench (same SPA) |
