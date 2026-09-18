@@ -40,6 +40,10 @@ pub const EVENT_ROW_PX: i32 = 60;
 pub const SECTION_GAP_PX: i32 = EVENT_ROW_PX;
 pub const EMPTY_SECTION_BODY_PX: i32 = 54;
 
+/// Homework and Grades panel sections. Markup, CSS, and Pronote fetch stay;
+/// flip this to put the two quarter-columns back on the glass.
+pub const SHOW_SCHOOL_SECTIONS: bool = false;
+
 /// Right-hand columns (same grid row as events). Keep in sync with
 /// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/tube/rooms,
 /// `h2`, `.todos li`, `.school-item`, `.tube-line`, `.rooms li`, `.todos-more`).
@@ -281,6 +285,7 @@ impl Dashboard {
         let mut hashed = self.clone();
         hashed.last_refresh.clear();
         hashed.next_refresh.clear();
+        Self::hide_school_sections_from_hash(&mut hashed);
         hashed
     }
 
@@ -288,6 +293,15 @@ impl Dashboard {
     /// and the Pico can skip the panel refresh.
     pub fn content_bytes(&self) -> Vec<u8> {
         serde_json::to_vec(&self.for_layout_hash()).expect("dashboard json")
+    }
+
+    fn hide_school_sections_from_hash(hashed: &mut Self) {
+        if SHOW_SCHOOL_SECTIONS {
+            return;
+        }
+        hashed.school.homework.clear();
+        hashed.school.grades.clear();
+        hashed.school.average.clear();
     }
 
     /// Sort the calendar and keep only the rows that fit the panel.
@@ -308,7 +322,10 @@ impl Dashboard {
     /// Keep Tube and House in full on the bottom row. Homework and grades
     /// share the top row; leftover height is the two-column to-do band.
     pub fn fit_sidebar_to_panel(&mut self) {
-        let school_on = self.school.is_visible();
+        self.fit_sidebar(SHOW_SCHOOL_SECTIONS && self.school.is_visible());
+    }
+
+    fn fit_sidebar(&mut self, school_on: bool) {
         let footer_px = sidebar_block_px(self.tube.len(), TUBE_ROW_PX)
             .max(sidebar_block_px(self.rooms.len(), ROOM_ROW_PX));
         let gaps = if school_on { 2 } else { 1 };
@@ -523,7 +540,7 @@ mod tests {
         dash.tube = tube_lines(4);
         dash.rooms = ["A", "B", "C", "D", "E"].into_iter().map(room).collect();
         dash.todos = (0..50).map(|_| todo("Milk")).collect();
-        dash.fit_sidebar_to_panel();
+        dash.fit_sidebar(true);
         assert_eq!(dash.tube.len(), 4);
         assert_eq!(dash.rooms.len(), 5);
         assert_eq!(dash.school.homework.len(), MAX_HOMEWORK_ROWS);
@@ -557,7 +574,7 @@ mod tests {
             .collect();
         dash.tube = tube_lines(4);
         dash.rooms = (0..12).map(|i| room(&format!("R{i}"))).collect();
-        dash.fit_sidebar_to_panel();
+        dash.fit_sidebar(true);
         assert_eq!(dash.rooms.len(), 12);
         assert_eq!(dash.tube.len(), 4);
         assert!(dash.school.grades.len() < 12);
@@ -578,7 +595,7 @@ mod tests {
         dash.tube = tube_lines(4);
         dash.rooms = ["Kitchen"].into_iter().map(room).collect();
         dash.todos = (0..120).map(|_| todo("Milk")).collect();
-        dash.fit_sidebar_to_panel();
+        dash.fit_sidebar(true);
         assert_eq!(dash.school.homework.len(), 1);
         assert_eq!(dash.school.grades.len(), 1);
         assert_eq!(dash.tube.len(), 4);
@@ -624,6 +641,42 @@ mod tests {
         assert_eq!(dash.content_bytes(), later.content_bytes());
         later.set_battery(61);
         assert_ne!(dash.content_bytes(), later.content_bytes());
+    }
+
+    #[test]
+    fn hidden_school_sections_are_omitted_from_the_layout_hash() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        dash.school = School {
+            student: "Léa".into(),
+            average: "14.2".into(),
+            homework: vec![school_hw("Today", "Maths")],
+            grades: vec![school_grade("Fri", "French", "15/20", "high")],
+            days: Vec::new(),
+        };
+        let before = dash.content_bytes();
+        dash.school.homework.push(school_hw("Mon", "English"));
+        dash.school.grades.push(school_grade("Thu", "Maths", "12/20", "mid"));
+        dash.school.average = "13.8".into();
+        assert_eq!(before, dash.content_bytes());
+        dash.school.student = "Maya".into();
+        assert_ne!(before, dash.content_bytes());
+    }
+
+    #[test]
+    fn sidebar_leaves_homework_when_school_sections_are_hidden() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.school.student = "Léa".into();
+        dash.school.homework = (0..12)
+            .map(|i| school_hw("Mon", &format!("Subject {i}")))
+            .collect();
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.todos = (0..8).map(|_| todo("Ok")).collect();
+        dash.fit_sidebar_to_panel();
+        assert_eq!(dash.school.homework.len(), 12);
+        assert_eq!(dash.todos.len(), 8);
+        assert_eq!(dash.todos_more, 0);
     }
 
     #[test]

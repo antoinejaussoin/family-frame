@@ -5,10 +5,10 @@
   <title>{{ family_name }} frame</title>
   <link rel="preload" href="/static/fonts/AtkinsonHyperlegible-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/AtkinsonHyperlegible-Bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/static/dashboard.css?v=next44">
+  <link rel="stylesheet" href="/static/dashboard.css?v=next45">
 </head>
 <body>
-  <main class="panel">
+  <main class="panel{% if show_school_sections %} with-school{% endif %}">
     <div class="frame-meta">
       {% if last_refresh or has_battery %}
       <p class="refresh" aria-label="{% if last_refresh %}Last refresh {{ last_refresh }}, next {{ next_refresh }}{% if has_battery %}, {% endif %}{% endif %}{% if has_battery %}battery {{ battery_pct }} percent{% endif %}">
@@ -243,7 +243,7 @@
       </section>
     </div>
 
-    {% if school.homework or school.grades or school.student or school.average %}
+    {% if show_school_sections and (school.homework or school.grades or school.student or school.average) %}
     <section class="homework">
       <h2>
         <span class="section-title">
