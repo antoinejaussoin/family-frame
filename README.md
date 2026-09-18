@@ -210,15 +210,17 @@ the day’s low and afternoon the high.
 
 ## Tube
 
-The sidebar shows [TfL](https://api.tfl.gov.uk) status for Northern,
-Circle, District, and Victoria. No API key is required. On fetch failure
-the demo statuses are shown.
+The right-hand columns show [TfL](https://api.tfl.gov.uk) status for Northern,
+Circle, District, and Victoria, beside house temperatures. No API key is
+required. On fetch failure the demo statuses are shown.
 
 ## School (Pronote)
 
-Homework and recent grades come from [PRONOTE](https://www.index-education.com/),
-the French school portal. There is no official student/parent API; the server
-speaks the same session protocol as the web client (the flow documented by
+Upcoming homework (date + subject) and recent grades sit in the two quarter
+columns beside the calendars. Data comes from
+[PRONOTE](https://www.index-education.com/), the French school portal. There
+is no official student/parent API; the server speaks the same session protocol
+as the web client (the flow documented by
 [pronotepy](https://github.com/bain3/pronotepy)).
 
 1. Open the **direct** Pronote space in a browser (`eleve.html` or `parent.html`),

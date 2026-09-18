@@ -65,12 +65,14 @@ body {
   height: 1200px;
   padding: 44px 52px 36px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 460px;
-  grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr auto;
   grid-template-areas:
-    "mast mast"
-    "events sidebar";
-  gap: 20px 40px;
+    "mast mast mast"
+    "events homework grades"
+    "events todos todos"
+    "events tube rooms";
+  gap: 20px 24px;
 }
 
 .mast {
@@ -89,21 +91,17 @@ body {
   min-height: 0;
   gap: 60px; /* minimum one event row; extra space sits above Coming next */
 }
-.sidebar {
-  grid-area: sidebar;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-width: 0;
-  min-height: 0;
-  gap: 28px;
-}
+.homework { grid-area: homework; }
+.grades { grid-area: grades; }
+.todos { grid-area: todos; overflow: hidden; }
+.tube { grid-area: tube; }
+.rooms { grid-area: rooms; }
 .today,
+.homework,
+.grades,
 .todos,
-.school,
 .tube,
-.rooms { flex: 0 0 auto; min-width: 0; }
-.todos { overflow: hidden; }
+.rooms { min-width: 0; }
 .coming {
   flex: 0 1 auto;
   margin-top: auto;
@@ -201,7 +199,8 @@ h2 {
 
 .rooms h2,
 .todos h2,
-.school h2,
+.homework h2,
+.grades h2,
 .tube h2 {
   color: var(--black);
   border-bottom-color: var(--black);
@@ -219,7 +218,7 @@ h2 {
 .day-meta {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 8px;
   margin-left: auto;
   min-width: 0;
   text-transform: none;
@@ -230,7 +229,7 @@ h2 {
 .slots {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .slot {
@@ -323,7 +322,8 @@ li {
   line-height: 1.2;
 }
 
-li:not(.tube-line):not(.todo-pill):not(.school-item) {
+.today li,
+.coming li {
   box-sizing: border-box;
   height: 60px;
 }
@@ -349,7 +349,9 @@ li:not(.tube-line):not(.todo-pill):not(.school-item) {
 .what { flex: 1 1 auto; min-width: 0; }
 
 .coming .when {
-  flex-basis: 210px;
+  flex-basis: 176px;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .today .what,
@@ -375,10 +377,21 @@ li:not(.tube-line):not(.todo-pill):not(.school-item) {
   display: block;
 }
 .rooms li {
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 108px 60px;
+  grid-template-columns: minmax(0, 1fr) 72px 44px;
   align-items: center;
-  column-gap: 10px;
+  height: 44px;
+  padding: 4px 0;
+  font-size: 20px;
+  column-gap: 8px;
+}
+.rooms .what {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 700;
 }
 .rooms .temp,
 .rooms .humidity {
@@ -390,11 +403,11 @@ li:not(.tube-line):not(.todo-pill):not(.school-item) {
 }
 .rooms .temp {
   color: var(--red);
-  font-size: 32px;
+  font-size: 20px;
 }
 .rooms .humidity {
   color: var(--blue);
-  font-size: 22px;
+  font-size: 18px;
 }
 
 .rooms li.offline .what {
@@ -412,7 +425,7 @@ li:not(.tube-line):not(.todo-pill):not(.school-item) {
   height: 44px;
   padding: 6px 0;
   align-items: center;
-  font-size: 24px;
+  font-size: 20px;
   gap: 0;
 }
 
@@ -432,7 +445,7 @@ li:not(.tube-line):not(.todo-pill):not(.school-item) {
   justify-self: center;
   text-align: center;
   font-weight: 700;
-  font-size: 22px;
+  font-size: 18px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -451,8 +464,28 @@ li:not(.tube-line):not(.todo-pill):not(.school-item) {
   padding: 2px 8px;
 }
 
-.school h2 {
+.homework h2,
+.grades h2 {
   justify-content: flex-start;
+}
+
+.homework h2,
+.grades h2,
+.todos h2,
+.tube h2,
+.rooms h2 {
+  font-size: 22px;
+  gap: 8px;
+}
+
+.homework .section-icon,
+.grades .section-icon,
+.todos .section-icon,
+.tube .section-icon,
+.rooms .section-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
 }
 
 .school-meta {
@@ -464,31 +497,41 @@ li:not(.tube-line):not(.todo-pill):not(.school-item) {
   text-transform: none;
   letter-spacing: 0;
   font-weight: 700;
-  font-size: 22px;
+  font-size: 20px;
 }
 
-.school-name { color: var(--black); }
-.school-dot { color: var(--black); }
 .school-avg { color: var(--red); }
 
-.school li.school-item {
+.homework li.school-item,
+.grades li.school-item {
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: 110px minmax(0, 0.9fr) minmax(0, 1.2fr);
-  height: 48px;
-  padding: 6px 0;
+  height: 44px;
+  padding: 4px 0;
   align-items: center;
-  font-size: 22px;
-  gap: 10px;
-}
-
-.school .when {
-  flex: none;
   font-size: 20px;
-  font-weight: 700;
+  gap: 8px;
 }
 
-.school .subject {
+.homework li.school-item {
+  grid-template-columns: 100px minmax(0, 1fr);
+}
+
+.grades li.school-item {
+  grid-template-columns: 100px minmax(0, 1fr) 70px;
+}
+
+.homework .when,
+.grades .when {
+  flex: none;
+  font-size: 18px;
+  font-weight: 700;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.homework .subject,
+.grades .subject {
   min-width: 0;
   font-weight: 700;
   overflow: hidden;
@@ -496,15 +539,16 @@ li:not(.tube-line):not(.todo-pill):not(.school-item) {
   text-overflow: ellipsis;
 }
 
-.school .detail {
+.grades .detail {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }
 
-.school-grade .detail { font-variant-numeric: tabular-nums; font-weight: 700; }
 .grade-high .detail { color: var(--green); }
 .grade-mid .detail { color: var(--black); }
 .grade-low .detail { color: var(--red); }
@@ -551,6 +595,15 @@ li:not(.tube-line):not(.todo-pill):not(.school-item) {
 .empty {
   font-size: 28px;
   margin: 20px 0 0;
+}
+
+.homework .empty,
+.grades .empty,
+.todos .empty,
+.tube .empty,
+.rooms .empty {
+  font-size: 22px;
+  margin: 12px 0 0;
 }
 
 .today li:first-child .when {

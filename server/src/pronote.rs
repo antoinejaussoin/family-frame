@@ -35,11 +35,11 @@ const RSA_EXPONENT: u32 = 65537;
 
 const HOMEWORK_TAB: i64 = 88;
 const GRADES_TAB: i64 = 198;
-const MAX_HOMEWORK: usize = 3;
-const MAX_GRADES: usize = 2;
-const MAX_ITEMS: usize = 4;
-const SUBJECT_MAX: usize = 14;
-const DETAIL_MAX: usize = 22;
+const MAX_HOMEWORK: usize = 12;
+const MAX_GRADES: usize = 12;
+const SUBJECT_MAX: usize = 32;
+const GRADE_SUBJECT_MAX: usize = 28;
+const DETAIL_MAX: usize = 10;
 
 static LAST: Mutex<Option<(Instant, String, School)>> = Mutex::new(None);
 
@@ -81,12 +81,8 @@ pub async fn load_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School
     let school = fetch_school(cfg, today).await?;
     info!(
         student = %school.student,
-        homework = school
-            .items
-            .iter()
-            .filter(|i| i.kind == "homework")
-            .count(),
-        grades = school.items.iter().filter(|i| i.kind == "grade").count(),
+        homework = school.homework.len(),
+        grades = school.grades.len(),
         "loaded Pronote school"
     );
     if let Ok(mut guard) = LAST.lock() {
@@ -99,34 +95,43 @@ pub fn demo_school(today: NaiveDate) -> School {
     School {
         student: "Léa".into(),
         average: "14.2".into(),
-        items: vec![
-            school_item(
-                "homework",
-                ics::day_label(today, today),
-                "Maths",
-                "exercises p.24",
-                "",
-            ),
-            school_item(
-                "homework",
+        homework: vec![
+            school_homework(ics::day_label(today, today), "Maths"),
+            school_homework(
                 ics::day_label(today + chrono::Duration::days(1), today),
                 "Français",
-                "learn the poem",
-                "",
             ),
-            school_item(
-                "homework",
+            school_homework(
                 ics::day_label(today + chrono::Duration::days(2), today),
                 "Histoire",
-                "worksheet 3",
-                "",
             ),
-            school_item(
-                "grade",
+            school_homework(
+                ics::day_label(today + chrono::Duration::days(5), today),
+                "SVT",
+            ),
+            school_homework(
+                ics::day_label(today + chrono::Duration::days(7), today),
+                "Anglais",
+            ),
+        ],
+        grades: vec![
+            school_grade(
                 ics::day_label(today - chrono::Duration::days(1), today),
                 "Maths",
                 "15.5/20",
                 "high",
+            ),
+            school_grade(
+                ics::day_label(today - chrono::Duration::days(3), today),
+                "Français",
+                "12/20",
+                "mid",
+            ),
+            school_grade(
+                ics::day_label(today - chrono::Duration::days(6), today),
+                "Histoire",
+                "8/20",
+                "low",
             ),
         ],
     }
@@ -377,7 +382,7 @@ impl Session {
         from: NaiveDate,
         to: NaiveDate,
         start_day: NaiveDate,
-    ) -> Result<Vec<(NaiveDate, String, String, bool)>> {
+    ) -> Result<Vec<(NaiveDate, String, bool)>> {
         let week_from = pronote_week(from, start_day);
         let week_to = pronote_week(to, start_day).max(week_from);
         let resp = self
@@ -406,16 +411,11 @@ impl Session {
                 .and_then(|v| v.get("V"))
                 .and_then(|v| json_str(v, &["L"]))
                 .unwrap_or_default();
-            let description = item
-                .get("descriptif")
-                .and_then(|v| json_str(v, &["V"]))
-                .map(|s| strip_html(&s))
-                .unwrap_or_default();
             let done = json_truthy(&item, "TAFFait");
-            if subject.is_empty() && description.is_empty() {
+            if subject.is_empty() {
                 continue;
             }
-            out.push((date, subject, description, done));
+            out.push((date, subject, done));
         }
         out.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
         Ok(out)
@@ -587,74 +587,49 @@ impl Session {
 fn build_school(
     student: String,
     average: String,
-    homework: Vec<(NaiveDate, String, String, bool)>,
+    homework: Vec<(NaiveDate, String, bool)>,
     grades: Vec<(NaiveDate, String, String, String)>,
     today: NaiveDate,
 ) -> School {
-    let mut items = Vec::new();
-    for (date, subject, description, done) in homework {
+    let mut homework_rows = Vec::new();
+    for (date, subject, done) in homework {
         if done {
             continue;
         }
-        if items.len() >= MAX_HOMEWORK || items.len() >= MAX_ITEMS {
+        if homework_rows.len() >= MAX_HOMEWORK {
             break;
         }
-        let detail = if description.is_empty() {
-            subject.clone()
-        } else {
-            description
-        };
-        items.push(school_item(
-            "homework",
-            ics::day_label(date, today),
-            &subject,
-            &detail,
-            "",
-        ));
+        homework_rows.push(school_homework(ics::day_label(date, today), &subject));
     }
-    let grade_slots =
-        MAX_ITEMS
-            .saturating_sub(items.len())
-            .min(MAX_GRADES)
-            .max(if items.is_empty() {
-                MAX_GRADES.min(MAX_ITEMS)
-            } else {
-                0
-            });
-    let grade_slots = if grade_slots == 0 && items.len() < MAX_ITEMS {
-        1.min(MAX_ITEMS - items.len())
-    } else {
-        grade_slots
-    };
-    for (date, subject, detail, level) in grades.into_iter().take(grade_slots) {
-        items.push(school_item(
-            "grade",
-            ics::day_label(date, today),
-            &subject,
-            &detail,
-            &level,
-        ));
-    }
+    let grades = grades
+        .into_iter()
+        .take(MAX_GRADES)
+        .map(|(date, subject, detail, level)| {
+            school_grade(ics::day_label(date, today), &subject, &detail, &level)
+        })
+        .collect();
     School {
         student,
         average,
-        items,
+        homework: homework_rows,
+        grades,
     }
 }
 
-fn school_item(
-    kind: &str,
-    when: impl Into<String>,
-    subject: &str,
-    detail: &str,
-    level: &str,
-) -> SchoolItem {
+fn school_homework(when: impl Into<String>, subject: &str) -> SchoolItem {
     SchoolItem {
-        kind: kind.into(),
         when: when.into(),
         subject: clip(subject, SUBJECT_MAX),
+        detail: String::new(),
+        level: String::new(),
+    }
+}
+
+fn school_grade(when: impl Into<String>, subject: &str, detail: &str, level: &str) -> SchoolItem {
+    SchoolItem {
+        when: when.into(),
+        subject: clip(subject, GRADE_SUBJECT_MAX),
         detail: clip(detail, DETAIL_MAX),
-        done: false,
         level: level.into(),
     }
 }
@@ -907,6 +882,7 @@ fn clip(s: &str, max: usize) -> String {
     out
 }
 
+#[cfg(test)]
 fn strip_html(s: &str) -> String {
     let mut out = String::new();
     let mut in_tag = false;
@@ -921,6 +897,7 @@ fn strip_html(s: &str) -> String {
     html_unescape(&out)
 }
 
+#[cfg(test)]
 fn html_unescape(s: &str) -> String {
     s.replace("&nbsp;", " ")
         .replace("&amp;", "&")
@@ -1115,19 +1092,9 @@ mod tests {
             "Léa".into(),
             "14.2".into(),
             vec![
-                (today, "Maths".into(), "exercises p.24".into(), false),
-                (
-                    today + chrono::Duration::days(1),
-                    "Français".into(),
-                    "poem".into(),
-                    false,
-                ),
-                (
-                    today + chrono::Duration::days(2),
-                    "Histoire".into(),
-                    "worksheet".into(),
-                    true,
-                ),
+                (today, "Maths".into(), false),
+                (today + chrono::Duration::days(1), "Français".into(), false),
+                (today + chrono::Duration::days(2), "Histoire".into(), true),
             ],
             vec![(
                 today - chrono::Duration::days(1),
@@ -1139,18 +1106,20 @@ mod tests {
         );
         assert_eq!(school.student, "Léa");
         assert_eq!(school.average, "14.2");
-        assert_eq!(school.items.len(), 3);
-        assert_eq!(school.items[0].kind, "homework");
-        assert_eq!(school.items[0].when, "Today");
-        assert_eq!(school.items[2].kind, "grade");
-        assert_eq!(school.items[2].detail, "15.5/20");
+        assert_eq!(school.homework.len(), 2);
+        assert_eq!(school.homework[0].when, "Today");
+        assert_eq!(school.homework[0].subject, "Maths");
+        assert!(school.homework[0].detail.is_empty());
+        assert_eq!(school.grades.len(), 1);
+        assert_eq!(school.grades[0].detail, "15.5/20");
     }
 
     #[test]
     fn demo_school_is_visible() {
         let school = demo_school(NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
         assert!(school.is_visible());
-        assert!(!school.items.is_empty());
+        assert!(!school.homework.is_empty());
+        assert!(!school.grades.is_empty());
     }
 
     #[tokio::test]
@@ -1166,9 +1135,10 @@ mod tests {
         let school = load_school(&cfg, today).await.expect("demo login");
         assert!(
             school.is_visible(),
-            "demo school was empty: student={} items={}",
+            "demo school was empty: student={} homework={} grades={}",
             school.student,
-            school.items.len()
+            school.homework.len(),
+            school.grades.len()
         );
     }
 }
