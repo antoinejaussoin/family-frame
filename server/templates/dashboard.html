@@ -144,7 +144,7 @@
         <h2>
           <span class="section-title">
             <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-today"/></svg>
-            {{ today_title }}
+            {{ today_title }}{% if today_ordinal %} <span class="day-num">{{ today_ordinal }}</span>{% endif %}
           </span>
           {% if weather.days and weather.days|length > 0 %}
           {% set day = weather.days[0] %}

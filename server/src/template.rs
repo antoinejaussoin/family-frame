@@ -40,9 +40,11 @@ mod tests {
     #[test]
     fn dashboard_uses_today_title() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 19).unwrap());
-        dash.today_title = "Tomorrow 20th".into();
+        dash.today_title = "Tomorrow".into();
+        dash.today_ordinal = "20th".into();
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
-        assert!(html.contains("Tomorrow 20th"));
+        assert!(html.contains("Tomorrow"));
+        assert!(html.contains("class=\"day-num\">20th</span>"));
         assert!(html.contains("Nothing on the family calendar tomorrow."));
         assert!(!html.contains("Nothing on the family calendar today."));
     }

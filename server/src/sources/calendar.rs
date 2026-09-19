@@ -97,6 +97,7 @@ pub fn merge_events(
 ) {
     let focus = calendar_focus(today, now_local, &events);
     dash.today_title = focus.title;
+    dash.today_ordinal = focus.ordinal;
     align_weather(&mut dash.weather, focus.weather_offset);
     let focus_date = focus.date.format("%Y-%m-%d").to_string();
     for mut ev in events {
@@ -114,6 +115,7 @@ pub fn merge_events(
 struct CalendarFocus {
     date: NaiveDate,
     title: String,
+    ordinal: String,
     weather_offset: usize,
 }
 
@@ -125,13 +127,15 @@ fn calendar_focus(
     if shows_tomorrow(today, now_local, events) {
         let date = today + Duration::days(1);
         CalendarFocus {
-            title: format!("Tomorrow {}", day_ordinal(date.day())),
+            title: "Tomorrow".into(),
+            ordinal: day_ordinal(date.day()),
             date,
             weather_offset: 1,
         }
     } else {
         CalendarFocus {
             title: "Today".into(),
+            ordinal: String::new(),
             date: today,
             weather_offset: 0,
         }
@@ -305,7 +309,8 @@ mod tests {
                 ev(today, 2, "10:00", "Dentist", false),
             ],
         );
-        assert_eq!(dash.today_title, "Tomorrow 20th");
+        assert_eq!(dash.today_title, "Tomorrow");
+        assert_eq!(dash.today_ordinal, "20th");
         assert_eq!(
             dash.events_today
                 .iter()
@@ -355,7 +360,8 @@ mod tests {
                 ev(today, 1, "", "Swim", true),
             ],
         );
-        assert_eq!(dash.today_title, "Tomorrow 20th");
+        assert_eq!(dash.today_title, "Tomorrow");
+        assert_eq!(dash.today_ordinal, "20th");
         assert_eq!(dash.events_today[0].title, "Swim");
         assert!(dash.events_coming.is_empty());
     }
@@ -383,7 +389,8 @@ mod tests {
                 ev(today, 1, "08:00", "School run", false),
             ],
         );
-        assert_eq!(dash.today_title, "Tomorrow 2nd");
+        assert_eq!(dash.today_title, "Tomorrow");
+        assert_eq!(dash.today_ordinal, "2nd");
         assert_eq!(dash.events_today[0].title, "School run");
         assert!(dash.events_coming.is_empty());
     }

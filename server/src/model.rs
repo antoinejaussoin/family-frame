@@ -257,10 +257,13 @@ pub struct Dashboard {
     pub saint_title: String,
     #[serde(default)]
     pub saint_name: String,
-    /// Primary calendar heading: `Today`, or `Tomorrow 20th` after 18:00
+    /// Primary calendar heading: `Today`, or `Tomorrow` after 18:00
     /// when nothing later remains on the calendar day.
     #[serde(default = "default_today_title")]
     pub today_title: String,
+    /// Day ordinal painted in red after `Tomorrow` (`20th`). Empty on Today.
+    #[serde(default)]
+    pub today_ordinal: String,
     pub events_today: Vec<CalendarEvent>,
     pub events_coming: Vec<CalendarEvent>,
     pub todos: Vec<TodoItem>,
@@ -309,6 +312,7 @@ impl Dashboard {
             saint_title: saint.title.to_string(),
             saint_name: saint.name.to_string(),
             today_title: default_today_title(),
+            today_ordinal: String::new(),
             events_today: Vec::new(),
             events_coming: Vec::new(),
             todos: Vec::new(),
