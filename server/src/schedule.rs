@@ -83,6 +83,17 @@ impl WeeklyWakes {
     pub fn get_index(&self, idx: usize) -> &[NaiveTime] {
         &self.days[idx]
     }
+
+    /// Scheduled wakes each weekday (Monday first). An empty week uses the
+    /// interval: `86400 / interval_secs` every day.
+    pub fn wakes_per_weekday(&self, interval_secs: u64) -> [f64; 7] {
+        if self.is_empty() {
+            let n = 86_400.0 / interval_secs.max(1) as f64;
+            [n; 7]
+        } else {
+            std::array::from_fn(|i| self.get_index(i).len() as f64)
+        }
+    }
 }
 
 /// Largest stored/applied Pico timer error, as a fraction of the asked sleep.
@@ -326,6 +337,24 @@ mod tests {
             days[idx] = times.iter().copied().map(t).collect();
         }
         WeeklyWakes::from_days(days)
+    }
+
+    #[test]
+    fn wakes_per_weekday_interval_and_sparse_weekend() {
+        assert_eq!(WeeklyWakes::EMPTY.wakes_per_weekday(3600), [24.0; 7]);
+        let week = weekly(&[
+            ("mon", &["06:30", "07:45", "15:30"]),
+            ("tue", &["06:30", "07:45", "15:30"]),
+            ("wed", &["06:30", "07:45", "15:30"]),
+            ("thu", &["06:30", "07:45", "15:30"]),
+            ("fri", &["06:30", "07:45", "15:30"]),
+            ("sat", &["08:00"]),
+            ("sun", &["08:00"]),
+        ]);
+        assert_eq!(
+            week.wakes_per_weekday(3600),
+            [3.0, 3.0, 3.0, 3.0, 3.0, 1.0, 1.0]
+        );
     }
 
     fn at_london(y: i32, month: u32, d: u32, h: u32, min: u32, s: u32) -> DateTime<Utc> {

@@ -64,7 +64,10 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
     };
     let polls = debug.snapshot().await;
     if let Some(last) = polls.last() {
-        cache.note_pico_battery(last.pct).await;
+        let empty_mv = cfg.read().await.battery_cell().empty_mv;
+        cache
+            .note_pico_battery(eink_frame::battery::soc_pct(last.mv, empty_mv))
+            .await;
     }
     let ui = http::ui_dir();
     let app = http::router(AppState { cache, debug }, ui.clone());

@@ -7,6 +7,7 @@ use chrono_tz::Tz;
 use serde::{Deserialize, Deserializer, Serialize};
 use toml_edit::{Array, DocumentMut, Item, Value};
 
+use crate::battery::{Cell, DEFAULT_CAPACITY_MAH, DEFAULT_EMPTY_MV};
 use crate::schedule::{WeeklyWakes, WEEKDAY_KEYS};
 
 /// Seconds the Pico sleeps between polls when the active schedule is the interval.
@@ -119,6 +120,12 @@ pub struct Config {
     /// Positive = woke late. Written automatically from timer polls; capped at ±5%.
     #[serde(default)]
     pub pico_drift: f64,
+    /// Nameplate of the 1S LiPo pouch (mAh). Used for remaining-energy math.
+    #[serde(default = "default_battery_mah")]
+    pub battery_mah: u32,
+    /// VSYS millivolts treated as 0% usable. Default matches the Pico cutoff.
+    #[serde(default = "default_battery_empty_mv")]
+    pub battery_empty_mv: u32,
     pub chrome_path: String,
     pub icloud: IcloudConfig,
     pub todoist: TodoistConfig,
@@ -240,6 +247,8 @@ impl Default for Config {
             wake_up: WeeklyWakes::EMPTY,
             schedule_kind: None,
             pico_drift: 0.0,
+            battery_mah: DEFAULT_CAPACITY_MAH,
+            battery_empty_mv: DEFAULT_EMPTY_MV,
             chrome_path: String::new(),
             icloud: IcloudConfig::default(),
             todoist: TodoistConfig::default(),
@@ -411,6 +420,8 @@ impl Config {
             .to_path_buf();
         cfg.config_path = Some(path.to_path_buf());
         cfg.pico_drift = crate::schedule::clamp_pico_drift(cfg.pico_drift);
+        cfg.battery_mah = cfg.battery_mah.max(1);
+        cfg.battery_empty_mv = cfg.battery_empty_mv.clamp(2500, 4000);
         cfg.materialize_pictures_schedule();
         Ok(cfg)
     }
@@ -480,6 +491,20 @@ impl Config {
 
     /// Effective poll for a display mode: interval always, wake times only when selected.
     /// Picture mode inherits the dashboard schedule until it is saved separately.
+    pub fn battery_cell(&self) -> Cell {
+        Cell {
+            capacity_mah: self.battery_mah,
+            empty_mv: self.battery_empty_mv,
+        }
+        .clamp()
+    }
+
+    /// Wakes each weekday for the mode the Pico is actually following.
+    pub fn wakes_per_weekday(&self) -> [f64; 7] {
+        let (interval, wakes) = self.schedule(self.effective_mode());
+        wakes.wakes_per_weekday(interval)
+    }
+
     pub fn schedule(&self, mode: FrameMode) -> (u64, &WeeklyWakes) {
         static EMPTY: WeeklyWakes = WeeklyWakes::EMPTY;
         let stored = self.mode_schedule(mode);
@@ -849,6 +874,14 @@ fn default_poll_interval_secs() -> u64 {
     DEFAULT_POLL_INTERVAL_SECS
 }
 
+fn default_battery_mah() -> u32 {
+    DEFAULT_CAPACITY_MAH
+}
+
+fn default_battery_empty_mv() -> u32 {
+    DEFAULT_EMPTY_MV
+}
+
 pub fn parse_wake_time(entry: &str) -> Result<NaiveTime, String> {
     let entry = entry.trim();
     let Some((hour_s, minute_s)) = entry.split_once(':') else {
@@ -970,6 +1003,8 @@ mod tests {
             NaiveDate::from_ymd_opt(2018, 3, 15).unwrap()
         );
         assert_eq!(cfg.birthdays[1].name, "Sam");
+        assert_eq!(cfg.battery_mah, DEFAULT_CAPACITY_MAH);
+        assert_eq!(cfg.battery_empty_mv, DEFAULT_EMPTY_MV);
     }
 
     #[test]
@@ -1522,7 +1557,9 @@ wake-up = ["07:00"]
             ..Default::default()
         })
         .unwrap();
-        assert!(std::fs::read_to_string(&path).unwrap().contains("[wake-up]"));
+        assert!(std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("[wake-up]"));
         cfg.apply_patch(SettingsPatch {
             wake_up: Some(vec!["07:15".into()]),
             ..Default::default()

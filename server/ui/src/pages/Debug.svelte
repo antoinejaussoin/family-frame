@@ -70,6 +70,52 @@
     dead: 'text-terracotta-dark',
     empty: 'text-muted',
   }
+
+  const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  let simWakes = $state(null)
+
+  const bat = $derived(page?.battery)
+  const scheduleWakes = $derived(bat?.wakes_per_day_avg ?? 12)
+  const sliderWakes = $derived(simWakes ?? scheduleWakes)
+  const sliderMax = $derived(Math.max(48, Math.ceil(scheduleWakes)))
+
+  function fmtMah(n) {
+    if (n == null || Number.isNaN(n)) return '—'
+    if (Math.abs(n) >= 100) return `${Math.round(n)}`
+    return n.toFixed(1)
+  }
+
+  function fmtWakes(n) {
+    if (n == null) return '—'
+    return Number.isInteger(n) || Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1)
+  }
+
+  function fmtEtaDays(days) {
+    if (!Number.isFinite(days) || days <= 0) return 'Battery looks empty.'
+    const secs = Math.round(days * 86400)
+    const d = Math.floor(secs / 86400)
+    const h = Math.floor((secs % 86400) / 3600)
+    if (d > 0) {
+      return `About ${d} day${d === 1 ? '' : 's'} ${h} hour${h === 1 ? '' : 's'}`
+    }
+    const m = Math.floor((secs % 3600) / 60)
+    if (h > 0) return `About ${h} hour${h === 1 ? '' : 's'} ${m} min`
+    return `About ${m} min`
+  }
+
+  function simEtaText(battery, wakesPerDay) {
+    if (!battery) return ''
+    if (battery.on_usb) return battery.eta_text
+    const daily = battery.idle_ma * 24 + wakesPerDay * battery.cycle_mah
+    if (daily <= 0.05) return 'Battery is not draining in recent samples.'
+    if (battery.remaining_mah <= 1) return 'Battery looks empty.'
+    return `${fmtEtaDays(battery.remaining_mah / daily)} at ${fmtWakes(wakesPerDay)} wake-ups/day.`
+  }
+
+  function weekLabel(days) {
+    if (!days?.length) return ''
+    return days.map((n, i) => `${WEEK[i]} ${fmtWakes(n)}`).join(' · ')
+  }
 </script>
 
 {#snippet pager()}
@@ -139,7 +185,12 @@
       <p class="font-display text-7xl leading-none tracking-tight text-ink">
         {page.last_pct}<span class="text-3xl text-muted">%</span>
       </p>
-      <p class="mt-1 text-base font-semibold text-muted">{page.last_mv} mV</p>
+      <p class="mt-1 text-base font-semibold text-muted">
+        {page.last_mv} mV
+        {#if bat}
+          <span class="text-muted"> · Pico linear {bat.linear_pct}%</span>
+        {/if}
+      </p>
       <dl class="mt-4 grid gap-3 text-sm">
         <div>
           <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Power</dt>
@@ -173,9 +224,72 @@
           <dd class="mt-0.5 font-semibold">{page.debug_dir_label}</dd>
         </div>
       </dl>
+      {#if bat}
+        <dl class="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Remaining</dt>
+            <dd class="mt-0.5 font-semibold tabular-nums">{fmtMah(bat.remaining_mah)} mAh of {bat.capacity_mah}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Idle</dt>
+            <dd class="mt-0.5 font-semibold tabular-nums">
+              {bat.idle_ma.toFixed(2)} mA · {fmtMah(bat.idle_mah_per_day)} mAh/day doing nothing
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Per wake</dt>
+            <dd class="mt-0.5 font-semibold tabular-nums">
+              {fmtMah(bat.cycle_mah)} mAh
+              {#if bat.split_refresh}
+                <span class="text-muted">
+                  ({fmtMah(bat.wake_mah)} radio + {fmtMah(bat.refresh_mah)} extra when the panel paints)
+                </span>
+              {/if}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">This week</dt>
+            <dd class="mt-0.5 font-semibold">{weekLabel(bat.wakes_by_day)}</dd>
+          </div>
+        </dl>
+        <p class="mt-3 text-sm font-semibold text-muted">{bat.model_note}</p>
+        <p class="text-xs font-extrabold tracking-wide text-muted uppercase">
+          Confidence {bat.confidence}
+        </p>
+      {/if}
       <p class="mt-4 text-base font-semibold {etaClass[page.eta_kind] || 'text-muted'}">
         {page.eta_text}
       </p>
+      {#if bat && !bat.on_usb}
+        <div class="mt-5">
+          <label class="block" for="wake-sim">
+            <span class="text-xs font-extrabold tracking-wide text-muted uppercase">
+              Simulate wake-ups per day
+            </span>
+            <span class="mt-0.5 block text-sm font-semibold tabular-nums">
+              {fmtWakes(sliderWakes)}
+              {#if Math.abs(sliderWakes - scheduleWakes) > 0.05}
+                <span class="text-muted"> · schedule is {fmtWakes(scheduleWakes)}</span>
+              {/if}
+            </span>
+          </label>
+          <input
+            id="wake-sim"
+            class="wake-sim"
+            type="range"
+            min="0.5"
+            max={sliderMax}
+            step="0.5"
+            value={sliderWakes}
+            oninput={(e) => {
+              simWakes = Number(e.currentTarget.value)
+            }}
+          />
+          <p class="mt-2 text-base font-semibold text-ink">
+            {simEtaText(bat, sliderWakes)}
+          </p>
+        </div>
+      {/if}
       <button
         type="button"
         class="btn btn-ghost mt-5 text-terracotta-dark"

@@ -7,6 +7,7 @@
 pub const VERSION: &str = env!("FAMILY_FRAME_VERSION");
 
 pub mod assets;
+pub mod battery;
 pub mod birthdays;
 pub mod caldav;
 pub mod config;
