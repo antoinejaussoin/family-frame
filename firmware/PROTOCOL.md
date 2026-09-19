@@ -94,7 +94,7 @@ store the new slot.
 | `GET /api/frame.png` | Chromium screenshot or current picture (debug) |
 | `GET /api/frame-dither.png` | Same pixels after palette quantise |
 | `GET /api/frame.json` | `{ checksum, bytes, content_hash, source_note }` |
-| `GET /api/settings` | Public schedule / mode (family UI) |
+| `GET /api/settings` | Family UI settings (schedule, mode, household setup). Includes the Todoist token — trusted LAN, no auth |
 | `GET /api/pictures` | Photo library |
 | `GET /api/debug` | Pico poll history (20 per page, `?page=`), battery graph SVG, debug-dir size, next-refresh copy |
 | `DELETE /api/debug` | Wipe poll JSONL and stored frame PNGs |
@@ -102,6 +102,7 @@ store the new slot.
 | `GET /` | Family SPA (mode, schedule, photos) |
 | `GET /preview` | Layout workbench (same SPA) |
 | `GET /stats` | Battery graph and Pico request log (same SPA). `/debug` redirects here. |
+| `GET /config` | Board setup (name, calendars, birthdays, Todoist, weather) |
 | `GET /dashboard` | 1600×1200 HTML the server screenshots |
 | `GET /health` | `{ "ok": true, "version": "<VERSION>" }` (also at `/api/health`) |
 

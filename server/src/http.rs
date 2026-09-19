@@ -90,7 +90,8 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         app = app
             .route("/", get(spa_missing))
             .route("/preview", get(spa_missing))
-            .route("/stats", get(spa_missing));
+            .route("/stats", get(spa_missing))
+            .route("/config", get(spa_missing));
     }
 
     app
@@ -112,7 +113,7 @@ async fn spa_missing() -> impl IntoResponse {
   (Vite proxies <code>/api</code> here).</p>
   <p>Or run <code>npm ci &amp;&amp; npm run build</code> in <code>server/ui</code>
   and refresh this page.</p>
-  <p><a href="/preview">Layout simulator</a> · <a href="/stats">Stats</a></p>
+  <p><a href="/preview">Layout simulator</a> · <a href="/stats">Stats</a> · <a href="/config">Setup</a></p>
 </body></html>"#,
     )
 }
@@ -217,6 +218,7 @@ async fn patch_settings(
 ) -> Response {
     let rotate_ids = patch.rotate.clone();
     let mode_changing = patch.mode.is_some() || patch.rotate.is_some();
+    let household_changing = patch.touches_household();
 
     {
         let pictures = state.cache.pictures();
@@ -256,6 +258,8 @@ async fn patch_settings(
         Ok(()) => {
             if mode_changing {
                 let _ = state.cache.pictures().reset_index();
+            }
+            if mode_changing || household_changing {
                 state.cache.invalidate().await;
             }
             Json(public_settings(&state).await).into_response()

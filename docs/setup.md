@@ -37,7 +37,10 @@ Switch from the family UI (trusted LAN — no auth):
 - Upload landscape photos (under `pictures/` next to the config)
 - Choose the rotation and preview the dithered Spectra 6 look
 
-Datasource secrets stay in `config.toml`. The SPA never edits them.
+The family UI **Setup** page (`/config`) writes household settings into
+`config.toml`: frame name, timezone, battery size, calendar links,
+birthdays, Todoist, and BBC weather. Pronote, Meross, and Tube lines
+still live in the file. Trusted LAN — no auth.
 
 ## Repository map
 
@@ -104,7 +107,7 @@ Open <http://127.0.0.1:5173/>. If the server is not on `:8765`, set
 `EINK_API` (for example `EINK_API=http://127.0.0.1:9000 npm run dev`).
 
 Then <http://127.0.0.1:5173/> (Vite) or <http://127.0.0.1:8765/> (built
-SPA), `/preview`, `/stats`, `/dashboard`.
+SPA), `/preview`, `/stats`, `/config`, `/dashboard`.
 
 ### Screenshot mode
 
@@ -124,6 +127,9 @@ Then <http://127.0.0.1:8765/> is the family UI.
 
 ## Configure sources
 
+On the LAN, open `/config` and save. That writes `[sources.*]` in
+`config.toml`. You can still edit the file by hand.
+
 Copy [`server/config.example.toml`](../server/config.example.toml). Each
 datasource is a `[sources.<id>]` table. Legacy `[todoist]` / `[weather]`
 / `[meross]` / `[pronote]`, top-level `birthdays`, and `[sources].ics_urls`
@@ -131,12 +137,13 @@ still load for one release. A leftover `[icloud]` table is ignored.
 
 ### Calendar (ICS)
 
-Public ICS URLs only. There is no iCloud / CalDAV client.
+Public ICS URLs only. There is no iCloud / CalDAV client. The Setup
+page walks through publishing an iCloud Family calendar.
 
 1. In Calendar.app (or Google Calendar, Fastmail, …) publish the family
    calendar as a **read-only** webcal / ICS link.
-2. Put that URL in `sources.calendar.ics_urls`. `webcal://` becomes
-   `https://`.
+2. Paste that URL on `/config`, or put it in `sources.calendar.ics_urls`.
+   `webcal://` becomes `https://`.
 
 **To remove this source:** leave `ics_urls` empty. If nothing else
 contributes events (no birthdays, no Pronote hours), the built-in demo
@@ -250,7 +257,7 @@ mkdir -p data
 docker compose up -d
 ```
 
-Then <http://\<host\>:8765/>, `/preview`, `/stats`. Meross login, BBC
+Then <http://\<host\>:8765/>, `/preview`, `/stats`, `/config`. Meross login, BBC
 weather caches, uploaded photos, and Pico poll history stay in `data/`.
 
 Local one-off: `cd server && make docker-build && make docker-run`.

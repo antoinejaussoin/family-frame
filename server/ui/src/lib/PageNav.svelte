@@ -7,6 +7,7 @@
     { href: '/', label: 'Family' },
     { href: '/preview', label: 'Layout' },
     { href: '/stats', label: 'Stats' },
+    { href: '/config', label: 'Setup' },
   ]
 </script>
 
