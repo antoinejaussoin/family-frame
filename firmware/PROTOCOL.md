@@ -39,7 +39,7 @@ If-None-Match: <sha256>
 Content-Type: application/x-www-form-urlencoded
 Content-Length: 31
 
-mv=3850&pct=72&usb=0&wake=timer
+mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z
 ```
 
 | Field | Meaning |
@@ -48,6 +48,7 @@ mv=3850&pct=72&usb=0&wake=timer
 | `pct` | 0–100 estimate (3.3–4.2 V linear map) |
 | `usb` | `1` if a USB host is sending SOFs, else `0` |
 | `wake` | `timer` after POWMAN sleep, `cold` on power-on, `button` if Inky A or B woke the chip (or was pressed while USB kept it awake) |
+| `wake_at` | Last `X-Wake-At` the Pico stored (omitted if none). Timer polls treat this as the schedule slot this contact is serving. |
 
 Checksum is **not** in the URL. Unchanged frames return **204 No Content**
 (the honest POST equivalent of 304). Firmware still accepts 304.
@@ -59,7 +60,10 @@ HTTP/1.1 204 No Content
 ETag: <sha256>
 X-Frame-Checksum: <sha256>
 X-Sleep-Seconds: 3600
+X-Wake-At: 2026-09-19T18:00:00Z
 ```
+
+`X-Wake-At` is the **clock slot** that sleep is aiming for (UTC RFC3339, second precision) — for a `wake-up` of 18:00 this is `18:00:00`, not `now` plus a truncated second count. The Pico stores the token in flash and sends it back as `wake_at=` on the next POST. It does not interpret the value.
 
 `X-Sleep-Seconds` is computed on the server from the **current mode’s**
 selected schedule: `poll_interval_secs` when `schedule_kind` is `interval`,
@@ -78,12 +82,13 @@ awake) the server compares wall-clock elapsed time to the previous
 the panel still refreshes on the intended wall-clock cadence.
 
 Compensation can overshoot, so a timer poll may arrive early. Each Pico POST
-stores the **wall-clock slot** that `X-Sleep-Seconds` was aiming for (not the
-POWMAN duration). The next `wake=timer` request *is* that slot, as long as
-the following slot has not started — whether the Pico is a few seconds early
-or a few minutes late. If it missed the whole cycle, the server schedules
-from now. Button and cold boots still wait for the upcoming time and then
-store the new slot.
+returns `X-Wake-At`, the **clock slot** that sleep is aiming for. The Pico
+stores that token and sends it back as `wake_at=` on the next POST. That
+echo is the only assigned slot: a `wake=timer` request *is* that instant, as
+long as the following slot has not started. Early or late arrival does not
+matter. If the Pico omitted `wake_at`, or it missed the whole cycle, the
+server schedules from now. Button and cold boots ignore `wake_at` and wait
+for the upcoming time, then receive a new `X-Wake-At`.
 
 ## Endpoints
 

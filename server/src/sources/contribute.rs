@@ -1,8 +1,7 @@
 use chrono::NaiveDate;
 
 use crate::model::{
-    CalendarEvent, Dashboard, HistoryFact, Joke, RoomClimate, School, StatusLine, TodoItem,
-    Weather,
+    CalendarEvent, Dashboard, HistoryFact, Joke, RoomClimate, School, StatusLine, TodoItem, Weather,
 };
 
 /// What a source is allowed to add. No variant clears another source's calendar.

@@ -1,6 +1,8 @@
 //! When the Pico should next wake: a fixed interval, or the next `wake-up` clock time.
 
-use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Utc, Weekday};
+use chrono::{
+    DateTime, Datelike, Duration, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc, Weekday,
+};
 use chrono_tz::Tz;
 
 /// `mon` … `sun`, Monday first (UK week).
@@ -111,15 +113,20 @@ pub fn seconds_until_next_poll(
     interval_secs: u64,
     wake_ups: &WeeklyWakes,
 ) -> u64 {
-    let interval = interval_secs.max(1);
+    secs_until(now, next_poll_at(now, tz, interval_secs, wake_ups))
+}
+
+/// Wall-clock instant of the next intended poll (the schedule slot, not
+/// `now` plus a truncated second count).
+pub fn next_poll_at(
+    now: DateTime<Utc>,
+    tz: Tz,
+    interval_secs: u64,
+    wake_ups: &WeeklyWakes,
+) -> DateTime<Utc> {
     match next_wake_after(now, tz, wake_ups) {
-        Some(dt) => {
-            let secs = dt
-                .signed_duration_since(now.with_timezone(&tz))
-                .num_seconds();
-            (secs.max(1)) as u64
-        }
-        None => interval,
+        Some(dt) => dt.with_timezone(&Utc),
+        None => instant_after(now, interval_secs.max(1)),
     }
 }
 
@@ -136,21 +143,53 @@ pub fn seconds_until_next_poll_for_timer(
     wake_ups: &WeeklyWakes,
     assigned_wake: Option<DateTime<Utc>>,
 ) -> u64 {
+    secs_until(
+        now,
+        next_poll_at_for_timer(now, tz, interval_secs, wake_ups, assigned_wake),
+    )
+}
+
+/// Next slot after a timer poll that is serving `assigned_wake`.
+///
+/// `assigned_wake` is the Pico's echoed `X-Wake-At` — the exact instant from
+/// the previous response, or nothing. No snapping or reconstruction.
+pub fn next_poll_at_for_timer(
+    now: DateTime<Utc>,
+    tz: Tz,
+    interval_secs: u64,
+    wake_ups: &WeeklyWakes,
+    assigned_wake: Option<DateTime<Utc>>,
+) -> DateTime<Utc> {
     if let Some(assigned) = assigned_wake {
-        let step = seconds_until_next_poll(assigned, tz, interval_secs, wake_ups);
-        if let Some(next) = assigned.checked_add_signed(secs_as_duration(step)) {
-            if now < next {
-                let secs = next.signed_duration_since(now).num_seconds();
-                return (secs.max(1)) as u64;
-            }
+        let next = next_poll_at(assigned, tz, interval_secs, wake_ups);
+        if now < next {
+            return next;
         }
     }
-    seconds_until_next_poll(now, tz, interval_secs, wake_ups)
+    next_poll_at(now, tz, interval_secs, wake_ups)
+}
+
+/// Seconds from `now` to `at`, at least 1.
+pub fn secs_until(now: DateTime<Utc>, at: DateTime<Utc>) -> u64 {
+    let secs = at.signed_duration_since(now).num_seconds();
+    secs.max(1) as u64
 }
 
 /// Wall-clock instant `secs` after `now`.
 pub fn instant_after(now: DateTime<Utc>, secs: u64) -> DateTime<Utc> {
     now + secs_as_duration(secs)
+}
+
+/// `X-Wake-At` / Pico `wake_at=` token: UTC RFC3339 at second precision.
+pub fn format_wake_at_slot(at: DateTime<Utc>) -> String {
+    at.to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+/// Parse the Pico's echoed slot (or an `X-Wake-At` value).
+pub fn parse_wake_at_slot(raw: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(raw.trim())
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
 }
 
 fn secs_as_duration(secs: u64) -> Duration {
@@ -710,5 +749,56 @@ mod tests {
             seconds_until_next_poll(now, london(), 3600, &wakes),
             46 * 3600 + 30 * 60
         );
+    }
+
+    #[test]
+    fn next_poll_at_is_the_clock_slot_not_now_plus_floored_secs() {
+        let now = london()
+            .with_ymd_and_hms(2026, 9, 16, 16, 0, 3)
+            .unwrap()
+            .with_timezone(&Utc)
+            + Duration::milliseconds(475);
+        let wakes = daily(&["18:00", "20:00"]);
+        assert_eq!(
+            next_poll_at(now, london(), 3600, &wakes),
+            at_london(2026, 9, 16, 18, 0, 0)
+        );
+        // Truncating the duration would land on 17:59:59 and paint "17:59".
+        assert_eq!(
+            instant_after(now, seconds_until_next_poll(now, london(), 3600, &wakes)),
+            at_london(2026, 9, 16, 17, 59, 59) + Duration::milliseconds(475)
+        );
+    }
+
+    #[test]
+    fn timer_early_with_echoed_slot_skips_that_hour() {
+        // Pico woke at 17:59:40 and echoed X-Wake-At 18:00 exactly.
+        let now = at_london(2026, 9, 16, 17, 59, 40);
+        let assigned = at_london(2026, 9, 16, 18, 0, 0);
+        let wakes = daily(&["18:00", "21:00"]);
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(assigned)),
+            3 * 3600 + 20
+        );
+        assert_eq!(
+            next_poll_at_for_timer(now, london(), 3600, &wakes, Some(assigned)),
+            at_london(2026, 9, 16, 21, 0, 0)
+        );
+        // No echo: this contact is not a served slot; wait for 18:00.
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, None),
+            20
+        );
+    }
+
+    #[test]
+    fn wake_at_slot_roundtrips_rfc3339_z() {
+        let at = at_london(2026, 9, 19, 18, 0, 0);
+        let token = format_wake_at_slot(at);
+        assert_eq!(token, "2026-09-19T17:00:00Z");
+        assert_eq!(parse_wake_at_slot(&token), Some(at));
+        assert_eq!(parse_wake_at_slot(" 2026-09-19T17:00:00+00:00 "), Some(at));
+        assert!(parse_wake_at_slot("").is_none());
+        assert!(parse_wake_at_slot("nope").is_none());
     }
 }

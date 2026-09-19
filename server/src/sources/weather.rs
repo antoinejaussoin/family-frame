@@ -17,8 +17,8 @@ use crate::config::WeatherConfig;
 use crate::model::{Weather, WeatherDay, WeatherSlot};
 use crate::sources::cache::TtlCache;
 
-use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
 use super::{DataSource, DisabledBehaviour};
 
 pub struct WeatherSource;

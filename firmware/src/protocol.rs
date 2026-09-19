@@ -5,6 +5,8 @@
 use core::fmt::Write as _;
 use heapless::String;
 
+use crate::config::WAKE_AT_MAX;
+
 const SERVER_MAX: usize = 128;
 
 /// Host, TCP port, and URL path parsed from the `server` setting.
@@ -80,11 +82,29 @@ pub fn frame_target(server: &str) -> Option<ServerTarget> {
     parse_server(url.as_str())
 }
 
+/// Token the Pico may store and echo: graphic ASCII, no form separators.
+pub fn sanitize_wake_at(raw: &str) -> Option<&str> {
+    let v = raw.trim().trim_matches('"');
+    if v.is_empty() || v.len() > WAKE_AT_MAX {
+        return None;
+    }
+    if !v
+        .bytes()
+        .all(|b| b.is_ascii_graphic() && b != b'&' && b != b'=')
+    {
+        return None;
+    }
+    Some(v)
+}
+
 /// `application/x-www-form-urlencoded` body for a Pico poll.
-pub fn telemetry_form(mv: u32, pct: u16, usb: bool, wake: &str) -> String<64> {
+pub fn telemetry_form(mv: u32, pct: u16, usb: bool, wake: &str, wake_at: &str) -> String<96> {
     let mut body = String::new();
     let usb_n = if usb { 1 } else { 0 };
     let _ = write!(body, "mv={mv}&pct={pct}&usb={usb_n}&wake={wake}");
+    if let Some(slot) = sanitize_wake_at(wake_at) {
+        let _ = write!(body, "&wake_at={slot}");
+    }
     body
 }
 
@@ -127,7 +147,10 @@ mod tests {
 
     #[test]
     fn strips_trailing_slash() {
-        expect_url("http://127.0.0.1:8765/", "http://127.0.0.1:8765/api/frame.bin");
+        expect_url(
+            "http://127.0.0.1:8765/",
+            "http://127.0.0.1:8765/api/frame.bin",
+        );
     }
 
     #[test]
@@ -157,22 +180,30 @@ mod tests {
     #[test]
     fn telemetry_form_encodes_fields() {
         assert_eq!(
-            telemetry_form(3850, 72, false, "timer").as_str(),
+            telemetry_form(3850, 72, false, "timer", "").as_str(),
             "mv=3850&pct=72&usb=0&wake=timer"
         );
         assert_eq!(
-            telemetry_form(4200, 100, true, "cold").as_str(),
+            telemetry_form(4200, 100, true, "cold", "").as_str(),
             "mv=4200&pct=100&usb=1&wake=cold"
         );
         assert_eq!(
-            telemetry_form(3850, 72, false, "button").as_str(),
+            telemetry_form(3850, 72, false, "button", "").as_str(),
             "mv=3850&pct=72&usb=0&wake=button"
+        );
+        assert_eq!(
+            telemetry_form(3850, 72, false, "timer", "2026-09-19T18:00:00Z").as_str(),
+            "mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z"
+        );
+        assert_eq!(
+            telemetry_form(3850, 72, false, "timer", "bad&x=1").as_str(),
+            "mv=3850&pct=72&usb=0&wake=timer"
         );
     }
 
     #[test]
     fn post_request_keeps_checksum_on_if_none_match() {
-        let body = telemetry_form(3850, 72, false, "timer");
+        let body = telemetry_form(3850, 72, false, "timer", "");
         let req = post_frame_request::<384>(
             "192.168.0.251",
             8765,
@@ -192,10 +223,26 @@ mod tests {
     }
 
     #[test]
+    fn post_request_echoes_stored_wake_at() {
+        let body = telemetry_form(3850, 72, false, "timer", "2026-09-19T18:00:00Z");
+        let req = post_frame_request::<512>(
+            "192.168.0.251",
+            8765,
+            "/api/frame.bin",
+            "abc123",
+            body.as_str(),
+        )
+        .unwrap();
+        assert!(
+            req.as_str()
+                .ends_with("\r\n\r\nmv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z")
+        );
+    }
+
+    #[test]
     fn post_request_omits_if_none_match_when_empty() {
         let body = "mv=1&pct=0&usb=0&wake=cold";
-        let req =
-            post_frame_request::<384>("127.0.0.1", 80, "/api/frame.bin", "", body).unwrap();
+        let req = post_frame_request::<384>("127.0.0.1", 80, "/api/frame.bin", "", body).unwrap();
         let s = req.as_str();
         assert!(s.starts_with("POST /api/frame.bin HTTP/1.1\r\nHost: 127.0.0.1\r\n"));
         assert!(!s.contains("If-None-Match"));

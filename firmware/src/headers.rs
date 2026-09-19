@@ -2,6 +2,8 @@
 
 use heapless::String;
 
+use crate::config::WAKE_AT_MAX;
+
 pub const HEADER_MAX: usize = 2048;
 
 /// Status line plus the headers the Pico actually uses.
@@ -11,6 +13,7 @@ pub struct ParsedResponse {
     pub body_len: usize,
     pub checksum: String<80>,
     pub sleep_s: Option<u32>,
+    pub wake_at: String<WAKE_AT_MAX>,
 }
 
 /// Incremental TCP → header / body split. Binary bodies are not parsed as text.
@@ -85,6 +88,7 @@ impl ResponseReader {
             body_len: self.body_len,
             checksum: copy_checksum(headers),
             sleep_s: copy_sleep_seconds(headers),
+            wake_at: copy_wake_at(headers),
         })
     }
 }
@@ -125,6 +129,16 @@ pub fn copy_sleep_seconds(headers: &str) -> Option<u32> {
         .parse()
         .ok()
         .filter(|&s| s > 0)
+}
+
+/// Opaque schedule slot from `X-Wake-At`. Empty if missing or not safe to echo.
+pub fn copy_wake_at(headers: &str) -> String<WAKE_AT_MAX> {
+    let mut out = String::new();
+    if let Some(v) = header_value(headers, "x-wake-at").and_then(crate::protocol::sanitize_wake_at)
+    {
+        let _ = out.push_str(v);
+    }
+    out
 }
 
 pub fn header_value<'a>(headers: &'a str, name: &str) -> Option<&'a str> {
@@ -238,6 +252,21 @@ mod tests {
             None
         );
         assert_eq!(copy_sleep_seconds("HTTP/1.1 200 OK\r\n\r\n"), None);
+    }
+
+    #[test]
+    fn wake_at_is_case_insensitive_and_rejects_junk() {
+        assert_eq!(
+            copy_wake_at("HTTP/1.1 204 No Content\r\nX-Wake-At: 2026-09-19T18:00:00Z\r\n\r\n")
+                .as_str(),
+            "2026-09-19T18:00:00Z"
+        );
+        assert_eq!(
+            copy_wake_at("HTTP/1.1 200 OK\r\nx-wake-at: \"2026-09-19T18:00:00Z\"\r\n\r\n").as_str(),
+            "2026-09-19T18:00:00Z"
+        );
+        assert!(copy_wake_at("HTTP/1.1 200 OK\r\nX-Wake-At: bad&x=1\r\n\r\n").is_empty());
+        assert!(copy_wake_at("HTTP/1.1 200 OK\r\n\r\n").is_empty());
     }
 
     #[test]

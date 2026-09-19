@@ -86,7 +86,8 @@ mod tests {
     #[test]
     fn dashboard_keeps_school_markup_hidden() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
-        dash.school = crate::sources::pronote::demo_school(NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        dash.school =
+            crate::sources::pronote::demo_school(NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("icon-school"));
         assert!(html.contains("icon-grades"));

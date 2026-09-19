@@ -2,8 +2,8 @@ use anyhow::Result;
 use chrono::Duration;
 use tracing::{info, warn};
 
-use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
 use super::ics;
 use super::{DataSource, DisabledBehaviour};
 use crate::model::{CalendarEvent, Dashboard, EVENT_HORIZON_DAYS};
@@ -54,7 +54,10 @@ impl DataSource for IcsSource {
                 Err(err) => warn!(url, %err, "public ICS failed"),
             }
         }
-        Ok(SourceOutcome::live(notes.join(" · "), Contribution::Calendar(events)))
+        Ok(SourceOutcome::live(
+            notes.join(" · "),
+            Contribution::Calendar(events),
+        ))
     }
 }
 

@@ -8,7 +8,7 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::info;
 
 use crate::config::{Config, FrameMode};
-use crate::model::{refresh_until_at, Dashboard, FrameInfo};
+use crate::model::{Dashboard, FrameInfo};
 use crate::pack::{self, PANEL_BYTES};
 use crate::pictures::PictureStore;
 use crate::screenshot;
@@ -121,12 +121,12 @@ impl FrameCache {
 
     pub async fn stamp_status(&self, cfg: &Config, dash: &mut Dashboard) -> chrono::DateTime<Utc> {
         let now = Utc::now();
-        let next_secs = cfg.next_poll_secs(now);
-        dash.set_refresh_window(now, next_secs, cfg.tz());
+        let next_at = cfg.next_poll_at(now);
+        dash.set_refresh_at(now, next_at, cfg.tz());
         if let Some(pct) = *self.pico_pct.lock().await {
             dash.set_battery(pct);
         }
-        refresh_until_at(now, next_secs)
+        next_at
     }
 
     pub fn templates(&self) -> &Templates {

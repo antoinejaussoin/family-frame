@@ -975,8 +975,13 @@ impl Config {
 
     /// Wall-clock seconds until the next intended poll (no Pico timer compensation).
     pub fn next_poll_secs(&self, now: DateTime<Utc>) -> u64 {
+        crate::schedule::secs_until(now, self.next_poll_at(now))
+    }
+
+    /// Next schedule instant (clock `HH:MM` in `timezone`, or `now + interval`).
+    pub fn next_poll_at(&self, now: DateTime<Utc>) -> DateTime<Utc> {
         let (interval, wakes) = self.schedule(self.effective_mode());
-        crate::schedule::seconds_until_next_poll(now, self.tz(), interval, wakes)
+        crate::schedule::next_poll_at(now, self.tz(), interval, wakes)
     }
 
     /// Seconds the Pico should POWMAN-sleep after this poll, shortened if its
@@ -995,15 +1000,11 @@ impl Config {
         assigned_wake: Option<DateTime<Utc>>,
     ) -> (u64, DateTime<Utc>) {
         let (interval, wakes) = self.schedule(self.effective_mode());
-        let wall = crate::schedule::seconds_until_next_poll_for_timer(
-            now,
-            self.tz(),
-            interval,
-            wakes,
-            assigned_wake,
-        );
+        let wake_at =
+            crate::schedule::next_poll_at_for_timer(now, self.tz(), interval, wakes, assigned_wake);
+        let wall = crate::schedule::secs_until(now, wake_at);
         let sleep_s = crate::schedule::compensate_sleep_secs(wall, self.pico_drift);
-        (sleep_s, crate::schedule::instant_after(now, wall))
+        (sleep_s, wake_at)
     }
 
     /// Like [`Self::pico_sleep_secs`], but a timer poll uses the stored slot.
@@ -1717,6 +1718,48 @@ rotate = []
                 .unwrap()
                 .with_timezone(&Utc)
         );
+    }
+
+    #[test]
+    fn pico_sleep_plan_stores_the_clock_slot_not_now_plus_secs() {
+        use chrono::{Duration, TimeZone};
+        let cfg: Config = toml::from_str(
+            r#"
+            timezone = "Europe/London"
+            wake-up = ["18:00", "21:00"]
+            "#,
+        )
+        .unwrap();
+        let now = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 16, 16, 0, 3)
+            .unwrap()
+            .with_timezone(&Utc)
+            + Duration::milliseconds(475);
+        let (_, wake_at) = cfg.pico_sleep_plan(now, None);
+        assert_eq!(
+            wake_at,
+            chrono_tz::Europe::London
+                .with_ymd_and_hms(2026, 9, 16, 18, 0, 0)
+                .unwrap()
+                .with_timezone(&Utc)
+        );
+        let early = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 16, 17, 59, 40)
+            .unwrap()
+            .with_timezone(&Utc);
+        let slot = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 16, 18, 0, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        let (sleep_s, next) = cfg.pico_sleep_plan(early, Some(slot));
+        assert_eq!(
+            next,
+            chrono_tz::Europe::London
+                .with_ymd_and_hms(2026, 9, 16, 21, 0, 0)
+                .unwrap()
+                .with_timezone(&Utc)
+        );
+        assert_eq!(sleep_s, 3 * 3600 + 20);
     }
 
     #[test]

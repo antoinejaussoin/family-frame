@@ -12,8 +12,8 @@ use crate::model::{HistoryFact, HISTORY_POOL};
 use crate::sources::cache::TtlCache;
 use crate::sources::filter::is_family_friendly;
 
-use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
 use super::DataSource;
 
 pub struct HistorySource;
@@ -94,8 +94,7 @@ struct RawEvent {
 }
 
 pub async fn load_facts(today: NaiveDate) -> Result<Vec<HistoryFact>> {
-    if let Some((_, facts)) =
-        LAST.get_untimed(|(date, facts)| *date == today && !facts.is_empty())
+    if let Some((_, facts)) = LAST.get_untimed(|(date, facts)| *date == today && !facts.is_empty())
     {
         return Ok(facts);
     }

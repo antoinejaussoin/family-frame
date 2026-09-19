@@ -16,8 +16,8 @@ use tracing::{info, warn};
 use crate::model::{joke_fits_panel, Joke};
 use crate::sources::filter::is_family_friendly;
 
-use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
 use super::DataSource;
 
 pub struct JokesSource;
