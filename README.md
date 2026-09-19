@@ -1,52 +1,61 @@
 # Family e-ink frame
 
-An e-ink, battery-powered frame for the family.
-
-A 13.3″ Spectra 6 panel in a picture frame. A **Pimoroni Pico LiPo 2 XL W**
-wakes, downloads a packed image, and sleeps for however long the server
-says. A **Rust server** on the LAN builds that image from HTML/CSS plus
-the family calendar, to-dos, house temperatures, Tube status, Pronote
-homework and grades, and BBC weather in the section headers.
-
-Hardware to buy is in [`shopping.md`](shopping.md).
+A battery e-ink kitchen board. A **Pimoroni Pico LiPo 2 XL W** is a dumb
+client: it POSTs battery diagnostics, paints a 960 000-byte Spectra 6
+frame, and sleeps. A **Rust server** on the LAN fetches household
+datasources, renders HTML/CSS, screenshots the panel with Chromium, and
+dithers it for the glass.
 
 ![The finished 13.3″ frame on the kitchen wall](docs/images/hero-frame.jpg)
 
 *Antoine: replace this file — room, time of day, dashboard vs picture, anything you want a fork to notice (mat, SANNAHED, cable hiding).*
 
-## THIS IS A WORK IN PROGRESS
+This is a work in progress. Hardware to buy is in [`shopping.md`](shopping.md).
 
-This is being worked on, not working yet.
+## What it shows
 
-## Screenshots
-
-Photos to drop in later. Broken images are expected until then.
+The 1600×1200 dashboard is a fixed grid, not a widget toolkit.
 
 ![Dashboard panel at 1600×1200](docs/images/dashboard.png)
 
 *Antoine: replace this file — which block is which source; weather lives in the headings.*
 
+| Block | Source | Notes |
+|---|---|---|
+| Mast (weekday, day, month, saint) | `saints` | French civil calendar |
+| Today / Next events | `calendar` (ICS) + `birthdays` + Pronote hours | Weather icons sit in the headings |
+| Sidebar to-dos | `todoist` | Demo list if no token |
+| Joke / On this day | `jokes` / `history` | Kid-safe skip lists |
+| Transit | `tfl` | Default: Northern, Circle, District, Victoria |
+| House | `meross` | Demo rooms if no credentials |
+| Battery / next wake | Pico POST | Hidden until the Pico has reported |
+
+Homework and grades have markup but stay off the glass unless
+`sources.pronote.show_sections = true`. School **hours** still appear as
+calendar rows (`School: Léa (finishes at 16:30)`).
+
+## Two modes
+
+The same device shows the family dashboard or a rotating photo.
+
 ![Picture mode on the glass](docs/images/picture-mode.png)
 
 *Antoine: replace this file — same device, different `mode`.*
+
+Switch from the family UI (trusted LAN — no auth):
 
 ![Family UI home](docs/images/ui-home.png)
 
 *Antoine: replace this file — mode, wake times, photo library. No datasource secrets here.*
 
-![Layout simulator at /preview](docs/images/ui-preview.png)
+- **Dashboard** vs **picture** mode
+- Poll interval or **per-weekday** wake-up times, stored **per mode**
+- Upload landscape photos (under `pictures/` next to the config)
+- Choose the rotation and preview the dithered Spectra 6 look
 
-*Antoine: replace this file — how you iterate HTML without flashing the Pico.*
+Datasource secrets stay in `config.toml`. The SPA never edits them.
 
-![Stats battery graph](docs/images/ui-stats.png)
-
-*Antoine: replace this file — Pico polls, 204 vs 200, drift.*
-
-![Weather icon sheet](docs/images/weather-icons.png)
-
-*Antoine: replace this file — optional; Spectra 6 icon set.*
-
-## What you get
+## Repository map
 
 | Piece | Where |
 |---|---|
@@ -56,58 +65,30 @@ Photos to drop in later. Broken images are expected until then.
 | Rust server + family UI + layout simulator | [`server/`](server/) |
 | Family SPA (Svelte) | [`server/ui/`](server/ui/) |
 | Pico client simulator | [`pico-sim/`](pico-sim/) |
+| How to add a datasource | [`server/src/sources/README.md`](server/src/sources/README.md) |
 
-## Family UI
+## How the pieces talk
 
-Open the family app on a phone or laptop (trusted LAN — no auth). From there you can:
-
-- Switch between **dashboard** and **picture** mode
-- Edit the poll interval or **per-weekday** wake-up times **per mode** (both are kept; the UI stores which one is selected)
-- Upload landscape photos (stored under `pictures/` next to the config)
-- Choose which photos to rotate each wake, and preview the dithered Spectra 6 look
-
-### Iterate with hot reload
-
-Run the API and the Svelte app as two processes. Vite proxies `/api` and
-`/dashboard` to the server so you get HMR without `npm run build`. `/preview`
-and `/stats` are pages in the SPA.
-
-```bash
-# terminal 1 — Rust API
-cd server && cargo run -- --watch   # or: make watch
-
-# terminal 2 — family UI
-cd server/ui && npm ci && npm run dev   # or: make ui-dev
+```
+config.toml
+  → sources::load_dashboard()     registry of DataSource impls
+  → Dashboard + fit_to_panel()
+  → Minijinja dashboard.html
+  → Chromium 1600×1200 screenshot
+  → Floyd–Steinberg → Spectra 6 .bin
+  → FrameCache (10s memory + disk checksum skip)
+  → POST /api/frame.bin
 ```
 
-Open <http://127.0.0.1:5173/>. If the server is not on `:8765`, set `EINK_API`
-(for example `EINK_API=http://127.0.0.1:9000 npm run dev`).
+The Pico never sees calendars, passwords, or HTML. It POSTs to
+`/api/frame.bin`, paints on **200**, skips the glass on **204**, and
+sleeps for `X-Sleep-Seconds`. Protocol: [`firmware/PROTOCOL.md`](firmware/PROTOCOL.md).
+Hole-by-hole stack: [`wiring.svg`](wiring.svg).
 
-### Serve the built SPA from the API
-
-Docker does this automatically. Locally:
-
-```bash
-cd server/ui && npm ci && npm run build
-```
-
-Then <http://127.0.0.1:8765/> is the family UI.
-
-## Layout workflow
-
-1. Edit [`server/templates/dashboard.html`](server/templates/dashboard.html) and
-   [`server/static/dashboard.css`](server/static/dashboard.css).
-2. Open `/preview` in a browser. The iframe is the real 1600×1200 panel.
-3. On the LAN, Chromium screenshots `/dashboard`, the server dithers to
-   Spectra 6, and the Pico POSTs `/api/frame.bin` with battery diagnostics.
-4. Each Pico POST rebuilds the dashboard from live sources. If the new
-   bitmap matches the last checksum, the Pico does **not** refresh the glass.
-   Open `/stats` on a phone to see battery history and every Pico poll.
-
-## Run the server
+## Quick start (no hardware)
 
 Chrome or Chromium is required only for dashboard `/api/frame.bin` /
-`/api/frame.png`. Picture mode and the layout simulator (`/preview`) work without it.
+`/api/frame.png`. Picture mode and `/preview` work without it.
 
 ```bash
 cd server
@@ -115,170 +96,231 @@ cp config.example.toml config.toml   # optional; demo data is the default
 cargo run                            # or: make serve
 ```
 
-The family SPA is optional for the API. Without `ui/dist`, `/` explains how to
-start Vite; `/dashboard` and `/api/*` still work. `make` (no target)
-builds the SPA first, then runs the server.
+The family SPA is optional for the API. Without `ui/dist`, `/` explains
+how to start Vite; `/dashboard` and `/api/*` still work. `make` (no
+target) builds the SPA first, then runs the server.
 
-While iterating on Rust, templates, or dashboard CSS, `--watch` rebuilds and
-restarts (not `config.toml` — the family UI edits that live; not `ui/` — use
-Vite for that). Do not use `--watch` in production (Docker `CMD` is the binary
-with no flags).
+### Iterate with hot reload
 
 ```bash
-cargo run -- --watch
-# or: make watch
+# terminal 1 — Rust API (rebuilds on src / templates / CSS)
+cd server && cargo run -- --watch   # or: make watch
+
+# terminal 2 — family UI
+cd server/ui && npm ci && npm run dev   # or: make ui-dev
 ```
 
-Then open <http://127.0.0.1:5173/> (Vite) or <http://127.0.0.1:8765/> (built
-SPA), the layout simulator at <http://127.0.0.1:8765/preview>, or the stats
-page at <http://127.0.0.1:8765/stats>.
+`--watch` is local only. Docker `CMD` is the binary with no flags.
+Do not watch `config.toml` (the family UI edits that live) or `ui/`
+(use Vite).
 
-### Docker
+Open <http://127.0.0.1:5173/>. If the server is not on `:8765`, set
+`EINK_API` (for example `EINK_API=http://127.0.0.1:9000 npm run dev`).
 
-The image includes Google Chrome (amd64) or Chromium (arm64) and the built
-family UI so `/api/frame.bin` and `/` work. Deploy only needs `config.toml`
-(and optional photos under `data/pictures/`).
+![Layout simulator at /preview](docs/images/ui-preview.png)
 
-On the Linux box, copy [`docker-compose.yml`](docker-compose.yml) and a `data/config.toml` (from [`server/config.example.toml`](server/config.example.toml)):
+*Antoine: replace this file — how you iterate HTML without flashing the Pico.*
+
+![Stats battery graph](docs/images/ui-stats.png)
+
+*Antoine: replace this file — Pico polls, 204 vs 200, drift.*
+
+Then <http://127.0.0.1:5173/> (Vite) or <http://127.0.0.1:8765/> (built
+SPA), `/preview`, `/stats`, `/dashboard`, `/weather-icons`.
+
+### Serve the built SPA from the API
+
+```bash
+cd server/ui && npm ci && npm run build
+```
+
+Then <http://127.0.0.1:8765/> is the family UI.
+
+## Configure sources
+
+Copy [`server/config.example.toml`](server/config.example.toml). Each
+datasource is a `[sources.<id>]` table. Legacy `[todoist]` / `[weather]`
+/ `[meross]` / `[pronote]`, top-level `birthdays`, and `[sources].ics_urls`
+still load for one release. A leftover `[icloud]` table is ignored.
+
+### Calendar (ICS)
+
+Public ICS URLs only. There is no iCloud / CalDAV client.
+
+1. In Calendar.app (or Google Calendar, Fastmail, …) publish the family
+   calendar as a **read-only** webcal / ICS link.
+2. Put that URL in `sources.calendar.ics_urls`. `webcal://` becomes
+   `https://`.
+
+**To remove this source:** leave `ics_urls` empty. If nothing else
+contributes events (no birthdays, no Pronote hours), the built-in demo
+calendar is shown.
+
+### Birthdays
+
+```toml
+[sources.birthdays]
+people = ["Maya,2018-03-15", "Sam,2015-11-02"]
+```
+
+Anyone whose next birthday is today or within two weeks is merged as
+“Name turns N”, with a present icon. Leap-day birthdays show on 28
+February in non-leap years.
+
+**To remove this source:** set `people = []`.
+
+### Todoist
+
+1. Create a project (for example `Family`) and invite the household.
+2. Copy a **personal API token** from Todoist → Settings → Integrations → Developer.
+3. Put the token and project name under `[sources.todoist]`.
+
+**To remove this source:** leave `token` empty (demo to-dos on a stock
+board / in-process default).
+
+### Meross (house temperatures)
+
+MS100 thermometer/hygrometers talk through the hub; MTS200 wall
+thermostats are Wi-Fi devices on the same account.
+
+1. Put the Meross app email and password under `[sources.meross]`.
+2. The server logs in once, caches `meross-creds.json`, and reads
+   sensors over MQTT (or LAN if you set `hub_hosts`).
+3. A device named “Kitchen Thermostat” shows as Kitchen (suffix strip).
+   Unlabeled model names fall back to **Thermostat**. Override with
+   `[sources.meross.labels]`.
+
+Temperatures are shown to one decimal place (`21.4°`) and humidity to
+the nearest 1% so the painted values match the code.
+
+**To remove this source:** leave email/password empty.
+
+### Weather
+
+Forecast lives in the **Today** and **Coming next** headings: morning /
+afternoon / evening icons and temps, plus sunrise, sunset, and pollen
+from [BBC Weather](https://www.bbc.co.uk/weather). Set
+`sources.weather.location_id` to the number in the location’s BBC URL
+(`https://www.bbc.co.uk/weather/2643743` is London). A missing table or
+empty id does **not** fetch London; the example config keeps London so
+documented demos still work. Past slots from earlier in the day are
+kept in `weather-cache.json`.
+
+**To remove this source:** `location_id = ""`.
+
+### Tube
+
+[TfL](https://api.tfl.gov.uk) status. No API key. Lines and colours are
+config; the default is Northern / Circle / District / Victoria.
+
+**To remove this source:** `sources.tfl.enabled = false`.
+
+### Jokes / history / saints
+
+Always on by default so a fork matches today’s panel.
+
+**To remove:** `sources.jokes.enabled = false` (same for `history` and
+`saints`). An empty slot collapses the same way `no-joke` / `no-history`
+already do.
+
+### School (Pronote)
+
+Unofficial session protocol (the flow documented by
+[pronotepy](https://github.com/bain3/pronotepy)). ENT / EduConnect is
+not supported.
+
+1. Open the **direct** Pronote space (`eleve.html` or `parent.html`).
+2. Put URL, username, and password under `[sources.pronote]`. Set
+   `student` to the child’s first name. For a parent account set
+   `account = "parent"` and optionally `child = "Firstname"`.
+3. If Pronote asks for a PIN, set `pin`.
+4. `show_sections = false` keeps homework/grades off the glass; hours
+   still merge when Pronote is live.
+
+**To remove this source:** leave `url` empty on a real `config.toml`.
+That does **not** invent Léa’s school day. The in-process default (no
+config file) still uses the demo school profile so `cargo run` without
+a file looks populated.
+
+## Layout workflow
+
+1. Edit [`server/templates/dashboard.html`](server/templates/dashboard.html)
+   and [`server/static/dashboard.css`](server/static/dashboard.css).
+2. Open `/preview`. The iframe is the real 1600×1200 panel.
+3. On the LAN, Chromium screenshots `/dashboard`, the server dithers to
+   Spectra 6, and the Pico POSTs `/api/frame.bin`.
+4. If the new bitmap matches the last checksum, the Pico does **not**
+   refresh the glass. Open `/stats` for battery history and every poll.
+
+![Weather icon sheet](docs/images/weather-icons.png)
+
+*Antoine: replace this file — optional; Spectra 6 icon set.*
+
+## Docker / versioning
+
+The image includes Google Chrome (amd64) or Chromium (arm64) and the
+built family UI. Deploy only needs `config.toml` (and optional photos
+under `data/pictures/`).
 
 ```bash
 mkdir -p data
-# edit data/config.toml
+# copy server/config.example.toml → data/config.toml and edit
 docker compose up -d
 ```
 
-Then <http://<host>:8765/>, <http://<host>:8765/preview>, or
-<http://<host>:8765/stats>. Meross login, BBC weather caches, uploaded
-photos, and Pico poll history stay in `data/` next to the config.
+Then <http://\<host\>:8765/>, `/preview`, `/stats`. Meross login, BBC
+weather caches, uploaded photos, and Pico poll history stay in `data/`.
 
-Local one-off: `cd server && make docker-build && make docker-run`. Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`, same as compta). Images are tagged `latest` and with the contents of [`VERSION`](VERSION).
+Local one-off: `cd server && make docker-build && make docker-run`.
+Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from
+GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and
+`DOCKER_PASSWORD`). Images are tagged `latest` and with [`VERSION`](VERSION).
 
-## Versioning
-
-The version is a single line in [`VERSION`](VERSION). That is the only file to edit when you cut a release — Cargo.toml, package.json, and Docker labels are filled in at **build time**, so there is no extra commit that rewrites manifests.
+The version is a single line in `VERSION`. That is the only file to edit
+when you cut a release — Cargo.toml, package.json, and Docker labels are
+filled in at **build time**.
 
 1. Change `VERSION` (for example `0.1.0` → `0.2.0`) in a PR.
 2. Merge to `main`.
-3. CI builds `antoinejaussoin/family-frame-server:0.2.0` and `:latest`, and creates git tag `v0.2.0` if it does not already exist.
+3. CI builds `:0.2.0` and `:latest`, and creates git tag `v0.2.0` if it
+   does not already exist.
 
-Locally, `eink-frame --version`, `GET /health`, and the Stats page all read the same value (`make docker-build` passes it as a Docker build-arg).
+Locally, `eink-frame --version`, `GET /health`, and Stats all read the
+same value.
 
-```bash
-# edit VERSION, then:
-cd server && cargo run -- --version
-```
+## Pico / shopping / flashing
 
-## Pretend to be the Pico
+Buy list: [`shopping.md`](shopping.md). Firmware:
+[`firmware/README.md`](firmware/README.md). USB-serial `wifi` / `psk` /
+`server` / `save`, then `POST /api/frame.bin` and paint on 200. Sleep
+length comes back on `X-Sleep-Seconds` from that mode’s
+`poll_interval_secs` or `wake-up` (shortened by measured `pico_drift`).
+`make build` in `firmware/` and drop `family-frame.uf2` on the `RP2350`
+drive.
 
-A separate crate polls `/api/frame.bin` the way the LiPo 2 XL W will: POST
-battery diagnostics, keep the last checksum, skip a refresh on 204, and
-unpack a new frame to PNG on 200.
+Without the board, [`pico-sim`](pico-sim/) speaks the same loop:
 
 ```bash
 cd pico-sim
 cargo run -- --url http://127.0.0.1:8765 --drain
-# or: make run
 ```
 
-Sleep length comes from `X-Sleep-Seconds`, the same way the Pico does.
-Each new frame is written as a timestamped PNG under `pico-sim/out/` (gitignored).
+Sleep length comes from `X-Sleep-Seconds`. Each new frame is written as
+a timestamped PNG under `pico-sim/out/` (gitignored).
 
-## Family calendar
+## Forking this into your own house
 
-Calendar input is **public ICS URLs** only (plus birthdays and Pronote school
-hours). There is no iCloud / CalDAV client.
+1. Copy `server/config.example.toml` → `config.toml`. Do not commit it.
+2. Publish a family ICS URL; drop iCloud leftovers.
+3. Turn off sources you do not use (`enabled = false` or empty secrets).
+4. Delete or ignore firmware pieces you are not flashing.
+5. To **add** a source: implement `DataSource`, register it in
+   `all_sources()`, add `[sources.you]`, and (if you need a new slot) a
+   section in `dashboard.html`. Four steps:
+   [`server/src/sources/README.md`](server/src/sources/README.md).
 
-1. In Calendar.app (or Google Calendar, Fastmail, …) publish the family
-   calendar as a **read-only** webcal / ICS link.
-2. Put that URL in `config.toml` under `sources.ics_urls`. `webcal://` is
-   rewritten to `https://` automatically.
+## Security note
 
-If the list is empty, the server shows the built-in demo calendar. A leftover
-`[icloud]` table from an older config is ignored — publish an ICS URL instead.
-
-## Birthdays
-
-Birthdays are not read from a calendar. In `config.toml`:
-
-```toml
-birthdays = ["Maya,2018-03-15", "Sam,2015-11-02"]
-```
-
-Anyone whose next birthday is today or within two weeks is merged into
-**Today** / **Coming next** as “Name turns N”, with a present icon.
-Leap-day birthdays show on 28 February in non-leap years.
-
-## Family to-dos
-
-To-dos come from a shared [Todoist](https://todoist.com) project:
-
-1. Create a project (for example `Family`) and invite the household.
-2. Copy a **personal API token** from Todoist → Settings → Integrations → Developer.
-3. Put the token and project name in `config.toml` under `[todoist]`.
-
-Leave `todoist.token` empty to show the built-in demo list.
-
-The shopping column is now **house temperatures**. Meross MS100
-thermometer/hygrometers talk through the hub; MTS200 wall thermostats are
-Wi-Fi devices on the same account. Local HTTP is signed with the account
-key, so put the Meross app email and password in `config.toml` (`[meross]`).
-The server logs in once, caches `meross-creds.json`, and reads
-`Appliance.Hub.Sensor.All` (sensors), `Appliance.Control.Thermostat.Mode`
-(MTS200), and `Appliance.Hub.Mts100.All` (hub TRVs) over MQTT — or LAN if
-you set `hub_hosts`. A device named “Kitchen Thermostat” shows as Kitchen
-(no humidity). Temperatures are rounded to the nearest degree and humidity
-to the nearest 5% so the panel does not twitch every hour.
-
-Never commit `config.toml` or `meross-creds.json` — they are gitignored.
-
-## Weather
-
-Forecast lives in the **Today** and **Coming next** section headers:
-morning / afternoon / evening icons and temps, plus sunrise, sunset, and
-pollen from [BBC Weather](https://www.bbc.co.uk/weather). Set
-`weather.location_id` to the number in the location’s BBC URL
-(`https://www.bbc.co.uk/weather/2643743` is London). Leave it empty for
-demo icons. Past slots from earlier in the day are kept in `weather-cache.json`.
-If the server starts after BBC has dropped those hours, morning uses
-the day’s low and afternoon the high.
-
-## Tube
-
-The right-hand columns show [TfL](https://api.tfl.gov.uk) status for Northern,
-Circle, District, and Victoria, beside house temperatures. No API key is
-required. On fetch failure the demo statuses are shown.
-
-## School (Pronote)
-
-Upcoming homework (date + subject) and recent grades sit in the two quarter
-columns beside the calendars. Data comes from
-[PRONOTE](https://www.index-education.com/), the French school portal. There
-is no official student/parent API; the server speaks the same session protocol
-as the web client (the flow documented by
-[pronotepy](https://github.com/bain3/pronotepy)).
-
-1. Open the **direct** Pronote space in a browser (`eleve.html` or `parent.html`),
-   not the regional ENT / EduConnect login page.
-2. Put that URL, the Pronote username, and password in `config.toml` under
-   `[pronote]`. Set `student` to the child’s first name (used on Today and
-   the next school day: “School: Léa (finishes at 16:30)”). For a parent
-   account set `account = "parent"` and optionally `child = "Firstname"`.
-3. If Pronote asks for a two-factor PIN, set `pronote.pin`.
-
-Leave `pronote.url` empty to show the built-in demo list. ENT-only schools are
-not supported yet. Today and the next day with lessons also get a school-hours
-line from the Pronote timetable.
-
-## Pico side
-
-The [firmware](firmware/) is the Pico LiPo 2 XL W Embassy / Rust client:
-USB-serial `wifi` / `psk` / `server` / `save` (same as the laser-tag
-nodes), then `POST /api/frame.bin` and paint on 200. Sleep length comes back
-on `X-Sleep-Seconds` from that mode’s `poll_interval_secs` or `wake-up` in
-`config.toml` (shortened by a measured `pico_drift` so the low-power
-oscillator still hits the intended wall-clock time). The server stores that
-planned wake as a timestamp; the next timer poll *is* that slot, so an early
-Pico is not sent back for a few seconds or minutes. `make build` in
-`firmware/` and drop `family-frame.uf2`
-on the `RP2350` drive. Without the board, [`pico-sim`](pico-sim/) speaks
-the same loop.
+Trusted LAN only. There is **no auth** on the family UI or the Pico
+endpoint. Never commit `config.toml` or `meross-creds.json` — they are
+gitignored.

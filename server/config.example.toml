@@ -47,7 +47,8 @@ rotate = []
 # wake-up = []
 # schedule_kind = "interval"
 
-# Datasources. Legacy [todoist] / [weather] / [meross] / [pronote] tables and
+# Datasources. See server/src/sources/README.md to add one.
+# Legacy [todoist] / [weather] / [meross] / [pronote] tables and
 # top-level birthdays / [sources].ics_urls still load for one release.
 # A leftover [icloud] table is ignored.
 
