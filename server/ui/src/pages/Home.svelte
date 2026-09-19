@@ -329,7 +329,15 @@
           {/if}
           {settings.mode === 'picture' ? 'Pictures' : 'Dashboard'}
         </span>
-        <span>wakes in {formatSleep(settings.next_sleep_secs)}</span>
+        {#if settings.next_sleep_secs != null}
+          <span>
+            {#if settings.next_sleep_secs === 0}
+              overdue
+            {:else}
+              wakes in {formatSleep(settings.next_sleep_secs)}
+            {/if}
+          </span>
+        {/if}
       </div>
     {/if}
   </header>

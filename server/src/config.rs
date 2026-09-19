@@ -382,7 +382,10 @@ pub struct PublicSettings {
     pub pictures_schedule: PublicSchedule,
     pub timezone: String,
     pub family_name: String,
-    pub next_sleep_secs: u64,
+    /// Wall-clock seconds until the Pico's last commanded wake. `None` if it
+    /// has never been given a sleep — the current editor schedule is not used,
+    /// because the frame only learns that on its next poll.
+    pub next_sleep_secs: Option<u64>,
     /// Auto-measured Pico timer error (fraction). See [`Config::pico_drift`].
     pub pico_drift: f64,
     pub rotate: Vec<String>,
@@ -524,6 +527,15 @@ impl Config {
     }
 
     pub fn public_settings(&self, now: DateTime<Utc>) -> PublicSettings {
+        self.public_settings_for_assigned_wake(now, None)
+    }
+
+    /// Like [`Self::public_settings`], with the wake last told to the Pico.
+    pub fn public_settings_for_assigned_wake(
+        &self,
+        now: DateTime<Utc>,
+        assigned_wake: Option<DateTime<Utc>>,
+    ) -> PublicSettings {
         let current = self.mode_schedule(self.mode);
         PublicSettings {
             mode: self.mode.as_str().to_string(),
@@ -535,7 +547,9 @@ impl Config {
             pictures_schedule: Self::public_schedule(self.mode_schedule(FrameMode::Picture)),
             timezone: self.timezone.clone(),
             family_name: self.family_name.clone(),
-            next_sleep_secs: self.next_poll_secs(now),
+            next_sleep_secs: assigned_wake.map(|at| {
+                u64::try_from(at.signed_duration_since(now).num_seconds().max(0)).unwrap_or(0)
+            }),
             pico_drift: self.pico_drift,
             rotate: self.pictures.rotate.clone(),
         }
@@ -1419,8 +1433,35 @@ wake-up = ["08:00"]
         assert_eq!(cfg.next_poll_secs(now), 3600);
         assert_eq!(cfg.pico_sleep_secs(now), 3495);
         let public = cfg.public_settings(now);
-        assert_eq!(public.next_sleep_secs, 3600);
+        assert_eq!(public.next_sleep_secs, None);
         assert_eq!(public.pico_drift, 0.03);
+        let assigned = now + chrono::Duration::seconds(3600);
+        let public = cfg.public_settings_for_assigned_wake(now, Some(assigned));
+        assert_eq!(public.next_sleep_secs, Some(3600));
+    }
+
+    #[test]
+    fn public_next_sleep_ignores_the_editor_schedule() {
+        use chrono::TimeZone;
+        let cfg: Config = toml::from_str(
+            r#"
+            timezone = "Europe/London"
+            poll_interval_secs = 300
+            schedule_kind = "interval"
+            "#,
+        )
+        .unwrap();
+        let now = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 16, 12, 0, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(cfg.next_poll_secs(now), 300);
+        let assigned = now + chrono::Duration::seconds(7200);
+        let public = cfg.public_settings_for_assigned_wake(now, Some(assigned));
+        assert_eq!(public.next_sleep_secs, Some(7200));
+        let overdue =
+            cfg.public_settings_for_assigned_wake(now, Some(now - chrono::Duration::seconds(90)));
+        assert_eq!(overdue.next_sleep_secs, Some(0));
     }
 
     #[test]

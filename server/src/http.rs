@@ -234,8 +234,7 @@ async fn debug_frame(State(state): State<AppState>, Path(name): Path<String>) ->
 }
 
 async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
-    let cfg = state.cache.snapshot_config().await;
-    Json(cfg.public_settings(Utc::now()))
+    Json(public_settings(&state).await)
 }
 
 async fn patch_settings(
@@ -285,8 +284,7 @@ async fn patch_settings(
                 let _ = state.cache.pictures().reset_index();
                 state.cache.invalidate().await;
             }
-            let cfg = state.cache.snapshot_config().await;
-            Json(cfg.public_settings(Utc::now())).into_response()
+            Json(public_settings(&state).await).into_response()
         }
         Err(err) => bad_request(err),
     }
@@ -402,8 +400,7 @@ async fn put_rotate(State(state): State<AppState>, Json(body): Json<RotateBody>)
         Ok(()) => {
             let _ = state.cache.pictures().reset_index();
             state.cache.invalidate().await;
-            let cfg = state.cache.snapshot_config().await;
-            Json(cfg.public_settings(Utc::now())).into_response()
+            Json(public_settings(&state).await).into_response()
         }
         Err(err) => bad_request(err),
     }
@@ -606,6 +603,15 @@ fn offered_checksum<'a>(headers: &'a HeaderMap, q: &'a FrameQuery) -> Option<&'a
             .get(header::IF_NONE_MATCH)
             .and_then(|v| v.to_str().ok())
     })
+}
+
+async fn public_settings(state: &AppState) -> crate::config::PublicSettings {
+    let cfg = state.cache.snapshot_config().await;
+    let polls = state.debug.snapshot().await;
+    let assigned = polls.last().and_then(|p| {
+        crate::schedule::assigned_wake_from_poll(p.wake_at, p.t, p.sleep_s, cfg.pico_drift)
+    });
+    cfg.public_settings_for_assigned_wake(Utc::now(), assigned)
 }
 
 async fn pico_sleep_secs(state: &AppState) -> u64 {
