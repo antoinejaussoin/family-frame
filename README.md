@@ -127,7 +127,7 @@ Open <http://127.0.0.1:5173/>. If the server is not on `:8765`, set
 *Antoine: replace this file — Pico polls, 204 vs 200, drift.*
 
 Then <http://127.0.0.1:5173/> (Vite) or <http://127.0.0.1:8765/> (built
-SPA), `/preview`, `/stats`, `/dashboard`, `/weather-icons`.
+SPA), `/preview`, `/stats`, `/dashboard`.
 
 ### Serve the built SPA from the API
 
@@ -252,10 +252,6 @@ a file looks populated.
    Spectra 6, and the Pico POSTs `/api/frame.bin`.
 4. If the new bitmap matches the last checksum, the Pico does **not**
    refresh the glass. Open `/stats` for battery history and every poll.
-
-![Weather icon sheet](docs/images/weather-icons.png)
-
-*Antoine: replace this file — optional; Spectra 6 icon set.*
 
 ## Docker / versioning
 

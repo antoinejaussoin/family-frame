@@ -15,8 +15,6 @@ impl Templates {
             .context("templates/dashboard.html")?;
         env.add_template("wx-sprite.html", assets::WX_SPRITE_HTML)
             .context("templates/wx-sprite.html")?;
-        env.add_template("weather-icons.html", assets::WEATHER_ICONS_HTML)
-            .context("templates/weather-icons.html")?;
         Ok(Self { env })
     }
 
@@ -29,14 +27,6 @@ impl Templates {
             show_school_sections => dash.show_school_sections,
             ..minijinja::Value::from_serialize(dash),
         })?)
-    }
-
-    pub fn render_weather_icons(&self) -> Result<String> {
-        let tmpl = self
-            .env
-            .get_template("weather-icons.html")
-            .context("templates/weather-icons.html")?;
-        Ok(tmpl.render(minijinja::context! { icons => crate::sources::weather::ICONS })?)
     }
 }
 
@@ -315,23 +305,5 @@ mod tests {
         assert!(html.contains("Why don&#x27;t scientists trust atoms?"));
         assert!(html.contains("Because they make up everything."));
         assert!(!html.contains("no-joke"));
-    }
-
-    #[test]
-    fn weather_icons_sheet_lists_every_symbol() {
-        let html = Templates::load().unwrap().render_weather_icons().unwrap();
-        for icon in crate::sources::weather::ICONS {
-            assert!(
-                html.contains(&format!("href=\"#wx-{}\"", icon.id)),
-                "{}",
-                icon.id
-            );
-        }
-        assert_eq!(
-            html.matches("class=\"at-80\"").count(),
-            crate::sources::weather::ICONS.len()
-        );
-        assert!(html.contains("class=\"at-40\""));
-        assert!(html.contains("/static/dashboard.css"));
     }
 }

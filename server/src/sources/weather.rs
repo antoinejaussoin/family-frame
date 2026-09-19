@@ -310,7 +310,7 @@ pub fn demo_weather() -> Weather {
 }
 
 /// Drawn `wx-*` symbols. Keep in sync with `templates/wx-sprite.html`.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy)]
 pub struct IconSpec {
     pub id: &'static str,
     pub label: &'static str,
