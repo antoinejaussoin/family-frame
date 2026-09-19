@@ -222,20 +222,20 @@ async fn run_cycle(
     }
 
     ui.paint(bat, "POST /api/frame.bin");
-    let (status, etag, sleep_s) = http::get_frame(stack, frame).await;
+    let (status, etag, sleep_s, wake_at) = http::get_frame(stack, frame).await;
     compiler_fence(Ordering::SeqCst);
 
     match status {
         FrameResult::NotModified => {
             ui.paint(bat, "frame 204 skip");
-            remember_server(flash, etag.as_str(), sleep_s).await;
+            remember_server(flash, etag.as_str(), sleep_s, wake_at.as_str()).await;
             (true, sleep_s)
         }
         FrameResult::Ok => {
             ui.paint(bat, "frame 200 eink");
             el133::show_frame(epd, frame).await;
             ui.paint(bat, "frame 200 done");
-            remember_server(flash, etag.as_str(), sleep_s).await;
+            remember_server(flash, etag.as_str(), sleep_s, wake_at.as_str()).await;
             (true, sleep_s)
         }
         FrameResult::Err => {
@@ -249,12 +249,23 @@ async fn run_cycle(
     }
 }
 
-async fn remember_server(flash: &'static SharedFlash, checksum: &str, sleep_s: Option<u32>) {
+async fn remember_server(
+    flash: &'static SharedFlash,
+    checksum: &str,
+    sleep_s: Option<u32>,
+    wake_at: &str,
+) {
     let mut dirty = false;
     settings::update(|c| {
         if let Some(s) = sleep_s.filter(|&s| s > 0) {
             if c.sleep_s != s {
                 c.sleep_s = s;
+                dirty = true;
+            }
+        }
+        if !wake_at.is_empty() && c.wake_at.as_str() != wake_at {
+            c.wake_at.clear();
+            if c.wake_at.push_str(wake_at).is_ok() {
                 dirty = true;
             }
         }

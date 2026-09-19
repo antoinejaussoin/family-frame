@@ -13,8 +13,8 @@ use crate::config::TflLineConfig;
 use crate::model::StatusLine;
 use crate::sources::cache::TtlCache;
 
-use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
 use super::DataSource;
 
 pub struct TflSource;
@@ -32,9 +32,10 @@ impl DataSource for TflSource {
     async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
         let specs = &ctx.cfg.sources.tfl.lines;
         match load_tube(specs).await {
-            Ok(lines) if !lines.is_empty() => {
-                Ok(SourceOutcome::live("TfL tube", Contribution::Transit(lines)))
-            }
+            Ok(lines) if !lines.is_empty() => Ok(SourceOutcome::live(
+                "TfL tube",
+                Contribution::Transit(lines),
+            )),
             Ok(_) => {
                 warn!("TfL returned no lines");
                 Ok(SourceOutcome::unavailable(
@@ -53,7 +54,9 @@ impl DataSource for TflSource {
     }
 
     fn demo(&self, ctx: &SourceContext<'_>) -> Option<Contribution> {
-        Some(Contribution::Transit(demo_tube_for(&ctx.cfg.sources.tfl.lines)))
+        Some(Contribution::Transit(demo_tube_for(
+            &ctx.cfg.sources.tfl.lines,
+        )))
     }
 }
 

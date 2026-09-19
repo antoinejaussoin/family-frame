@@ -6,8 +6,8 @@
 
 use chrono::{Datelike, NaiveDate};
 
-use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
 use super::DataSource;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

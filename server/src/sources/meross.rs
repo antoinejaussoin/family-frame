@@ -25,8 +25,8 @@ use crate::config::MerossConfig;
 use crate::model::RoomClimate;
 use crate::sources::cache::TtlCache;
 
-use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
 use super::{DataSource, DisabledBehaviour};
 
 pub struct MerossSource;

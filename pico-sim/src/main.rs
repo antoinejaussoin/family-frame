@@ -40,13 +40,14 @@ struct Telemetry {
     usb: bool,
     drain: bool,
     first: bool,
+    wake_at: String,
 }
 
 impl Telemetry {
     fn body(&mut self) -> String {
         let wake = if self.first { "cold" } else { "timer" };
         self.first = false;
-        let body = telemetry_form(self.mv, self.pct, self.usb, wake);
+        let body = telemetry_form(self.mv, self.pct, self.usb, wake, &self.wake_at);
         if self.drain && !self.usb {
             self.pct = self.pct.saturating_sub(1);
             self.mv = 3300 + u32::from(self.pct) * 9;
@@ -85,20 +86,24 @@ async fn run(cli: Cli) -> Result<()> {
         usb: cli.usb,
         drain: cli.drain,
         first: true,
+        wake_at: String::new(),
     };
     let mut last_sleep = DEFAULT_SLEEP_S;
     loop {
         let body = tel.body();
-        let (reached, server_sleep) =
+        let (reached, server_sleep, server_slot) =
             match poll_frame(&client, &url, &out_dir, &mut checksum, &body).await {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     error!(%err, %url, "could not reach frame endpoint — retrying");
-                    (false, None)
+                    (false, None, None)
                 }
             };
         if let Some(s) = server_sleep.filter(|&s| s > 0) {
             last_sleep = s;
+        }
+        if let Some(slot) = server_slot.filter(|s| !s.is_empty()) {
+            tel.wake_at = slot;
         }
         let nap = next_nap(reached, server_sleep, last_sleep);
         info!(nap, "sleep until next poll");
@@ -126,11 +131,16 @@ fn frame_url(base: &str) -> String {
     format!("{}/api/frame.bin", base.trim_end_matches('/'))
 }
 
-fn telemetry_form(mv: u32, pct: u16, usb: bool, wake: &str) -> String {
-    format!(
+fn telemetry_form(mv: u32, pct: u16, usb: bool, wake: &str, wake_at: &str) -> String {
+    let mut body = format!(
         "mv={mv}&pct={pct}&usb={}&wake={wake}",
         if usb { 1 } else { 0 }
-    )
+    );
+    if !wake_at.is_empty() && !wake_at.contains(['&', '=']) {
+        body.push_str("&wake_at=");
+        body.push_str(wake_at);
+    }
+    body
 }
 
 async fn poll_frame(
@@ -139,7 +149,7 @@ async fn poll_frame(
     out_dir: &Path,
     checksum: &mut String,
     body: &str,
-) -> Result<(bool, Option<u64>)> {
+) -> Result<(bool, Option<u64>, Option<String>)> {
     let mut req = client
         .post(url)
         .header("Content-Type", "application/x-www-form-urlencoded")
@@ -150,9 +160,10 @@ async fn poll_frame(
     let resp = req.send().await.with_context(|| format!("POST {url}"))?;
     let status = resp.status();
     let sleep_s = sleep_seconds(resp.headers());
+    let wake_at = wake_at_slot(resp.headers());
     if status.as_u16() == 204 || status.as_u16() == 304 {
-        info!(checksum, %status, sleep_s, "unchanged — Pico would skip the refresh");
-        Ok((true, sleep_s))
+        info!(checksum, %status, sleep_s, wake_at, "unchanged — Pico would skip the refresh");
+        Ok((true, sleep_s, wake_at))
     } else if status.is_success() {
         let etag = resp
             .headers()
@@ -167,14 +178,24 @@ async fn poll_frame(
             checksum,
             bytes = bytes.len(),
             sleep_s,
+            wake_at,
             path = %path.display(),
             "200 new frame"
         );
-        Ok((true, sleep_s))
+        Ok((true, sleep_s, wake_at))
     } else {
         warn!(%status, "frame request failed");
-        Ok((false, None))
+        Ok((false, None, None))
     }
+}
+
+fn wake_at_slot(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    headers
+        .get("x-wake-at")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.contains(['&', '=']))
+        .map(str::to_string)
 }
 
 fn sleep_seconds(headers: &reqwest::header::HeaderMap) -> Option<u64> {
@@ -229,12 +250,16 @@ mod tests {
     #[test]
     fn telemetry_form_matches_firmware() {
         assert_eq!(
-            telemetry_form(3850, 72, false, "timer"),
+            telemetry_form(3850, 72, false, "timer", ""),
             "mv=3850&pct=72&usb=0&wake=timer"
         );
         assert_eq!(
-            telemetry_form(3850, 72, false, "button"),
+            telemetry_form(3850, 72, false, "button", ""),
             "mv=3850&pct=72&usb=0&wake=button"
+        );
+        assert_eq!(
+            telemetry_form(3850, 72, false, "timer", "2026-09-19T18:00:00Z"),
+            "mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z"
         );
     }
 
@@ -285,6 +310,18 @@ mod tests {
     }
 
     #[test]
+    fn wake_at_slot_parses_rfc3339() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-wake-at", "2026-09-19T18:00:00Z".parse().unwrap());
+        assert_eq!(
+            wake_at_slot(&headers).as_deref(),
+            Some("2026-09-19T18:00:00Z")
+        );
+        headers.insert("x-wake-at", "bad&x=1".parse().unwrap());
+        assert_eq!(wake_at_slot(&headers), None);
+    }
+
+    #[test]
     fn writes_timestamped_png() {
         let dir = tempfile::tempdir().unwrap();
         let bin = vec![0x11; PANEL_BYTES];
@@ -304,6 +341,7 @@ mod tests {
             usb: false,
             drain: true,
             first: true,
+            wake_at: String::new(),
         };
         assert_eq!(tel.body(), "mv=3800&pct=55&usb=0&wake=cold");
         assert_eq!(tel.body(), "mv=3786&pct=54&usb=0&wake=timer");

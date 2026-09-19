@@ -7,6 +7,7 @@ pub const SSID_MAX: usize = 32;
 pub const PSK_MAX: usize = 64;
 pub const SERVER_MAX: usize = 128;
 pub const CHECKSUM_MAX: usize = 80;
+pub const WAKE_AT_MAX: usize = 32;
 pub const RECORD: usize = 512;
 pub const DEFAULT_SLEEP_S: u32 = 3600;
 
@@ -15,6 +16,7 @@ const PSK_OFF: usize = SSID_OFF + 1 + SSID_MAX;
 const SERVER_OFF: usize = PSK_OFF + 1 + PSK_MAX;
 const CHECKSUM_OFF: usize = SERVER_OFF + 1 + SERVER_MAX;
 const SLEEP_OFF: usize = CHECKSUM_OFF + 1 + CHECKSUM_MAX;
+const WAKE_AT_OFF: usize = SLEEP_OFF + 4;
 
 /// In-RAM copy of the provisioned settings (and the flash payload).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,6 +27,9 @@ pub struct NetConfig {
     pub last_checksum: String<CHECKSUM_MAX>,
     /// Last `X-Sleep-Seconds` from the server (fallback if a later poll omits it).
     pub sleep_s: u32,
+    /// Last `X-Wake-At` token; echoed on the next POST so the server can
+    /// treat this poll as that schedule slot. Opaque to the Pico.
+    pub wake_at: String<WAKE_AT_MAX>,
 }
 
 impl NetConfig {
@@ -35,6 +40,7 @@ impl NetConfig {
             server: String::new(),
             last_checksum: String::new(),
             sleep_s: DEFAULT_SLEEP_S,
+            wake_at: String::new(),
         }
     }
 
@@ -51,6 +57,7 @@ pub fn encode(cfg: &NetConfig) -> [u8; RECORD] {
     write_field(&mut buf, SERVER_OFF, cfg.server.as_bytes());
     write_field(&mut buf, CHECKSUM_OFF, cfg.last_checksum.as_bytes());
     buf[SLEEP_OFF..SLEEP_OFF + 4].copy_from_slice(&cfg.sleep_s.to_le_bytes());
+    write_field(&mut buf, WAKE_AT_OFF, cfg.wake_at.as_bytes());
     let crc = checksum(&buf[8..]);
     buf[4..8].copy_from_slice(&crc.to_le_bytes());
     buf
@@ -71,6 +78,7 @@ pub fn decode(buf: &[u8; RECORD]) -> Option<NetConfig> {
     cfg.server = read_field(buf, SERVER_OFF, SERVER_MAX)?;
     cfg.last_checksum = read_field(buf, CHECKSUM_OFF, CHECKSUM_MAX)?;
     cfg.sleep_s = u32::from_le_bytes(buf[SLEEP_OFF..SLEEP_OFF + 4].try_into().ok()?);
+    cfg.wake_at = read_field(buf, WAKE_AT_OFF, WAKE_AT_MAX)?;
     Some(cfg)
 }
 
@@ -104,12 +112,24 @@ mod tests {
     use super::*;
 
     fn cfg(ssid: &str, psk: &str, server: &str, checksum: &str, sleep_s: u32) -> NetConfig {
+        cfg_slot(ssid, psk, server, checksum, sleep_s, "")
+    }
+
+    fn cfg_slot(
+        ssid: &str,
+        psk: &str,
+        server: &str,
+        checksum: &str,
+        sleep_s: u32,
+        wake_at: &str,
+    ) -> NetConfig {
         let mut c = NetConfig::empty();
         c.ssid.push_str(ssid).unwrap();
         c.psk.push_str(psk).unwrap();
         c.server.push_str(server).unwrap();
         c.last_checksum.push_str(checksum).unwrap();
         c.sleep_s = sleep_s;
+        c.wake_at.push_str(wake_at).unwrap();
         c
     }
 
@@ -187,5 +207,25 @@ mod tests {
     fn wifi_without_server_is_not_ready() {
         let c = cfg("home", "x", "", "", 60);
         assert!(!c.is_ready());
+    }
+
+    #[test]
+    fn wake_at_roundtrips_and_old_records_have_none() {
+        let c = cfg_slot(
+            "home",
+            "x",
+            "192.168.0.251:8765",
+            "deadbeef",
+            3600,
+            "2026-09-19T18:00:00Z",
+        );
+        assert_eq!(decode(&encode(&c)).unwrap(), c);
+
+        let mut old = encode(&cfg("home", "x", "s", "", 90));
+        old[WAKE_AT_OFF..WAKE_AT_OFF + 1 + WAKE_AT_MAX].fill(0);
+        let old = with_crc(old);
+        let decoded = decode(&old).unwrap();
+        assert!(decoded.wake_at.is_empty());
+        assert_eq!(decoded.sleep_s, 90);
     }
 }

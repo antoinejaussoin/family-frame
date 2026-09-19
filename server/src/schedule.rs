@@ -1,6 +1,8 @@
 //! When the Pico should next wake: a fixed interval, or the next `wake-up` clock time.
 
-use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Utc, Weekday};
+use chrono::{
+    DateTime, Datelike, Duration, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc, Weekday,
+};
 use chrono_tz::Tz;
 
 /// `mon` … `sun`, Monday first (UK week).
@@ -100,6 +102,11 @@ impl WeeklyWakes {
 /// Bigger gaps usually mean a button wake, USB wait, or a missed poll.
 pub const MAX_PICO_DRIFT: f64 = 0.05;
 
+/// How close a stored/echoed timestamp may be to a `wake-up` before we treat
+/// it as that clock slot. `now + floored seconds` lands about 1s early
+/// (`17:59:59` for an 18:00 slot); a wider window also covers drift undo.
+pub const ASSIGNED_SLOT_SNAP_SECS: i64 = 90;
+
 /// Seconds until the Pico should poll again.
 ///
 /// An empty week uses `interval_secs`. Otherwise the next clock time strictly
@@ -111,15 +118,20 @@ pub fn seconds_until_next_poll(
     interval_secs: u64,
     wake_ups: &WeeklyWakes,
 ) -> u64 {
-    let interval = interval_secs.max(1);
+    secs_until(now, next_poll_at(now, tz, interval_secs, wake_ups))
+}
+
+/// Wall-clock instant of the next intended poll (the schedule slot, not
+/// `now` plus a truncated second count).
+pub fn next_poll_at(
+    now: DateTime<Utc>,
+    tz: Tz,
+    interval_secs: u64,
+    wake_ups: &WeeklyWakes,
+) -> DateTime<Utc> {
     match next_wake_after(now, tz, wake_ups) {
-        Some(dt) => {
-            let secs = dt
-                .signed_duration_since(now.with_timezone(&tz))
-                .num_seconds();
-            (secs.max(1)) as u64
-        }
-        None => interval,
+        Some(dt) => dt.with_timezone(&Utc),
+        None => instant_after(now, interval_secs.max(1)),
     }
 }
 
@@ -136,21 +148,97 @@ pub fn seconds_until_next_poll_for_timer(
     wake_ups: &WeeklyWakes,
     assigned_wake: Option<DateTime<Utc>>,
 ) -> u64 {
+    secs_until(
+        now,
+        next_poll_at_for_timer(now, tz, interval_secs, wake_ups, assigned_wake),
+    )
+}
+
+/// Next slot after a timer poll that is serving `assigned_wake`.
+pub fn next_poll_at_for_timer(
+    now: DateTime<Utc>,
+    tz: Tz,
+    interval_secs: u64,
+    wake_ups: &WeeklyWakes,
+    assigned_wake: Option<DateTime<Utc>>,
+) -> DateTime<Utc> {
     if let Some(assigned) = assigned_wake {
-        let step = seconds_until_next_poll(assigned, tz, interval_secs, wake_ups);
-        if let Some(next) = assigned.checked_add_signed(secs_as_duration(step)) {
-            if now < next {
-                let secs = next.signed_duration_since(now).num_seconds();
-                return (secs.max(1)) as u64;
+        let slot = resolve_assigned_slot(assigned, tz, wake_ups);
+        let next = next_poll_at(slot, tz, interval_secs, wake_ups);
+        if now < next {
+            return next;
+        }
+    }
+    next_poll_at(now, tz, interval_secs, wake_ups)
+}
+
+/// Map a stored or Pico-echoed timestamp onto the `wake-up` it was aiming for.
+///
+/// Interval schedules have no clock face, so `assigned` is left as-is.
+pub fn resolve_assigned_slot(
+    assigned: DateTime<Utc>,
+    tz: Tz,
+    wake_ups: &WeeklyWakes,
+) -> DateTime<Utc> {
+    if wake_ups.is_empty() {
+        return assigned;
+    }
+    let assigned_local = assigned.with_timezone(&tz);
+    let today = assigned_local.date_naive();
+    let snap = Duration::seconds(ASSIGNED_SLOT_SNAP_SECS);
+    let mut best: Option<(Duration, bool, DateTime<Utc>)> = None;
+    for day_offset in -1..=8 {
+        let date = today + Duration::days(day_offset);
+        for &time in wake_ups.get(date.weekday()) {
+            let Some(dt) = resolve_local(tz, date, time) else {
+                continue;
+            };
+            let utc = dt.with_timezone(&Utc);
+            let delta = utc.signed_duration_since(assigned);
+            let abs = if delta < Duration::zero() {
+                -delta
+            } else {
+                delta
+            };
+            if abs > snap {
+                continue;
+            }
+            let at_or_after = utc >= assigned;
+            let better = match best {
+                None => true,
+                Some((best_abs, best_after, _)) => {
+                    abs < best_abs || (abs == best_abs && at_or_after && !best_after)
+                }
+            };
+            if better {
+                best = Some((abs, at_or_after, utc));
             }
         }
     }
-    seconds_until_next_poll(now, tz, interval_secs, wake_ups)
+    best.map(|(_, _, dt)| dt).unwrap_or(assigned)
+}
+
+/// Seconds from `now` to `at`, at least 1.
+pub fn secs_until(now: DateTime<Utc>, at: DateTime<Utc>) -> u64 {
+    let secs = at.signed_duration_since(now).num_seconds();
+    secs.max(1) as u64
 }
 
 /// Wall-clock instant `secs` after `now`.
 pub fn instant_after(now: DateTime<Utc>, secs: u64) -> DateTime<Utc> {
     now + secs_as_duration(secs)
+}
+
+/// `X-Wake-At` / Pico `wake_at=` token: UTC RFC3339 at second precision.
+pub fn format_wake_at_slot(at: DateTime<Utc>) -> String {
+    at.to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+/// Parse the Pico's echoed slot (or an `X-Wake-At` value).
+pub fn parse_wake_at_slot(raw: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(raw.trim())
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
 }
 
 fn secs_as_duration(secs: u64) -> Duration {
@@ -710,5 +798,73 @@ mod tests {
             seconds_until_next_poll(now, london(), 3600, &wakes),
             46 * 3600 + 30 * 60
         );
+    }
+
+    #[test]
+    fn next_poll_at_is_the_clock_slot_not_now_plus_floored_secs() {
+        let now = london()
+            .with_ymd_and_hms(2026, 9, 16, 16, 0, 3)
+            .unwrap()
+            .with_timezone(&Utc)
+            + Duration::milliseconds(475);
+        let wakes = daily(&["18:00", "20:00"]);
+        assert_eq!(
+            next_poll_at(now, london(), 3600, &wakes),
+            at_london(2026, 9, 16, 18, 0, 0)
+        );
+        // Truncating the duration would land on 17:59:59 and paint "17:59".
+        assert_eq!(
+            instant_after(now, seconds_until_next_poll(now, london(), 3600, &wakes)),
+            at_london(2026, 9, 16, 17, 59, 59) + Duration::milliseconds(475)
+        );
+    }
+
+    #[test]
+    fn resolve_assigned_slot_snaps_xx59_onto_the_hour() {
+        let wakes = daily(&["18:00", "21:00"]);
+        assert_eq!(
+            resolve_assigned_slot(at_london(2026, 9, 16, 17, 59, 59), london(), &wakes),
+            at_london(2026, 9, 16, 18, 0, 0)
+        );
+        assert_eq!(
+            resolve_assigned_slot(
+                at_london(2026, 9, 16, 18, 0, 0) + Duration::milliseconds(848),
+                london(),
+                &wakes
+            ),
+            at_london(2026, 9, 16, 18, 0, 0)
+        );
+    }
+
+    #[test]
+    fn timer_early_with_fuzzy_assigned_skips_the_hour_slot() {
+        // Production: wake at 17:59:40 with stored wake_at 17:59:59 for 18:00.
+        let now = at_london(2026, 9, 16, 17, 59, 40);
+        let assigned = at_london(2026, 9, 16, 17, 59, 59);
+        let wakes = daily(&["18:00", "21:00"]);
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(assigned)),
+            3 * 3600 + 20
+        );
+        assert_eq!(
+            next_poll_at_for_timer(now, london(), 3600, &wakes, Some(assigned)),
+            at_london(2026, 9, 16, 21, 0, 0)
+        );
+        // Without a stored slot the upcoming 18:00 is still the target.
+        assert_eq!(
+            seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, None),
+            20
+        );
+    }
+
+    #[test]
+    fn wake_at_slot_roundtrips_rfc3339_z() {
+        let at = at_london(2026, 9, 19, 18, 0, 0);
+        let token = format_wake_at_slot(at);
+        assert_eq!(token, "2026-09-19T17:00:00Z");
+        assert_eq!(parse_wake_at_slot(&token), Some(at));
+        assert_eq!(parse_wake_at_slot(" 2026-09-19T17:00:00+00:00 "), Some(at));
+        assert!(parse_wake_at_slot("").is_none());
+        assert!(parse_wake_at_slot("nope").is_none());
     }
 }

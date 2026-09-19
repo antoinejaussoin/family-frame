@@ -44,6 +44,9 @@ struct PicoTelemetry {
     usb: u8,
     #[serde(default)]
     wake: String,
+    /// Last `X-Wake-At` the Pico stored; timer polls treat this as the slot.
+    #[serde(default)]
+    wake_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -449,6 +452,7 @@ async fn frame_bin_get(
                 &frame.checksum,
                 "frame.bin",
                 Some(sleep_s),
+                None,
             )
         }
         Err(err) => error_response(err),
@@ -488,7 +492,8 @@ async fn frame_bin_post(
             let status = if unchanged { 204 } else { 200 };
             update_pico_drift(&state, &tel).await;
             let now = Utc::now();
-            let (sleep_s, wake_at) = pico_sleep_plan_for_wake(&state, &tel.wake, now).await;
+            let (sleep_s, wake_at) =
+                pico_sleep_plan_for_wake(&state, &tel.wake, tel.wake_at.as_deref(), now).await;
             let poll = Poll {
                 t: now,
                 status,
@@ -510,7 +515,7 @@ async fn frame_bin_post(
                 tracing::warn!(%err, "could not persist Pico poll");
             }
             if unchanged {
-                no_content(&frame.checksum, sleep_s)
+                no_content(&frame.checksum, sleep_s, Some(wake_at))
             } else {
                 binary(
                     frame.bin,
@@ -518,6 +523,7 @@ async fn frame_bin_post(
                     &frame.checksum,
                     "frame.bin",
                     Some(sleep_s),
+                    Some(wake_at),
                 )
             }
         }
@@ -535,7 +541,14 @@ async fn frame_png(
             if checksum_matches(&frame, offered_checksum(&headers, &q)) {
                 return not_modified(&frame.checksum, None);
             }
-            binary(frame.png, "image/png", &frame.checksum, "frame.png", None)
+            binary(
+                frame.png,
+                "image/png",
+                &frame.checksum,
+                "frame.png",
+                None,
+                None,
+            )
         }
         Err(err) => error_response(err),
     }
@@ -548,6 +561,7 @@ async fn frame_dither(State(state): State<AppState>) -> impl IntoResponse {
             "image/png",
             &frame.checksum,
             "frame-dither.png",
+            None,
             None,
         ),
         Err(err) => error_response(err),
@@ -603,14 +617,19 @@ async fn pico_sleep_secs(state: &AppState) -> u64 {
 async fn pico_sleep_plan_for_wake(
     state: &AppState,
     wake: &str,
+    reported_slot: Option<&str>,
     now: DateTime<Utc>,
 ) -> (u64, DateTime<Utc>) {
     let cfg = state.cache.snapshot_config().await;
     let assigned = if crate::schedule::is_timer_wake(wake) {
-        let polls = state.debug.snapshot().await;
-        polls.last().and_then(|p| {
-            crate::schedule::assigned_wake_from_poll(p.wake_at, p.t, p.sleep_s, cfg.pico_drift)
-        })
+        if let Some(slot) = reported_slot.and_then(crate::schedule::parse_wake_at_slot) {
+            Some(slot)
+        } else {
+            let polls = state.debug.snapshot().await;
+            polls.last().and_then(|p| {
+                crate::schedule::assigned_wake_from_poll(p.wake_at, p.t, p.sleep_s, cfg.pico_drift)
+            })
+        }
     } else {
         None
     };
@@ -666,21 +685,41 @@ fn insert_sleep_header(headers: &mut HeaderMap, sleep_s: u64) {
     headers.insert("x-sleep-seconds", sleep_s.to_string().parse().unwrap());
 }
 
+fn insert_wake_at_header(headers: &mut HeaderMap, wake_at: DateTime<Utc>) {
+    headers.insert(
+        "x-wake-at",
+        crate::schedule::format_wake_at_slot(wake_at)
+            .parse()
+            .unwrap(),
+    );
+}
+
+fn insert_pico_headers(
+    headers: &mut HeaderMap,
+    sleep_s: Option<u64>,
+    wake_at: Option<DateTime<Utc>>,
+) {
+    if let Some(sleep_s) = sleep_s {
+        insert_sleep_header(headers, sleep_s);
+    }
+    if let Some(wake_at) = wake_at {
+        insert_wake_at_header(headers, wake_at);
+    }
+}
+
 fn not_modified(etag: &str, sleep_s: Option<u64>) -> Response {
     let mut headers = HeaderMap::new();
     headers.insert(header::ETAG, etag.parse().unwrap());
     headers.insert("x-frame-checksum", etag.parse().unwrap());
-    if let Some(sleep_s) = sleep_s {
-        insert_sleep_header(&mut headers, sleep_s);
-    }
+    insert_pico_headers(&mut headers, sleep_s, None);
     (StatusCode::NOT_MODIFIED, headers).into_response()
 }
 
-fn no_content(etag: &str, sleep_s: u64) -> Response {
+fn no_content(etag: &str, sleep_s: u64, wake_at: Option<DateTime<Utc>>) -> Response {
     let mut headers = HeaderMap::new();
     headers.insert(header::ETAG, etag.parse().unwrap());
     headers.insert("x-frame-checksum", etag.parse().unwrap());
-    insert_sleep_header(&mut headers, sleep_s);
+    insert_pico_headers(&mut headers, Some(sleep_s), wake_at);
     (StatusCode::NO_CONTENT, headers).into_response()
 }
 
@@ -690,14 +729,13 @@ fn binary(
     etag: &str,
     filename: &str,
     sleep_s: Option<u64>,
+    wake_at: Option<DateTime<Utc>>,
 ) -> Response {
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
     headers.insert(header::ETAG, etag.parse().unwrap());
     headers.insert("x-frame-checksum", etag.parse().unwrap());
-    if let Some(sleep_s) = sleep_s {
-        insert_sleep_header(&mut headers, sleep_s);
-    }
+    insert_pico_headers(&mut headers, sleep_s, wake_at);
     headers.insert(
         header::CONTENT_DISPOSITION,
         format!("inline; filename=\"{filename}\"").parse().unwrap(),
