@@ -29,6 +29,7 @@ pub fn upcoming_events(birthdays: &[Birthday], today: NaiveDate) -> Vec<Calendar
             date: next.format("%Y-%m-%d").to_string(),
             birthday: true,
             school: false,
+            recurring: false,
         });
     }
     out

@@ -784,6 +784,7 @@ fn school_hours_event(
         date: day.date.clone(),
         birthday: false,
         school: true,
+        recurring: false,
     }
 }
 
