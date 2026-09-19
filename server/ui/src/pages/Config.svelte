@@ -278,7 +278,7 @@
                 class="field w-32"
                 name="battery_mah"
                 type="number"
-                min="1"
+                min="100"
                 step="100"
                 bind:value={batteryMah}
               />
