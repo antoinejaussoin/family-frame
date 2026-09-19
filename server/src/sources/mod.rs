@@ -12,6 +12,7 @@ use tracing::warn;
 use crate::config::Config;
 use crate::model::Dashboard;
 
+pub mod bins;
 pub mod birthdays;
 pub mod cache;
 pub mod calendar;
@@ -149,6 +150,7 @@ pub fn all_sources() -> Vec<Box<dyn DataSource>> {
         Box::new(todoist::TodoistSource),
         Box::new(meross::MerossSource),
         Box::new(calendar::IcsSource),
+        Box::new(bins::BinsSource),
         Box::new(weather::WeatherSource),
         Box::new(tfl::TflSource),
         Box::new(jokes::JokesSource),
@@ -250,6 +252,7 @@ mod tests {
                 "todoist",
                 "meross",
                 "calendar",
+                "bins",
                 "weather",
                 "tfl",
                 "jokes",
@@ -271,7 +274,14 @@ mod tests {
         ids.sort();
         assert_eq!(
             ids,
-            ["birthdays", "calendar", "meross", "pronote", "todoist"]
+            [
+                "bins",
+                "birthdays",
+                "calendar",
+                "meross",
+                "pronote",
+                "todoist"
+            ]
         );
     }
 
@@ -281,6 +291,7 @@ mod tests {
         cfg.fake_private = true;
         cfg.todoist.token = "secret".into();
         cfg.sources.ics_urls = vec!["https://example.invalid/family.ics".into()];
+        cfg.sources.bins.uprn = "100022658374".into();
         cfg.meross.email = "a@b.c".into();
         cfg.meross.password = "pw".into();
         cfg.pronote.url = "https://example.invalid/pronote".into();

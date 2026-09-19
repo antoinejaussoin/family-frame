@@ -1,0 +1,11 @@
+{
+  "uprn": "100022658374",
+  "council": "hacs_wandsworth_gov_uk",
+  "cached": false,
+  "collections": [
+    { "date": "2026-09-23", "type": "Food waste", "icon": "mdi:food" },
+    { "date": "2026-09-23", "type": "Recycling", "icon": "mdi:recycling" },
+    { "date": "2026-09-23", "type": "Rubbish/Garden waste", "icon": "mdi:trash-can" },
+    { "date": "2026-09-23", "type": "Small electrical items", "icon": "mdi:blender" }
+  ]
+}

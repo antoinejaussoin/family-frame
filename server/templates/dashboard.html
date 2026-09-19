@@ -185,7 +185,7 @@
         {% if events_today %}
         <ol>
           {% for ev in events_today %}
-          <li{% if ev.birthday %} class="birthday"{% elif ev.school %} class="school-day"{% elif ev.all_day %} class="all-day"{% elif not ev.recurring %} class="one-off"{% endif %}>
+          <li{% if ev.birthday %} class="birthday"{% elif ev.school %} class="school-day"{% elif ev.bin %} class="bin-day"{% elif ev.all_day %} class="all-day"{% elif not ev.recurring %} class="one-off"{% endif %}>
             <span class="when">{% if ev.birthday %}Birthday{% elif ev.all_day %}All day{% else %}{{ ev.start }}{% endif %}</span>
             <span class="what">
               {% if ev.birthday %}
@@ -246,7 +246,7 @@
         {% if events_coming %}
         <ol>
           {% for ev in events_coming %}
-          <li{% if ev.birthday %} class="birthday"{% elif ev.school %} class="school-day"{% elif ev.all_day %} class="all-day"{% elif not ev.recurring %} class="one-off"{% endif %}>
+          <li{% if ev.birthday %} class="birthday"{% elif ev.school %} class="school-day"{% elif ev.bin %} class="bin-day"{% elif ev.all_day %} class="all-day"{% elif not ev.recurring %} class="one-off"{% endif %}>
             <span class="when">{{ ev.day_label }}{% if ev.start %} {{ ev.start }}{% endif %}</span>
             <span class="what">
               {% if ev.birthday %}

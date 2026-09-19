@@ -240,6 +240,13 @@ pub struct CalendarSourceConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+pub struct BinsSourceConfig {
+    /// Wandsworth Unique Property Reference Number, or a My Property URL.
+    pub uprn: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct BirthdaysSourceConfig {
     pub people: Vec<Birthday>,
 }
@@ -273,6 +280,7 @@ pub struct SourcesConfig {
     /// Legacy `[sources].ics_urls`. Prefer `[sources.calendar].ics_urls`.
     pub ics_urls: Vec<String>,
     pub calendar: Option<CalendarSourceConfig>,
+    pub bins: BinsSourceConfig,
     pub birthdays: Option<BirthdaysSourceConfig>,
     pub todoist: Option<TodoistConfig>,
     pub meross: Option<MerossConfig>,
@@ -367,6 +375,14 @@ impl Default for CalendarSourceConfig {
     }
 }
 
+impl Default for BinsSourceConfig {
+    fn default() -> Self {
+        Self {
+            uprn: String::new(),
+        }
+    }
+}
+
 impl Default for BirthdaysSourceConfig {
     fn default() -> Self {
         Self { people: Vec::new() }
@@ -393,6 +409,7 @@ impl Default for SourcesConfig {
         Self {
             ics_urls: Vec::new(),
             calendar: None,
+            bins: BinsSourceConfig::default(),
             birthdays: None,
             todoist: None,
             meross: None,
@@ -473,6 +490,11 @@ pub struct PublicCalendar {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct PublicBins {
+    pub uprn: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct PublicTodoist {
     pub token: String,
     pub project: String,
@@ -501,6 +523,7 @@ pub struct PublicSettings {
     pub family_name: String,
     pub battery_mah: u32,
     pub calendar: PublicCalendar,
+    pub bins: PublicBins,
     pub birthdays: Vec<PublicBirthday>,
     pub todoist: PublicTodoist,
     pub weather: PublicWeather,
@@ -534,6 +557,7 @@ pub struct SettingsPatch {
     pub timezone: Option<String>,
     pub battery_mah: Option<u32>,
     pub calendar: Option<CalendarPatch>,
+    pub bins: Option<BinsPatch>,
     pub birthdays: Option<Vec<PublicBirthday>>,
     pub todoist: Option<TodoistPatch>,
     pub weather: Option<WeatherPatch>,
@@ -542,6 +566,11 @@ pub struct SettingsPatch {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct CalendarPatch {
     pub ics_urls: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct BinsPatch {
+    pub uprn: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -561,6 +590,7 @@ impl SettingsPatch {
         self.family_name.is_some()
             || self.timezone.is_some()
             || self.calendar.is_some()
+            || self.bins.is_some()
             || self.birthdays.is_some()
             || self.todoist.is_some()
             || self.weather.is_some()
@@ -732,6 +762,9 @@ impl Config {
             calendar: PublicCalendar {
                 ics_urls: self.sources.ics_urls.clone(),
             },
+            bins: PublicBins {
+                uprn: self.sources.bins.uprn.clone(),
+            },
             birthdays: self
                 .birthdays
                 .iter()
@@ -817,6 +850,11 @@ impl Config {
                 let urls = normalize_ics_urls(urls)?;
                 self.sources.ics_urls = urls.clone();
                 self.sources.calendar = Some(CalendarSourceConfig { ics_urls: urls });
+            }
+        }
+        if let Some(bins) = &patch.bins {
+            if let Some(uprn) = &bins.uprn {
+                self.sources.bins.uprn = normalize_uprn(uprn)?;
             }
         }
         if let Some(people) = &patch.birthdays {
@@ -957,6 +995,10 @@ impl Config {
 
     pub fn weather_enabled(&self) -> bool {
         !self.weather.location_id.trim().is_empty()
+    }
+
+    pub fn bins_enabled(&self) -> bool {
+        !self.sources.bins.uprn.trim().is_empty()
     }
 
     pub fn pronote_enabled(&self) -> bool {
@@ -1150,6 +1192,12 @@ fn persist_household_sources(doc: &mut DocumentMut, cfg: &Config) {
         "location_id",
         Value::from(cfg.weather.location_id.as_str()),
     );
+    write_source_value(
+        sources,
+        "bins",
+        "uprn",
+        Value::from(cfg.sources.bins.uprn.as_str()),
+    );
 }
 
 fn write_source_value(sources: &mut toml_edit::Table, table: &str, key: &str, value: Value) {
@@ -1197,6 +1245,28 @@ fn normalize_ics_urls(urls: &[String]) -> Result<Vec<String>> {
         }
     }
     Ok(out)
+}
+
+/// Digits, or a Wandsworth My Property URL containing `UPRN=`.
+pub fn normalize_uprn(raw: &str) -> Result<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(String::new());
+    }
+    if let Some(idx) = raw.to_ascii_uppercase().find("UPRN=") {
+        let digits: String = raw[idx + 5..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if !digits.is_empty() {
+            return Ok(digits);
+        }
+    }
+    let digits: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
+    if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+        return Ok(digits);
+    }
+    bail!("UPRN should be digits, or a Wandsworth My Property URL");
 }
 
 fn normalize_weather_location_id(raw: &str) -> String {
@@ -2249,6 +2319,11 @@ password = "hunter2"
             weather: Some(WeatherPatch {
                 location_id: Some("https://www.bbc.co.uk/weather/2643743?day=1".into()),
             }),
+            bins: Some(BinsPatch {
+                uprn: Some(
+                    "https://www.wandsworth.gov.uk/my-property/?UPRN=100022658374&propertyidentified=Select".into(),
+                ),
+            }),
             ..Default::default()
         })
         .unwrap();
@@ -2264,8 +2339,11 @@ password = "hunter2"
         assert!(text.contains("[sources.birthdays]"));
         assert!(text.contains("[sources.todoist]"));
         assert!(text.contains("[sources.weather]"));
+        assert!(text.contains("[sources.bins]"));
         assert!(text.contains("tok_123"));
         assert!(text.contains("2643743"));
+        assert!(text.contains("100022658374"));
+        assert!(!text.contains("propertyidentified"));
         assert!(!text.contains("?day=1"));
         assert!(!text.contains("birthdays = ["));
 
@@ -2285,6 +2363,7 @@ password = "hunter2"
         assert_eq!(reloaded.todoist.token, "tok_123");
         assert_eq!(reloaded.todoist.project, "Chores");
         assert_eq!(reloaded.weather.location_id, "2643743");
+        assert_eq!(reloaded.sources.bins.uprn, "100022658374");
         assert_eq!(reloaded.meross.password, "hunter2");
 
         let public = reloaded.public_settings(Utc::now());
@@ -2294,6 +2373,7 @@ password = "hunter2"
         assert_eq!(public.birthdays[0].dob, "2018-03-15");
         assert_eq!(public.todoist.token, "tok_123");
         assert_eq!(public.weather.location_id, "2643743");
+        assert_eq!(public.bins.uprn, "100022658374");
     }
 
     #[test]
@@ -2317,6 +2397,21 @@ password = "hunter2"
             })
             .unwrap_err();
         assert!(url_err.to_string().contains("webcal"));
+    }
+
+    #[test]
+    fn normalize_uprn_from_digits_or_url() {
+        assert_eq!(normalize_uprn("100022658374").unwrap(), "100022658374");
+        assert_eq!(normalize_uprn(" 100022658374 ").unwrap(), "100022658374");
+        assert_eq!(
+            normalize_uprn(
+                "https://www.wandsworth.gov.uk/my-property/?UPRN=100022658374&propertyidentified=Select"
+            )
+            .unwrap(),
+            "100022658374"
+        );
+        assert!(normalize_uprn("").unwrap().is_empty());
+        assert!(normalize_uprn("SW11 5QA").is_err());
     }
 
     #[test]

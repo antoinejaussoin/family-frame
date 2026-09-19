@@ -855,6 +855,7 @@ fn school_hours_event(
         birthday: false,
         school: true,
         recurring: false,
+        bin: false,
     }
 }
 
