@@ -276,7 +276,7 @@ fn merge_events(dash: &mut Dashboard, events: Vec<crate::model::CalendarEvent>) 
 fn demo_events(today: chrono::NaiveDate) -> Vec<crate::model::CalendarEvent> {
     use crate::model::CalendarEvent;
 
-    let ev = |offset: i64, start: &str, title: &str, all_day: bool| {
+    let ev = |offset: i64, start: &str, title: &str, all_day: bool, recurring: bool| {
         let date = today + Duration::days(offset);
         CalendarEvent {
             start: if all_day { String::new() } else { start.into() },
@@ -287,20 +287,21 @@ fn demo_events(today: chrono::NaiveDate) -> Vec<crate::model::CalendarEvent> {
             date: date.format("%Y-%m-%d").to_string(),
             birthday: false,
             school: false,
+            recurring,
         }
     };
 
     vec![
-        ev(0, "08:15", "School run", false),
-        ev(0, "18:30", "Dinner at Sam’s", false),
-        ev(1, "", "Swim", true),
-        ev(3, "16:00", "Parents’ evening", false),
-        ev(5, "09:30", "Dentist", false),
-        ev(8, "18:00", "Cinema", false),
-        ev(12, "", "Half term", true),
-        ev(18, "10:00", "Football club", false),
-        ev(25, "19:00", "Book club", false),
-        ev(40, "15:00", "Granny’s birthday", false),
+        ev(0, "08:15", "School run", false, true),
+        ev(0, "18:30", "Dinner at Sam’s", false, false),
+        ev(1, "", "Swim", true, true),
+        ev(3, "16:00", "Parents’ evening", false, false),
+        ev(5, "09:30", "Dentist", false, false),
+        ev(8, "18:00", "Cinema", false, false),
+        ev(12, "", "Half term", true, false),
+        ev(18, "10:00", "Football club", false, true),
+        ev(25, "19:00", "Book club", false, true),
+        ev(40, "15:00", "Granny’s birthday", false, false),
     ]
 }
 

@@ -129,6 +129,7 @@ mod tests {
             date: "2026-09-18".into(),
             birthday: false,
             school: true,
+            recurring: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: "08:15".into(),
@@ -139,6 +140,7 @@ mod tests {
             date: "2026-09-21".into(),
             birthday: false,
             school: true,
+            recurring: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"school-day\""));
@@ -186,6 +188,7 @@ mod tests {
             date: "2026-09-14".into(),
             birthday: true,
             school: false,
+            recurring: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
@@ -196,6 +199,7 @@ mod tests {
             date: "2026-09-28".into(),
             birthday: true,
             school: false,
+            recurring: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"birthday\""));
@@ -204,6 +208,78 @@ mod tests {
         assert!(html.contains("Sam turns 11"));
         assert!(html.contains("Birthday"));
         assert!(html.contains("Mon 28"));
+        assert!(!html.contains("class=\"one-off\""));
+        assert!(!html.contains("class=\"all-day\""));
+    }
+
+    #[test]
+    fn dashboard_marks_all_day_calendar_rows() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.events_today.push(crate::model::CalendarEvent {
+            start: String::new(),
+            title: "Test eink".into(),
+            who: String::new(),
+            all_day: true,
+            day_label: "Today".into(),
+            date: "2026-09-18".into(),
+            birthday: false,
+            school: false,
+            recurring: false,
+        });
+        dash.events_coming.push(crate::model::CalendarEvent {
+            start: String::new(),
+            title: "Swim".into(),
+            who: String::new(),
+            all_day: true,
+            day_label: "Tomorrow".into(),
+            date: "2026-09-19".into(),
+            birthday: false,
+            school: false,
+            recurring: true,
+        });
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert_eq!(html.matches("class=\"all-day\"").count(), 2);
+        assert!(html.contains("All day"));
+        assert!(html.contains("Test eink"));
+        assert!(html.contains("Swim"));
+        assert!(!html.contains("class=\"one-off\""));
+        assert!(!html.contains("class=\"birthday\""));
+    }
+
+    #[test]
+    fn dashboard_marks_one_off_calendar_rows() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.events_today.push(crate::model::CalendarEvent {
+            start: "18:30".into(),
+            title: "Dinner at Sam’s".into(),
+            who: String::new(),
+            all_day: false,
+            day_label: "Today".into(),
+            date: "2026-09-18".into(),
+            birthday: false,
+            school: false,
+            recurring: false,
+        });
+        dash.events_coming.push(crate::model::CalendarEvent {
+            start: "15:15".into(),
+            title: "Pick-up Armand".into(),
+            who: String::new(),
+            all_day: false,
+            day_label: "Thu 24".into(),
+            date: "2026-09-24".into(),
+            birthday: false,
+            school: false,
+            recurring: true,
+        });
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("class=\"one-off\""));
+        assert!(html.contains("Dinner at Sam’s"));
+        assert!(html.contains("Pick-up Armand"));
+        assert!(!html.contains("class=\"birthday\""));
+        assert!(!html.contains("class=\"school-day\""));
+        assert_eq!(html.matches("class=\"one-off\"").count(), 1);
     }
 
     #[test]

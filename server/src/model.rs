@@ -17,6 +17,10 @@ pub struct CalendarEvent {
     /// Pronote school-day hours, merged into Today and the next school day.
     #[serde(default)]
     pub school: bool,
+    /// ICS series (`RRULE` / `RDATE` / `RECURRENCE-ID`). One-off family events
+    /// stay `false` so the time column can use a different fill.
+    #[serde(default)]
+    pub recurring: bool,
 }
 
 /// Today/week title column is ~570px (half of 1600 − padding − time − gaps)
@@ -1083,6 +1087,7 @@ mod tests {
             date: date.format("%Y-%m-%d").to_string(),
             birthday: false,
             school: false,
+            recurring: false,
         }
     }
 

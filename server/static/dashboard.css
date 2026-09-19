@@ -95,6 +95,12 @@
   /* Yellow-on-white type (Circle). Not a Spectra primary — Chrome paints
      gold, then Floyd–Steinberg mixes yellow+red so the word reads darker. */
   --yellow-ink: #ff9900;
+  /* Calendar time column. Not Spectra primaries — Chrome paints these, then
+     Floyd–Steinberg mixes them on the panel (pink→red+white, purple→red+
+     blue+black, school blue→blue+white). Recurring rows stay paper white. */
+  --when-one-off: #ffb6c1;
+  --when-birthday: #3d0066;
+  --when-school: #7373ff;
   /* Small UI: TRMNL at native px only. */
   --type-xs-family: "TRMNL12", sans-serif;
   --type-xs-size: 12px;
@@ -476,8 +482,49 @@ li {
 }
 
 .when {
-  flex: 0 0 160px;
+  flex: 0 0 170px;
   font-weight: 700;
+}
+
+.today .when,
+.coming .when {
+  box-sizing: border-box;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.today .when {
+  margin: -11px 0;
+}
+
+.coming .when {
+  margin: -4px 0;
+}
+
+.today li.all-day .when,
+.coming li.all-day .when {
+  background: var(--yellow);
+  color: var(--black);
+}
+
+.today li.one-off .when,
+.coming li.one-off .when {
+  background: var(--when-one-off);
+  color: var(--black);
+}
+
+.today li.birthday .when,
+.coming li.birthday .when {
+  background: var(--when-birthday);
+  color: var(--white);
+}
+
+.today li.school-day .when,
+.coming li.school-day .when {
+  background: var(--when-school);
+  color: var(--black);
 }
 
 .today .when {
@@ -489,7 +536,7 @@ li {
 .what { flex: 1 1 auto; min-width: 0; }
 
 .coming .when {
-  flex-basis: 186px;
+  flex-basis: 196px;
   font-family: var(--type-md-family);
   font-size: var(--type-md-size);
   line-height: 21px;
@@ -839,8 +886,3 @@ li {
   margin: 12px 0 0;
 }
 
-.today li:first-child .when {
-  background: var(--yellow);
-  color: var(--black);
-  padding: 2px 8px;
-}

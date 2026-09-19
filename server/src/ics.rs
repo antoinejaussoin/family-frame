@@ -68,7 +68,13 @@ pub fn parse_events(
             if overridden.contains(&occurrence_key(local, all_day)) {
                 continue;
             }
-            out.push(calendar_event(title, local, all_day, from));
+            out.push(calendar_event(
+                title,
+                local,
+                all_day,
+                from,
+                is_recurring(event),
+            ));
         }
     }
 
@@ -89,7 +95,13 @@ pub fn parse_events(
             if local < start || local >= end {
                 continue;
             }
-            out.push(calendar_event(title, local, all_day, from));
+            out.push(calendar_event(
+                title,
+                local,
+                all_day,
+                from,
+                is_recurring(event),
+            ));
         }
     }
 
@@ -107,6 +119,7 @@ fn calendar_event(
     local: DateTime<Tz>,
     all_day: bool,
     from: NaiveDate,
+    recurring: bool,
 ) -> CalendarEvent {
     CalendarEvent {
         start: if all_day {
@@ -121,7 +134,14 @@ fn calendar_event(
         date: local.date_naive().format("%Y-%m-%d").to_string(),
         birthday: false,
         school: false,
+        recurring,
     }
+}
+
+fn is_recurring(event: &Event) -> bool {
+    event.property_value("RRULE").is_some()
+        || !properties_named(event, "RDATE").is_empty()
+        || event.get_recurrence_id().is_some()
 }
 
 fn occurrence_key(local: DateTime<Tz>, all_day: bool) -> i64 {
@@ -374,8 +394,10 @@ END:VCALENDAR
         let events = parse_events(SAMPLE, tz, day, 7).unwrap();
         assert_eq!(events[0].title, "School run");
         assert_eq!(events[0].start, "09:00");
+        assert!(!events[0].recurring);
         assert_eq!(events[1].title, "Swim");
         assert!(events[1].all_day);
+        assert!(!events[1].recurring);
     }
 
     #[test]
@@ -430,6 +452,7 @@ END:VCALENDAR
         assert_eq!(events[0].start, "15:15");
         assert_eq!(events[0].date, "2026-09-17");
         assert_eq!(events[0].day_label, "Today");
+        assert!(events[0].recurring);
     }
 
     #[test]
@@ -484,6 +507,7 @@ END:VCALENDAR
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].title, "Pick-up moved");
         assert_eq!(events[0].start, "16:00");
+        assert!(events[0].recurring);
     }
 
     #[test]
