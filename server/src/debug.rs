@@ -76,6 +76,7 @@ pub struct DebugPage {
     pub power_label: String,
     pub eta_text: String,
     pub eta_kind: String,
+    pub pico_drift: f64,
     pub pico_drift_label: String,
     pub graph_svg: String,
     pub debug_dir_bytes: u64,
@@ -239,6 +240,7 @@ pub fn page_from_polls_full(
             power_label: String::new(),
             eta_text: "No Pico polls yet.".into(),
             eta_kind: "empty".into(),
+            pico_drift: 0.0,
             pico_drift_label: String::new(),
             graph_svg: String::new(),
             debug_dir_bytes: dir_bytes,
@@ -278,6 +280,7 @@ pub fn page_from_polls_full(
         },
         eta_text: battery.eta_text.clone(),
         eta_kind: battery.eta_kind.clone(),
+        pico_drift,
         pico_drift_label: pico_drift_label(pico_drift),
         graph_svg: graph_svg(polls, extras.cell, battery.eta_seconds),
         debug_dir_bytes: dir_bytes,
@@ -364,46 +367,81 @@ fn pico_drift_label(drift: f64) -> String {
 fn format_until(then: DateTime<Utc>, now: DateTime<Utc>) -> String {
     let secs = then.signed_duration_since(now).num_seconds();
     if secs >= 0 {
-        if secs < 60 {
-            "any moment".into()
-        } else if secs < 3_600 {
-            format!("in {} min", secs / 60)
-        } else if secs < 86_400 {
-            let h = secs / 3_600;
-            format!("in {h} hour{}", if h == 1 { "" } else { "s" })
-        } else {
-            let d = secs / 86_400;
-            format!("in {d} day{}", if d == 1 { "" } else { "s" })
-        }
+        format_human_span(secs, HumanTone::Until)
     } else {
-        let ago = -secs;
-        if ago < 60 {
-            "overdue".into()
-        } else if ago < 3_600 {
-            format!("{} min overdue", ago / 60)
-        } else if ago < 86_400 {
-            let h = ago / 3_600;
-            format!("{h} hour{} overdue", if h == 1 { "" } else { "s" })
-        } else {
-            let d = ago / 86_400;
-            format!("{d} day{} overdue", if d == 1 { "" } else { "s" })
-        }
+        format_human_span(-secs, HumanTone::Overdue)
     }
 }
 
 fn format_rel(then: DateTime<Utc>, now: DateTime<Utc>) -> String {
-    let secs = now.signed_duration_since(then).num_seconds().max(0);
+    format_human_span(
+        now.signed_duration_since(then).num_seconds().max(0),
+        HumanTone::Ago,
+    )
+}
+
+#[derive(Clone, Copy)]
+enum HumanTone {
+    Until,
+    Overdue,
+    Ago,
+}
+
+struct HumanUnit {
+    n: i64,
+    word: &'static str,
+    about: bool,
+}
+
+/// Nearest minute / hour / day so 1 h 59 m reads as “about 2 hours”, not “1 hour”.
+fn rounded_human_unit(secs: i64) -> HumanUnit {
+    if secs < 50 * 60 {
+        let n = ((secs as f64) / 60.0).round().max(1.0) as i64;
+        return HumanUnit {
+            n,
+            word: "min",
+            about: false,
+        };
+    }
+    if secs < 36 * 3_600 {
+        let raw = secs as f64 / 3_600.0;
+        let n = raw.round().max(1.0) as i64;
+        let floored = secs / 3_600;
+        return HumanUnit {
+            n,
+            word: if n == 1 { "hour" } else { "hours" },
+            about: n != floored,
+        };
+    }
+    let raw = secs as f64 / 86_400.0;
+    let n = raw.round().max(1.0) as i64;
+    let floored = secs / 86_400;
+    HumanUnit {
+        n,
+        word: if n == 1 { "day" } else { "days" },
+        about: n != floored,
+    }
+}
+
+fn format_human_span(secs: i64, tone: HumanTone) -> String {
+    let secs = secs.max(0);
     if secs < 60 {
-        "just now".into()
-    } else if secs < 3_600 {
-        let m = secs / 60;
-        format!("{m} min ago")
-    } else if secs < 86_400 {
-        let h = secs / 3_600;
-        format!("{h} hour{} ago", if h == 1 { "" } else { "s" })
-    } else {
-        let d = secs / 86_400;
-        format!("{d} day{} ago", if d == 1 { "" } else { "s" })
+        return match tone {
+            HumanTone::Until => "any moment".into(),
+            HumanTone::Overdue => "overdue".into(),
+            HumanTone::Ago => "just now".into(),
+        };
+    }
+    let unit = rounded_human_unit(secs);
+    let n = unit.n;
+    let word = unit.word;
+    match tone {
+        HumanTone::Until if unit.about => format!("in about {n} {word}"),
+        HumanTone::Until => format!("in {n} {word}"),
+        HumanTone::Overdue if unit.about => format!("about {n} {word} overdue"),
+        HumanTone::Overdue => format!("{n} {word} overdue"),
+        HumanTone::Ago if unit.about => format!("about {n} {word} ago"),
+        HumanTone::Ago => format!("{n} {word} ago"),
     }
 }
 
@@ -749,6 +787,7 @@ mod tests {
             "got {}",
             page.next_refresh
         );
+        assert_eq!(page.pico_drift, 0.03);
         assert_eq!(page.pico_drift_label, "3.0% slow");
     }
 
@@ -766,6 +805,22 @@ mod tests {
         assert_eq!(
             format_until(now + Duration::hours(2), now).as_str(),
             "in 2 hours"
+        );
+        assert_eq!(
+            format_until(now + Duration::hours(1) + Duration::minutes(59), now).as_str(),
+            "in about 2 hours"
+        );
+        assert_eq!(
+            format_rel(now - Duration::hours(1) - Duration::minutes(59), now).as_str(),
+            "about 2 hours ago"
+        );
+        assert_eq!(
+            format_until(now + Duration::hours(25) + Duration::minutes(50), now).as_str(),
+            "in about 26 hours"
+        );
+        assert_eq!(
+            format_until(now + Duration::hours(44), now).as_str(),
+            "in about 2 days"
         );
         assert_eq!(
             format_until(now - Duration::minutes(5), now).as_str(),

@@ -628,6 +628,195 @@ select {
   accent-color: var(--color-terracotta);
 }
 
+.debug-stats {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .debug-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .debug-stats-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.debug-stat {
+  padding: 0.95rem 1rem;
+  border-radius: 1.2rem;
+  background: rgba(243, 230, 211, 0.55);
+}
+
+.debug-stat-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.debug-stat-value {
+  margin-top: 0.2rem;
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-stat-hint {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+
+.debug-meter {
+  height: 0.7rem;
+  border-radius: 999px;
+  background: rgba(58, 42, 36, 0.08);
+  overflow: hidden;
+}
+
+.debug-meter > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4f8f68, #7eb089);
+}
+
+.debug-meter.low > i {
+  background: linear-gradient(90deg, #d4654a, #efc15a);
+}
+
+.debug-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.22rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.debug-pill-low {
+  background: #fff1ea;
+  color: #b84e36;
+}
+
+.debug-pill-ok {
+  background: #fff4d2;
+  color: #8a6a1a;
+}
+
+.debug-pill-high {
+  background: #e5f3ea;
+  color: #2f6b46;
+}
+
+.debug-pill-usb {
+  background: #e5f3ea;
+  color: #2f6b46;
+}
+
+.debug-pill-batt {
+  background: rgba(243, 230, 211, 0.95);
+  color: var(--color-ink);
+}
+
+.week-bars {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.week-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.week-bar-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 100%;
+  height: 4.2rem;
+  padding: 0.25rem;
+  border-radius: 0.7rem;
+  background: rgba(58, 42, 36, 0.06);
+}
+
+.week-bar-col > i {
+  display: block;
+  width: 100%;
+  min-height: 0.35rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(180deg, #efc15a, #d4654a);
+}
+
+.week-bar-n {
+  font-size: 0.8rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-bar-d {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.drift-gauge-wrap {
+  flex: 0 0 7rem;
+  width: 7rem;
+}
+
+.drift-gauge {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.drift-needle-neg {
+  stroke: #b84e36;
+}
+
+.drift-needle-pos {
+  stroke: #4f8f68;
+}
+
+.drift-needle-zero {
+  stroke: var(--color-ink);
+}
+
+.drift-gauge-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -0.1rem;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.drift-gauge-scale .neg {
+  color: #b84e36;
+}
+
+.drift-gauge-scale .pos {
+  color: #2f6b46;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .polaroid,
   .choice,

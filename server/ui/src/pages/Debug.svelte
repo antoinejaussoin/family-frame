@@ -71,6 +71,12 @@
     empty: 'text-muted',
   }
 
+  const confClass = {
+    low: 'debug-pill-low',
+    ok: 'debug-pill-ok',
+    high: 'debug-pill-high',
+  }
+
   const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
   let simWakes = $state(null)
 
@@ -78,44 +84,114 @@
   const scheduleWakes = $derived(bat?.wakes_per_day_avg ?? 12)
   const sliderWakes = $derived(simWakes ?? scheduleWakes)
   const sliderMax = $derived(Math.max(48, Math.ceil(scheduleWakes)))
+  const weekPeak = $derived(Math.max(1, ...(bat?.wakes_by_day ?? [1])))
+  const soc = $derived(page?.last_pct ?? bat?.soc_pct ?? 0)
+  const socLow = $derived(soc < 25)
+  const simDailyMah = $derived(bat ? simDaily(bat, sliderWakes) : 0)
+
+  function fmtInt(n) {
+    if (n == null || Number.isNaN(n)) return '—'
+    return Math.round(n).toLocaleString('en-GB')
+  }
 
   function fmtMah(n) {
     if (n == null || Number.isNaN(n)) return '—'
-    if (Math.abs(n) >= 100) return `${Math.round(n)}`
+    if (Math.abs(n) >= 100) return Math.round(n).toLocaleString('en-GB')
     return n.toFixed(1)
   }
 
   function fmtWakes(n) {
     if (n == null) return '—'
-    return Number.isInteger(n) || Math.abs(n - Math.round(n)) < 0.05 ? String(Math.round(n)) : n.toFixed(1)
+    return Number.isInteger(n) || Math.abs(n - Math.round(n)) < 0.05
+      ? String(Math.round(n))
+      : n.toFixed(1)
   }
 
-  function fmtEtaDays(days) {
-    if (!Number.isFinite(days) || days <= 0) return 'Battery looks empty.'
-    const secs = Math.round(days * 86400)
-    const d = Math.floor(secs / 86400)
-    const h = Math.floor((secs % 86400) / 3600)
-    if (d > 0) {
-      return `About ${d} day${d === 1 ? '' : 's'} ${h} hour${h === 1 ? '' : 's'}`
+  function fmtEtaShort(secs) {
+    if (!Number.isFinite(secs) || secs <= 0) return '—'
+    if (secs < 50 * 60) {
+      const m = Math.max(1, Math.round(secs / 60))
+      return `${m} min`
     }
-    const m = Math.floor((secs % 3600) / 60)
-    if (h > 0) return `About ${h} hour${h === 1 ? '' : 's'} ${m} min`
-    return `About ${m} min`
+    if (secs < 36 * 3600) {
+      const h = Math.max(1, Math.round(secs / 3600))
+      return `${h} hour${h === 1 ? '' : 's'}`
+    }
+    const d = Math.max(1, Math.round(secs / 86400))
+    return `${d} day${d === 1 ? '' : 's'}`
   }
 
-  function simEtaText(battery, wakesPerDay) {
-    if (!battery) return ''
-    if (battery.on_usb) return battery.eta_text
-    const daily = battery.idle_ma * 24 + wakesPerDay * battery.cycle_mah
-    if (daily <= 0.05) return 'Battery is not draining in recent samples.'
-    if (battery.remaining_mah <= 1) return 'Battery looks empty.'
-    return `${fmtEtaDays(battery.remaining_mah / daily)} at ${fmtWakes(wakesPerDay)} wake-ups/day.`
+  function lifeLabel(kind, secs) {
+    if (kind === 'usb') return 'On USB'
+    if (kind === 'dead') return 'Empty'
+    if (kind === 'stable') return 'Holding'
+    if (kind === 'empty') return '—'
+    return fmtEtaShort(secs)
   }
 
-  function weekLabel(days) {
-    if (!days?.length) return ''
-    return days.map((n, i) => `${WEEK[i]} ${fmtWakes(n)}`).join(' · ')
+  function lifeHint(kind, fallback) {
+    if (kind === 'usb') return 'discharge estimate paused'
+    if (kind === 'dead') return 'battery looks empty'
+    if (kind === 'stable') return 'not draining in recent samples'
+    return fallback
   }
+
+  function simDaily(battery, wakesPerDay) {
+    return battery.idle_ma * 24 + wakesPerDay * battery.cycle_mah
+  }
+
+  function simLifeSecs(mah, daily) {
+    if (!Number.isFinite(mah) || !Number.isFinite(daily) || mah <= 1 || daily <= 0.05) return 0
+    return Math.round((mah / daily) * 86400)
+  }
+
+  function fmtSleep(s) {
+    if (!s) return ''
+    if (s < 90) return `${s}s`
+    if (s < 3600) return `${Math.round(s / 60)} min`
+    const h = s / 3600
+    if (Math.abs(h - Math.round(h)) < 0.05) return `${Math.round(h)} h`
+    return `${h.toFixed(1)} h`
+  }
+
+  const DRIFT_SPAN_PCT = 5
+
+  function driftPct(p) {
+    if (p && typeof p.pico_drift === 'number' && Number.isFinite(p.pico_drift)) {
+      return p.pico_drift * 100
+    }
+    const label = p?.pico_drift_label || ''
+    const m = label.match(/([\d.]+)%\s+(slow|fast)/i)
+    if (!m) return 0
+    const n = Number(m[1])
+    return m[2].toLowerCase() === 'slow' ? n : -n
+  }
+
+  function driftWord(pct) {
+    if (Math.abs(pct) < 0.05) return 'on time'
+    return pct > 0 ? 'slow' : 'fast'
+  }
+
+  function driftNeedle(pct) {
+    const t = Math.max(-1, Math.min(1, pct / DRIFT_SPAN_PCT))
+    // Slow (positive) on the left, fast (negative) on the right.
+    const theta = ((t + 1) / 2) * Math.PI
+    const cx = 60
+    const cy = 58
+    const r = 40
+    return {
+      t,
+      x2: cx + r * Math.cos(theta),
+      y2: cy - r * Math.sin(theta),
+    }
+  }
+
+  const drift = $derived(driftPct(page))
+  const driftHint = $derived(driftWord(drift))
+  const needle = $derived(driftNeedle(drift))
+  const driftTone = $derived(
+    Math.abs(drift) < 0.05 ? 'text-muted' : drift > 0 ? 'text-sage' : 'text-terracotta-dark',
+  )
 </script>
 
 {#snippet pager()}
@@ -181,115 +257,242 @@
   {#if loading && !page}
     <p class="font-semibold text-muted">Loading Pico history…</p>
   {:else if page?.has_polls}
-    <section class="card mb-5 p-5 sm:p-6" aria-label="Current battery">
+    <section class="card mb-5 p-5 sm:p-6" aria-label="Battery">
+      <div class="mb-4 flex items-start justify-between gap-3">
+        <h2 class="text-xs font-extrabold tracking-wide text-muted uppercase">Battery</h2>
+        {#if bat?.confidence}
+          <span class="debug-pill {confClass[bat.confidence] || 'debug-pill-ok'}">
+            {bat.confidence} confidence
+          </span>
+        {/if}
+      </div>
+
       <p class="font-display text-7xl leading-none tracking-tight text-ink">
-        {page.last_pct}<span class="text-3xl text-muted">%</span>
+        {soc}<span class="text-3xl text-muted">%</span>
       </p>
-      <p class="mt-1 text-base font-semibold text-muted">
-        {page.last_mv} mV
+      <div
+        class="debug-meter mt-4 {socLow ? 'low' : ''}"
+        role="meter"
+        aria-label="Battery charge"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={soc}
+      >
+        <i style="width: {soc}%"></i>
+      </div>
+      <p class="mt-3 text-lg font-semibold tabular-nums text-ink">
+        {fmtMah(bat?.remaining_mah)} mAh
+        <span class="text-muted">of {fmtInt(bat?.capacity_mah)} mAh</span>
+      </p>
+      <p class="mt-0.5 text-sm font-semibold text-muted">
+        {fmtInt(page.last_mv)} mV
         {#if bat}
-          <span class="text-muted"> · Pico linear {bat.linear_pct}%</span>
+          <span> · Pico linear {bat.linear_pct}%</span>
         {/if}
       </p>
-      <dl class="mt-4 grid gap-3 text-sm">
-        <div>
-          <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Power</dt>
-          <dd class="mt-0.5 font-semibold">{page.power_label}</dd>
+
+      {#if bat}
+        <div class="debug-stats mt-5">
+          <div class="debug-stat">
+            <p class="debug-stat-label">From now</p>
+            <p class="debug-stat-value {etaClass[bat.eta_kind] || 'text-ink'}">
+              {lifeLabel(bat.eta_kind, bat.eta_seconds)}
+            </p>
+            <p class="debug-stat-hint">{lifeHint(bat.eta_kind, 'at this week’s schedule')}</p>
+          </div>
+          <div class="debug-stat">
+            <p class="debug-stat-label">From a full charge</p>
+            <p class="debug-stat-value {etaClass[bat.eta_kind] || 'text-ink'}">
+              {lifeLabel(bat.eta_kind, bat.full_eta_seconds)}
+            </p>
+            <p class="debug-stat-hint">{lifeHint(bat.eta_kind, 'if the pack were at 100%')}</p>
+          </div>
         </div>
-        <div>
-          <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Last seen</dt>
-          <dd class="mt-0.5 font-semibold">{page.last_seen} · {page.last_seen_rel}</dd>
+
+        <div class="debug-stats debug-stats-3 mt-3">
+          <div class="debug-stat">
+            <p class="debug-stat-label">Idle</p>
+            <p class="debug-stat-value">{bat.idle_ma.toFixed(2)} mA</p>
+            <p class="debug-stat-hint">{fmtMah(bat.idle_mah_per_day)} mAh/day doing nothing</p>
+          </div>
+          <div class="debug-stat">
+            <p class="debug-stat-label">Per wake</p>
+            <p class="debug-stat-value">{fmtMah(bat.cycle_mah)} mAh</p>
+            <p class="debug-stat-hint">
+              {#if bat.split_refresh}
+                {fmtMah(bat.wake_mah)} radio + {fmtMah(bat.refresh_mah)} when it paints
+              {:else}
+                radio and panel together
+              {/if}
+            </p>
+          </div>
+          <div class="debug-stat">
+            <p class="debug-stat-label">Daily use</p>
+            <p class="debug-stat-value">{fmtMah(bat.schedule_mah_per_day)} mAh</p>
+            <p class="debug-stat-hint">{fmtWakes(scheduleWakes)} wake-ups/day on average</p>
+          </div>
         </div>
-        <div>
-          <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Last poll</dt>
-          <dd class="mt-0.5 font-semibold">
-            {page.last_status_label} · wake {page.last_wake}{#if page.last_sleep_s}
-              {' · '}sleep {page.last_sleep_s}s{/if}
-          </dd>
+
+        {#if bat.wakes_by_day?.length}
+          <div class="week-bars mt-5" aria-label="Wake-ups by weekday">
+            {#each bat.wakes_by_day as n, i}
+              <div class="week-bar">
+                <div class="week-bar-col">
+                  <i style="height: {(n / weekPeak) * 100}%"></i>
+                </div>
+                <span class="week-bar-n">{fmtWakes(n)}</span>
+                <span class="week-bar-d">{WEEK[i]}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        <p class="mt-4 text-sm font-semibold text-muted">{bat.model_note}</p>
+      {/if}
+    </section>
+
+    {#if bat && !bat.on_usb}
+      <section class="card mb-5 p-5 sm:p-6" aria-label="Simulate wake-ups">
+        <h2 class="text-xs font-extrabold tracking-wide text-muted uppercase">Simulate</h2>
+        <label class="mt-3 block" for="wake-sim">
+          <span class="text-xs font-extrabold tracking-wide text-muted uppercase">
+            Wake-ups per day
+          </span>
+        </label>
+        <p class="mt-0.5 font-display text-3xl font-semibold tabular-nums tracking-tight">
+          {fmtWakes(sliderWakes)}
+        </p>
+        {#if Math.abs(sliderWakes - scheduleWakes) > 0.05}
+          <p class="text-sm font-semibold text-muted">Schedule is {fmtWakes(scheduleWakes)}</p>
+        {/if}
+        <input
+          id="wake-sim"
+          class="wake-sim"
+          type="range"
+          min="0.5"
+          max={sliderMax}
+          step="0.5"
+          value={sliderWakes}
+          oninput={(e) => {
+            simWakes = Number(e.currentTarget.value)
+          }}
+        />
+        <div class="debug-stats mt-4">
+          <div class="debug-stat">
+            <p class="debug-stat-label">From now</p>
+            <p class="debug-stat-value">{fmtEtaShort(simLifeSecs(bat.remaining_mah, simDailyMah))}</p>
+            <p class="debug-stat-hint">at {fmtWakes(sliderWakes)} wake-ups/day</p>
+          </div>
+          <div class="debug-stat">
+            <p class="debug-stat-label">From a full charge</p>
+            <p class="debug-stat-value">{fmtEtaShort(simLifeSecs(bat.capacity_mah, simDailyMah))}</p>
+            <p class="debug-stat-hint">{fmtMah(simDailyMah)} mAh/day in this simulation</p>
+          </div>
+        </div>
+      </section>
+    {/if}
+
+    <section class="card mb-5 p-5 sm:p-6" aria-label="Pico">
+      <h2 class="mb-4 text-xs font-extrabold tracking-wide text-muted uppercase">Pico</h2>
+      <div class="debug-stats">
+        <div class="debug-stat">
+          <p class="debug-stat-label">Last seen</p>
+          <p class="debug-stat-value">{page.last_seen_rel}</p>
+          <p class="debug-stat-hint">{page.last_seen}</p>
         </div>
         {#if page.has_next_refresh}
-          <div>
-            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Next refresh</dt>
-            <dd class="mt-0.5 font-semibold">{page.next_refresh} · {page.next_refresh_rel}</dd>
+          <div class="debug-stat">
+            <p class="debug-stat-label">Next refresh</p>
+            <p class="debug-stat-value">{page.next_refresh_rel}</p>
+            <p class="debug-stat-hint">{page.next_refresh}</p>
           </div>
         {/if}
-        {#if page.pico_drift_label}
+      </div>
+      <div class="debug-stat mt-3" aria-label="Pico timer drift">
+        <div class="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Pico drift</dt>
-            <dd class="mt-0.5 font-semibold">{page.pico_drift_label}</dd>
+            <p class="debug-stat-label">Pico timer</p>
+            <p class="debug-stat-value {driftTone}">
+              {Math.abs(drift) < 0.05 ? '0%' : `${Math.abs(drift).toFixed(1)}%`}
+            </p>
+            <p class="debug-stat-hint">{driftHint}</p>
           </div>
-        {/if}
-        <div>
-          <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Debug storage</dt>
-          <dd class="mt-0.5 font-semibold">{page.debug_dir_label}</dd>
+          <div class="drift-gauge-wrap">
+            <svg
+              class="drift-gauge"
+              viewBox="0 0 120 72"
+              role="meter"
+              aria-label="Pico timer drift"
+              aria-valuemin={-DRIFT_SPAN_PCT}
+              aria-valuemax={DRIFT_SPAN_PCT}
+              aria-valuenow={Number(drift.toFixed(2))}
+              aria-valuetext={Math.abs(drift) < 0.05 ? 'on time' : `${Math.abs(drift).toFixed(1)} percent ${driftHint}`}
+            >
+              <defs>
+                <linearGradient id="debug-drift-grad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0" stop-color="#4f8f68" />
+                  <stop offset="0.5" stop-color="#c4b8a8" />
+                  <stop offset="1" stop-color="#d4654a" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M 16 58 A 44 44 0 0 1 104 58"
+                fill="none"
+                stroke="rgba(58, 42, 36, 0.08)"
+                stroke-width="10"
+                stroke-linecap="round"
+              />
+              <path
+                d="M 16 58 A 44 44 0 0 1 104 58"
+                fill="none"
+                stroke="url(#debug-drift-grad)"
+                stroke-width="7"
+                stroke-linecap="round"
+              />
+              <line x1="60" y1="58" x2="60" y2="16" stroke="rgba(58, 42, 36, 0.18)" stroke-width="1.5" />
+              <line
+                x1="60"
+                y1="58"
+                x2={needle.x2}
+                y2={needle.y2}
+                class={needle.t > 0.02 ? 'drift-needle-pos' : needle.t < -0.02 ? 'drift-needle-neg' : 'drift-needle-zero'}
+                stroke-width="2.5"
+                stroke-linecap="round"
+              />
+              <circle cx="60" cy="58" r="3.6" fill="var(--color-ink)" />
+            </svg>
+            <div class="drift-gauge-scale">
+              <span class="pos">slow</span>
+              <span>0</span>
+              <span class="neg">fast</span>
+            </div>
+          </div>
         </div>
-      </dl>
-      {#if bat}
-        <dl class="mt-5 grid gap-3 text-sm sm:grid-cols-2">
-          <div>
-            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Remaining</dt>
-            <dd class="mt-0.5 font-semibold tabular-nums">{fmtMah(bat.remaining_mah)} mAh of {bat.capacity_mah}</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Idle</dt>
-            <dd class="mt-0.5 font-semibold tabular-nums">
-              {bat.idle_ma.toFixed(2)} mA · {fmtMah(bat.idle_mah_per_day)} mAh/day doing nothing
-            </dd>
-          </div>
-          <div>
-            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Per wake</dt>
-            <dd class="mt-0.5 font-semibold tabular-nums">
-              {fmtMah(bat.cycle_mah)} mAh
-              {#if bat.split_refresh}
-                <span class="text-muted">
-                  ({fmtMah(bat.wake_mah)} radio + {fmtMah(bat.refresh_mah)} extra when the panel paints)
-                </span>
-              {/if}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">This week</dt>
-            <dd class="mt-0.5 font-semibold">{weekLabel(bat.wakes_by_day)}</dd>
-          </div>
-        </dl>
-        <p class="mt-3 text-sm font-semibold text-muted">{bat.model_note}</p>
-        <p class="text-xs font-extrabold tracking-wide text-muted uppercase">
-          Confidence {bat.confidence}
-        </p>
-      {/if}
-      <p class="mt-4 text-base font-semibold {etaClass[page.eta_kind] || 'text-muted'}">
-        {page.eta_text}
-      </p>
-      {#if bat && !bat.on_usb}
-        <div class="mt-5">
-          <label class="block" for="wake-sim">
-            <span class="text-xs font-extrabold tracking-wide text-muted uppercase">
-              Simulate wake-ups per day
+      </div>
+      <div class="debug-stats debug-stats-3 mt-3">
+        <div class="debug-stat">
+          <p class="debug-stat-label">Power</p>
+          <p class="debug-stat-value">{page.power_label}</p>
+          <p class="debug-stat-hint">
+            <span class="debug-pill {page.last_usb ? 'debug-pill-usb' : 'debug-pill-batt'}">
+              {page.last_usb ? 'charging' : 'on pack'}
             </span>
-            <span class="mt-0.5 block text-sm font-semibold tabular-nums">
-              {fmtWakes(sliderWakes)}
-              {#if Math.abs(sliderWakes - scheduleWakes) > 0.05}
-                <span class="text-muted"> · schedule is {fmtWakes(scheduleWakes)}</span>
-              {/if}
-            </span>
-          </label>
-          <input
-            id="wake-sim"
-            class="wake-sim"
-            type="range"
-            min="0.5"
-            max={sliderMax}
-            step="0.5"
-            value={sliderWakes}
-            oninput={(e) => {
-              simWakes = Number(e.currentTarget.value)
-            }}
-          />
-          <p class="mt-2 text-base font-semibold text-ink">
-            {simEtaText(bat, sliderWakes)}
           </p>
         </div>
-      {/if}
+        <div class="debug-stat">
+          <p class="debug-stat-label">Last poll</p>
+          <p class="debug-stat-value">{page.last_status}</p>
+          <p class="debug-stat-hint">
+            {page.last_status_label} · {page.last_wake}{#if page.last_sleep_s}
+              {' · '}sleep {fmtSleep(page.last_sleep_s)}{/if}
+          </p>
+        </div>
+        <div class="debug-stat">
+          <p class="debug-stat-label">Storage</p>
+          <p class="debug-stat-value">{page.debug_dir_label}</p>
+          <p class="debug-stat-hint">debug log on disk</p>
+        </div>
+      </div>
       <button
         type="button"
         class="btn btn-ghost mt-5 text-terracotta-dark"
@@ -323,20 +526,20 @@
       <ol class="m-0 list-none p-0 {page.page_count > 1 ? 'mt-3' : ''}">
         {#each page.polls as p}
           <li class="border-t border-ink/10 py-4 first:border-t-0 first:pt-0">
-            <div class="mb-2.5 flex flex-wrap gap-x-3 gap-y-1 text-sm font-semibold text-muted">
+            <div class="mb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-semibold text-muted">
               <time class="font-extrabold text-ink">{p.when}</time>
               <span
-                class="tabular-nums {p.status === 200
-                  ? 'text-sage'
+                class="debug-pill {p.status === 200
+                  ? 'debug-pill-high'
                   : p.status === 204 || p.status === 304
-                    ? 'text-[#b45309]'
-                    : ''}"
+                    ? 'debug-pill-ok'
+                    : 'debug-pill-low'}"
               >
                 {p.status_label}
               </span>
-              <span>
-                {p.pct}% · {p.mv} mV · {p.usb ? 'USB' : 'battery'} · {p.wake}{#if p.sleep_s}
-                  {' · '}sleep {p.sleep_s}s{/if}
+              <span class="tabular-nums">
+                {p.pct}% · {fmtInt(p.mv)} mV · {p.usb ? 'USB' : 'battery'} · {p.wake}{#if p.sleep_s}
+                  {' · '}sleep {fmtSleep(p.sleep_s)}{/if}
               </span>
               {#if p.checksum_short}
                 <code class="text-xs">{p.checksum_short}</code>
