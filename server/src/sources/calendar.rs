@@ -241,6 +241,7 @@ mod tests {
             birthday: false,
             school: false,
             recurring: false,
+            bin: false,
         }
     }
 
