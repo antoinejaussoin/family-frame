@@ -72,7 +72,8 @@ go through that function so leftover height refills to-dos and history.
 ## What not to do
 
 - Do not fetch from `http.rs`, `frame.rs`, or the family SPA.
-- Do not put secrets in the Svelte UI.
+- Household secrets are edited on `/config` and stored in `config.toml`.
+  Do not add new secret fields to the SPA except through `PATCH /api/settings`.
 - Config `enabled = false` (or empty secrets) hides a slot. Cargo
   features (`pronote`, `meross`, `watch`) only shrink the binary.
 - Mark household sources `private()` so `make fake` / `--fake` can

@@ -169,6 +169,10 @@ impl Birthday {
             .map_err(|_| format!("birthday `{entry}` has an invalid date (use YYYY-MM-DD)"))?;
         Ok(Self { name, dob })
     }
+
+    pub fn to_entry(&self) -> String {
+        format!("{},{}", self.name, self.dob.format("%Y-%m-%d"))
+    }
 }
 
 impl<'de> Deserialize<'de> for Birthday {
@@ -443,7 +447,46 @@ pub struct PublicSchedule {
     pub schedule_kind: String,
 }
 
-/// Public settings exposed to the family UI (no secrets).
+/// Birthday as shown and edited in the family UI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicBirthday {
+    pub name: String,
+    pub dob: String,
+}
+
+impl PublicBirthday {
+    pub fn from_birthday(person: &Birthday) -> Self {
+        Self {
+            name: person.name.clone(),
+            dob: person.dob.format("%Y-%m-%d").to_string(),
+        }
+    }
+
+    pub fn into_birthday(&self) -> Result<Birthday, String> {
+        Birthday::parse(&format!("{},{}", self.name.trim(), self.dob.trim()))
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicCalendar {
+    pub ics_urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicTodoist {
+    pub token: String,
+    pub project: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicWeather {
+    pub location_id: String,
+}
+
+/// Public settings exposed to the family UI.
+///
+/// Trusted LAN only — the Setup page edits household secrets (Todoist token)
+/// so they are included here. There is no auth.
 #[derive(Debug, Clone, Serialize)]
 pub struct PublicSettings {
     pub mode: String,
@@ -456,6 +499,11 @@ pub struct PublicSettings {
     pub pictures_schedule: PublicSchedule,
     pub timezone: String,
     pub family_name: String,
+    pub battery_mah: u32,
+    pub calendar: PublicCalendar,
+    pub birthdays: Vec<PublicBirthday>,
+    pub todoist: PublicTodoist,
+    pub weather: PublicWeather,
     /// Wall-clock seconds until the Pico's last commanded wake. `None` if it
     /// has never been given a sleep — the current editor schedule is not used,
     /// because the frame only learns that on its next poll.
@@ -482,6 +530,41 @@ pub struct SettingsPatch {
     /// Which mode's schedule to patch. Defaults to the (possibly newly set) mode.
     pub schedule_for: Option<String>,
     pub rotate: Option<Vec<String>>,
+    pub family_name: Option<String>,
+    pub timezone: Option<String>,
+    pub battery_mah: Option<u32>,
+    pub calendar: Option<CalendarPatch>,
+    pub birthdays: Option<Vec<PublicBirthday>>,
+    pub todoist: Option<TodoistPatch>,
+    pub weather: Option<WeatherPatch>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CalendarPatch {
+    pub ics_urls: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct TodoistPatch {
+    pub token: Option<String>,
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WeatherPatch {
+    pub location_id: Option<String>,
+}
+
+impl SettingsPatch {
+    /// Household fields that change what the dashboard paints.
+    pub fn touches_household(&self) -> bool {
+        self.family_name.is_some()
+            || self.timezone.is_some()
+            || self.calendar.is_some()
+            || self.birthdays.is_some()
+            || self.todoist.is_some()
+            || self.weather.is_some()
+    }
 }
 
 impl Config {
@@ -505,16 +588,13 @@ impl Config {
     }
 
     /// Copy `[sources.<id>]` over legacy top-level keys when the new table is set.
+    /// An explicit table wins even when it is empty, so the family UI can clear a source.
     fn resolve_source_aliases(&mut self) {
         if let Some(cal) = &self.sources.calendar {
-            if !cal.ics_urls.is_empty() {
-                self.sources.ics_urls = cal.ics_urls.clone();
-            }
+            self.sources.ics_urls = cal.ics_urls.clone();
         }
         if let Some(b) = &self.sources.birthdays {
-            if !b.people.is_empty() {
-                self.birthdays = b.people.clone();
-            }
+            self.birthdays = b.people.clone();
         }
         if let Some(todoist) = self.sources.todoist.clone() {
             self.todoist = todoist;
@@ -648,6 +728,22 @@ impl Config {
             pictures_schedule: Self::public_schedule(self.mode_schedule(FrameMode::Picture)),
             timezone: self.timezone.clone(),
             family_name: self.family_name.clone(),
+            battery_mah: self.battery_mah,
+            calendar: PublicCalendar {
+                ics_urls: self.sources.ics_urls.clone(),
+            },
+            birthdays: self
+                .birthdays
+                .iter()
+                .map(PublicBirthday::from_birthday)
+                .collect(),
+            todoist: PublicTodoist {
+                token: self.todoist.token.clone(),
+                project: self.todoist.project.clone(),
+            },
+            weather: PublicWeather {
+                location_id: self.weather.location_id.clone(),
+            },
             next_sleep_secs: assigned_wake.map(|at| {
                 u64::try_from(at.signed_duration_since(now).num_seconds().max(0)).unwrap_or(0)
             }),
@@ -693,7 +789,65 @@ impl Config {
         if self.mode == FrameMode::Picture && self.pictures.rotate.is_empty() {
             bail!("picture mode needs at least one photo in the rotation");
         }
+        self.apply_household_patch(&patch)?;
         self.persist_editable()?;
+        Ok(())
+    }
+
+    fn apply_household_patch(&mut self, patch: &SettingsPatch) -> Result<()> {
+        if let Some(name) = patch.family_name.as_deref() {
+            let name = name.trim();
+            if name.is_empty() {
+                bail!("family_name must not be empty");
+            }
+            self.family_name = name.to_string();
+        }
+        if let Some(tz) = patch.timezone.as_deref() {
+            let tz = tz.trim();
+            if tz.parse::<Tz>().is_err() {
+                bail!("unknown timezone `{tz}` (use an IANA name like Europe/London)");
+            }
+            self.timezone = tz.to_string();
+        }
+        if let Some(mah) = patch.battery_mah {
+            self.battery_mah = mah.max(1);
+        }
+        if let Some(calendar) = &patch.calendar {
+            if let Some(urls) = &calendar.ics_urls {
+                let urls = normalize_ics_urls(urls)?;
+                self.sources.ics_urls = urls.clone();
+                self.sources.calendar = Some(CalendarSourceConfig { ics_urls: urls });
+            }
+        }
+        if let Some(people) = &patch.birthdays {
+            let people = people
+                .iter()
+                .map(PublicBirthday::into_birthday)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| anyhow::anyhow!(err))?;
+            self.birthdays = people.clone();
+            self.sources.birthdays = Some(BirthdaysSourceConfig { people });
+        }
+        if let Some(todoist) = &patch.todoist {
+            if let Some(token) = &todoist.token {
+                self.todoist.token = token.trim().to_string();
+            }
+            if let Some(project) = &todoist.project {
+                let project = project.trim();
+                self.todoist.project = if project.is_empty() {
+                    "Family".into()
+                } else {
+                    project.to_string()
+                };
+            }
+            self.sources.todoist = Some(self.todoist.clone());
+        }
+        if let Some(weather) = &patch.weather {
+            if let Some(id) = &weather.location_id {
+                self.weather.location_id = normalize_weather_location_id(id);
+            }
+            self.sources.weather = Some(self.weather.clone());
+        }
         Ok(())
     }
 
@@ -745,7 +899,7 @@ impl Config {
         Ok(())
     }
 
-    /// Write `mode`, dashboard schedule, and `[pictures]` rotate + schedule.
+    /// Write family-UI keys (mode, schedule, pictures, household sources).
     pub fn persist_editable(&self) -> Result<()> {
         let Some(path) = self.config_path.as_ref() else {
             tracing::warn!("no config path — settings kept in memory only");
@@ -757,12 +911,16 @@ impl Config {
             .parse()
             .with_context(|| format!("parsing {} for edit", path.display()))?;
 
+        doc["family_name"] = Item::Value(Value::from(self.family_name.as_str()));
+        doc["timezone"] = Item::Value(Value::from(self.timezone.as_str()));
+        doc["battery_mah"] = Item::Value(Value::from(i64::from(self.battery_mah)));
         let dash = self.mode_schedule(FrameMode::Dashboard);
         doc["mode"] = Item::Value(Value::from(self.mode.as_str()));
         doc["poll_interval_secs"] = Item::Value(Value::from(dash.interval_secs as i64));
         write_wake_key(doc.as_table_mut(), "wake-up", dash.wake_up);
         doc["schedule_kind"] = Item::Value(Value::from(dash.kind.as_str()));
         write_pico_drift(&mut doc, self.pico_drift);
+        persist_household_sources(&mut doc, self);
 
         if !doc.as_table().contains_key("pictures") {
             doc["pictures"] = Item::Table(toml_edit::Table::new());
@@ -944,6 +1102,125 @@ fn weekly_from_public_days(days: &PublicWakeDays) -> Result<WeeklyWakes> {
 
 fn write_pico_drift(doc: &mut DocumentMut, drift: f64) {
     doc["pico_drift"] = Item::Value(Value::from(crate::schedule::round_pico_drift(drift)));
+}
+
+fn persist_household_sources(doc: &mut DocumentMut, cfg: &Config) {
+    let root = doc.as_table_mut();
+    root.remove("birthdays");
+    root.remove("todoist");
+    root.remove("weather");
+
+    if !root.contains_key("sources") {
+        root["sources"] = Item::Table(toml_edit::Table::new());
+    }
+    let Some(sources) = root.get_mut("sources").and_then(Item::as_table_mut) else {
+        return;
+    };
+    sources.remove("ics_urls");
+
+    let people: Vec<String> = cfg.birthdays.iter().map(Birthday::to_entry).collect();
+    write_source_value(
+        sources,
+        "calendar",
+        "ics_urls",
+        Value::Array(toml_string_array(&cfg.sources.ics_urls)),
+    );
+    write_source_value(
+        sources,
+        "birthdays",
+        "people",
+        Value::Array(toml_string_array(&people)),
+    );
+    write_source_value(
+        sources,
+        "todoist",
+        "token",
+        Value::from(cfg.todoist.token.as_str()),
+    );
+    write_source_value(
+        sources,
+        "todoist",
+        "project",
+        Value::from(cfg.todoist.project.as_str()),
+    );
+    write_source_value(
+        sources,
+        "weather",
+        "location_id",
+        Value::from(cfg.weather.location_id.as_str()),
+    );
+}
+
+fn write_source_value(sources: &mut toml_edit::Table, table: &str, key: &str, value: Value) {
+    if sources.get(table).and_then(Item::as_table).is_none() {
+        sources[table] = Item::Table(toml_edit::Table::new());
+    }
+    sources[table][key] = Item::Value(value);
+}
+
+fn toml_string_array(items: &[String]) -> Array {
+    let mut arr = Array::new();
+    if items.is_empty() {
+        return arr;
+    }
+    if items.len() == 1 && items[0].len() < 72 {
+        arr.push(items[0].as_str());
+        return arr;
+    }
+    arr.set_trailing_comma(true);
+    arr.set_trailing("\n");
+    for item in items {
+        let mut value = Value::from(item.as_str());
+        value.decor_mut().set_prefix("\n    ");
+        arr.push_formatted(value);
+    }
+    arr
+}
+
+fn normalize_ics_urls(urls: &[String]) -> Result<Vec<String>> {
+    let mut out = Vec::new();
+    for url in urls {
+        let url = url.trim();
+        if url.is_empty() {
+            continue;
+        }
+        let Some((scheme, _)) = url.split_once("://") else {
+            bail!("calendar URL should start with webcal:// or https://");
+        };
+        match scheme.to_ascii_lowercase().as_str() {
+            "http" | "https" | "webcal" | "webcals" => {}
+            _ => bail!("calendar URL should start with webcal:// or https://"),
+        }
+        if !out.iter().any(|existing| existing == url) {
+            out.push(url.to_string());
+        }
+    }
+    Ok(out)
+}
+
+fn normalize_weather_location_id(raw: &str) -> String {
+    let raw = raw.trim();
+    let lowered = raw.to_ascii_lowercase();
+    const PREFIXES: &[&str] = &[
+        "https://www.bbc.co.uk/weather/",
+        "http://www.bbc.co.uk/weather/",
+        "https://bbc.co.uk/weather/",
+        "http://bbc.co.uk/weather/",
+        "www.bbc.co.uk/weather/",
+        "bbc.co.uk/weather/",
+    ];
+    for prefix in PREFIXES {
+        if lowered.starts_with(prefix) {
+            let rest = &raw[prefix.len()..];
+            return rest
+                .split(['/', '?', '#'])
+                .next()
+                .unwrap_or(rest)
+                .trim()
+                .to_string();
+        }
+    }
+    raw.to_string()
 }
 
 fn wake_toml_array(times: &[NaiveTime]) -> Array {
@@ -1506,10 +1783,8 @@ rotate = ["photo-1"]
             mode: Some("picture".into()),
             poll_interval_secs: Some(90),
             wake_up: Some(vec![]),
-            wake_up_by_day: None,
             schedule_for: Some("picture".into()),
-            rotate: None,
-            schedule_kind: None,
+            ..Default::default()
         })
         .unwrap();
         assert_eq!(cfg.pictures.schedule_kind, Some(ScheduleKind::Interval));
@@ -1849,5 +2124,168 @@ wake-up = ["07:00"]
             .unwrap()
             .with_timezone(&Utc);
         assert_eq!(cfg.pico_sleep_secs(friday_evening), 10 * 3600);
+    }
+
+    #[test]
+    fn sources_birthdays_table_wins_even_when_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+birthdays = ["Sam,2015-11-02"]
+[sources.birthdays]
+people = []
+"#,
+        )
+        .unwrap();
+        let cfg = Config::load(&path).unwrap();
+        assert!(cfg.birthdays.is_empty());
+    }
+
+    #[test]
+    fn sources_calendar_table_wins_even_when_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[sources]
+ics_urls = ["https://example.com/old.ics"]
+[sources.calendar]
+ics_urls = []
+"#,
+        )
+        .unwrap();
+        let cfg = Config::load(&path).unwrap();
+        assert!(cfg.sources.ics_urls.is_empty());
+    }
+
+    #[test]
+    fn patch_household_settings_persists_and_reloads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"# keep me
+family_name = "Family"
+timezone = "Europe/London"
+
+[meross]
+email = "secret@example.com"
+password = "hunter2"
+"#,
+        )
+        .unwrap();
+        let mut cfg = Config::load(&path).unwrap();
+        cfg.apply_patch(SettingsPatch {
+            family_name: Some("Famille Test".into()),
+            timezone: Some("Europe/Paris".into()),
+            battery_mah: Some(5000),
+            calendar: Some(CalendarPatch {
+                ics_urls: Some(vec![
+                    "webcal://calendar.example.com/family.ics".into(),
+                    "https://example.com/school.ics".into(),
+                    "".into(),
+                ]),
+            }),
+            birthdays: Some(vec![
+                PublicBirthday {
+                    name: "Maya".into(),
+                    dob: "2018-03-15".into(),
+                },
+                PublicBirthday {
+                    name: "Sam".into(),
+                    dob: "2015-11-02".into(),
+                },
+            ]),
+            todoist: Some(TodoistPatch {
+                token: Some("tok_123".into()),
+                project: Some("Chores".into()),
+            }),
+            weather: Some(WeatherPatch {
+                location_id: Some("https://www.bbc.co.uk/weather/2643743?day=1".into()),
+            }),
+            ..Default::default()
+        })
+        .unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# keep me"));
+        assert!(text.contains("secret@example.com"));
+        assert!(text.contains("hunter2"));
+        assert!(text.contains("Famille Test"));
+        assert!(text.contains("Europe/Paris"));
+        assert!(text.contains("5000"));
+        assert!(text.contains("[sources.calendar]"));
+        assert!(text.contains("[sources.birthdays]"));
+        assert!(text.contains("[sources.todoist]"));
+        assert!(text.contains("[sources.weather]"));
+        assert!(text.contains("tok_123"));
+        assert!(text.contains("2643743"));
+        assert!(!text.contains("?day=1"));
+        assert!(!text.contains("birthdays = ["));
+
+        let reloaded = Config::load(&path).unwrap();
+        assert_eq!(reloaded.family_name, "Famille Test");
+        assert_eq!(reloaded.timezone, "Europe/Paris");
+        assert_eq!(reloaded.battery_mah, 5000);
+        assert_eq!(
+            reloaded.sources.ics_urls,
+            [
+                "webcal://calendar.example.com/family.ics",
+                "https://example.com/school.ics"
+            ]
+        );
+        assert_eq!(reloaded.birthdays.len(), 2);
+        assert_eq!(reloaded.birthdays[0].name, "Maya");
+        assert_eq!(reloaded.todoist.token, "tok_123");
+        assert_eq!(reloaded.todoist.project, "Chores");
+        assert_eq!(reloaded.weather.location_id, "2643743");
+        assert_eq!(reloaded.meross.password, "hunter2");
+
+        let public = reloaded.public_settings(Utc::now());
+        assert_eq!(public.family_name, "Famille Test");
+        assert_eq!(public.battery_mah, 5000);
+        assert_eq!(public.calendar.ics_urls.len(), 2);
+        assert_eq!(public.birthdays[0].dob, "2018-03-15");
+        assert_eq!(public.todoist.token, "tok_123");
+        assert_eq!(public.weather.location_id, "2643743");
+    }
+
+    #[test]
+    fn patch_rejects_unknown_timezone_and_bad_calendar_url() {
+        let mut cfg = Config::default();
+        cfg.config_path = None;
+        let tz_err = cfg
+            .apply_patch(SettingsPatch {
+                timezone: Some("London".into()),
+                ..Default::default()
+            })
+            .unwrap_err();
+        assert!(tz_err.to_string().contains("timezone"));
+
+        let url_err = cfg
+            .apply_patch(SettingsPatch {
+                calendar: Some(CalendarPatch {
+                    ics_urls: Some(vec!["ftp://example.com/cal.ics".into()]),
+                }),
+                ..Default::default()
+            })
+            .unwrap_err();
+        assert!(url_err.to_string().contains("webcal"));
+    }
+
+    #[test]
+    fn normalize_weather_id_from_bbc_url() {
+        assert_eq!(
+            normalize_weather_location_id("https://www.bbc.co.uk/weather/2643743"),
+            "2643743"
+        );
+        assert_eq!(
+            normalize_weather_location_id("www.bbc.co.uk/weather/10102218#day2"),
+            "10102218"
+        );
+        assert_eq!(normalize_weather_location_id(" 2652951 "), "2652951");
     }
 }

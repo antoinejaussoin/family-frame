@@ -58,7 +58,8 @@ body::before {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -195,6 +196,116 @@ select {
 .field:focus {
   outline: 2px solid var(--color-terracotta);
   outline-offset: 1px;
+}
+
+.field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field-label {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.field-hint {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.field-url {
+  width: 100%;
+  min-height: 4.2rem;
+  resize: vertical;
+  word-break: break-all;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.config-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.config-birthday {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 10.5rem auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+@media (max-width: 639px) {
+  .config-birthday {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .config-birthday .field[type='date'] {
+    grid-column: 1 / -1;
+  }
+}
+
+.howto {
+  border-radius: 1.1rem;
+  background: rgba(243, 230, 211, 0.45);
+  padding: 0.85rem 1rem;
+}
+
+.howto summary {
+  cursor: pointer;
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.howto[open] summary {
+  margin-bottom: 0.65rem;
+}
+
+.howto h3 {
+  margin: 0.95rem 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.howto p,
+.howto li {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--color-ink);
+}
+
+.howto p + p,
+.howto ol + p,
+.howto p + ol {
+  margin-top: 0.55rem;
+}
+
+.howto ol {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.howto li + li {
+  margin-top: 0.4rem;
+}
+
+.howto a {
+  color: var(--color-terracotta-dark);
+  font-weight: 800;
+}
+
+.howto code {
+  font-size: 0.8em;
+  font-weight: 700;
+  word-break: break-all;
 }
 
 .chip {

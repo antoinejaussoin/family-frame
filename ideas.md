@@ -34,3 +34,6 @@ Calculation on discharge:
 - Energy loss doing nothing
 
 Different timers for the weekend
+
+Temp and setting from Nest thermostat
+
