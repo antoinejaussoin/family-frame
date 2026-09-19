@@ -13,6 +13,7 @@ use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
+#[cfg(feature = "watch")]
 mod watch;
 
 #[derive(Parser, Debug)]
@@ -43,7 +44,14 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     if cli.watch {
-        watch::run(cli.config, cli.bind).await
+        #[cfg(feature = "watch")]
+        {
+            watch::run(cli.config, cli.bind).await
+        }
+        #[cfg(not(feature = "watch"))]
+        {
+            anyhow::bail!("--watch needs a rebuild with --features watch (make watch)")
+        }
     } else {
         serve(cli.config, cli.bind).await
     }

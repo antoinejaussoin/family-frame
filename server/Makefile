@@ -20,10 +20,10 @@ ui-dev:
 # Local only: rebuild and restart when source / templates change.
 # Does not watch ui/ — use `make ui-dev` for the family SPA.
 watch:
-	cargo run -- --watch
+	cargo run --features watch -- --watch
 
 test:
-	cargo test
+	cargo test --features watch
 
 docker-build:
 	docker build \

@@ -24,8 +24,8 @@ use crate::config::PronoteConfig;
 use crate::model::{CalendarEvent, School, SchoolDay, SchoolItem};
 use crate::sources::cache::TtlCache;
 
-use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
 use super::ics;
 use super::{DataSource, DisabledBehaviour};
 
@@ -130,7 +130,11 @@ pub async fn load_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School
     if url.is_empty() || username.is_empty() || password.is_empty() {
         bail!("Pronote url/username/password are empty");
     }
-    let cache_key = format!("{url}\0{username}\0{}", cfg.child.trim());
+    let cache_key = format!(
+        "{url}\0{username}\0{}\0{}",
+        cfg.child.trim(),
+        cfg.show_sections
+    );
     if let Some((_, school)) = LAST.get(FETCH_TTL, |(key, _)| key == &cache_key) {
         return Ok(school);
     }
@@ -226,7 +230,7 @@ async fn fetch_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School> {
     if account == Account::Parent {
         session.select_child(cfg.child.trim()).await?;
     }
-    session.load_school(today).await
+    session.load_school(today, cfg.show_sections).await
 }
 
 impl Session {
@@ -427,7 +431,7 @@ impl Session {
         Ok(())
     }
 
-    async fn load_school(&mut self, today: NaiveDate) -> Result<School> {
+    async fn load_school(&mut self, today: NaiveDate, show_sections: bool) -> Result<School> {
         let student = first_name(&json_str(&self.ressource, &["L"]).unwrap_or_default());
         let start_day = self
             .general
@@ -443,18 +447,25 @@ impl Session {
             .unwrap_or(today + chrono::Duration::days(14));
 
         let homework_to = (today + chrono::Duration::days(14)).min(last_day);
-        let homework = self
-            .homework(today, homework_to, start_day)
-            .await
-            .unwrap_or_default();
+        let homework = if show_sections {
+            self.homework(today, homework_to, start_day)
+                .await
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
 
         let period = current_period(&self.ressource, &self.general, today);
-        let (average, grades) = match period {
-            Some((id, name)) => self
-                .grades(&id, &name)
-                .await
-                .unwrap_or((String::new(), Vec::new())),
-            None => (String::new(), Vec::new()),
+        let (average, grades) = if show_sections {
+            match period {
+                Some((id, name)) => self
+                    .grades(&id, &name)
+                    .await
+                    .unwrap_or((String::new(), Vec::new())),
+                None => (String::new(), Vec::new()),
+            }
+        } else {
+            (String::new(), Vec::new())
         };
 
         let until = (today + chrono::Duration::days(14)).min(last_day);

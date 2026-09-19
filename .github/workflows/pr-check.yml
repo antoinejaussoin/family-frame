@@ -9,6 +9,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  cargo-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo test
+        working-directory: server
+        run: cargo test --features watch
+      - name: cargo check without Pronote/Meross
+        working-directory: server
+        run: cargo check --no-default-features --features watch
+
   server:
     runs-on: ubuntu-latest
     steps:

@@ -72,4 +72,4 @@ go through that function so leftover height refills to-dos and history.
 - Do not fetch from `http.rs`, `frame.rs`, or the family SPA.
 - Do not put secrets in the Svelte UI.
 - Config `enabled = false` (or empty secrets) hides a slot. Cargo
-  features, when present, only shrink the binary.
+  features (`pronote`, `meross`, `watch`) only shrink the binary.

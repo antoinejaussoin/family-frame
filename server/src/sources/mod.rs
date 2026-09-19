@@ -1,8 +1,12 @@
 //! Dashboard datasources: one [`DataSource`] impl each, registered in
 //! [`all_sources`].
 
+use std::collections::HashMap;
+use std::time::Duration;
+
 use anyhow::Result;
 use async_trait::async_trait;
+use futures::future::join_all;
 use tracing::warn;
 
 use crate::config::Config;
@@ -11,22 +15,86 @@ use crate::model::Dashboard;
 pub mod birthdays;
 pub mod cache;
 pub mod calendar;
-pub mod contribute;
 pub mod context;
+pub mod contribute;
 pub mod filter;
 pub mod history;
 pub mod ics;
 pub mod jokes;
+#[cfg(feature = "meross")]
 pub mod meross;
+#[cfg(not(feature = "meross"))]
+pub mod meross {
+    use super::*;
+
+    pub struct MerossSource;
+
+    #[async_trait]
+    impl DataSource for MerossSource {
+        fn id(&self) -> &'static str {
+            "meross"
+        }
+        fn enabled(&self, _cfg: &Config) -> bool {
+            false
+        }
+        async fn load(&self, _ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+            Ok(SourceOutcome::live(String::new(), Contribution::None))
+        }
+    }
+
+    pub fn invalidate_rooms() {}
+
+    pub fn demo_rooms() -> Vec<crate::model::RoomClimate> {
+        Vec::new()
+    }
+}
+#[cfg(feature = "pronote")]
 pub mod pronote;
+#[cfg(not(feature = "pronote"))]
+pub mod pronote {
+    use super::*;
+    use crate::model::{CalendarEvent, School, SchoolDay};
+    use chrono::NaiveDate;
+
+    pub struct PronoteSource;
+
+    #[async_trait]
+    impl DataSource for PronoteSource {
+        fn id(&self) -> &'static str {
+            "pronote"
+        }
+        fn enabled(&self, _cfg: &Config) -> bool {
+            false
+        }
+        async fn load(&self, _ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+            Ok(SourceOutcome::live(String::new(), Contribution::None))
+        }
+    }
+
+    pub fn demo_school(_today: NaiveDate) -> School {
+        School::default()
+    }
+
+    pub fn display_student(_cfg: &crate::config::PronoteConfig, fetched: &str) -> String {
+        fetched.trim().to_string()
+    }
+
+    pub fn school_day_events(
+        _student: &str,
+        _days: &[SchoolDay],
+        _today: NaiveDate,
+    ) -> Vec<CalendarEvent> {
+        Vec::new()
+    }
+}
 pub mod saints;
 pub mod tfl;
 pub mod todoist;
 pub mod weather;
 
 pub use calendar::{demo_events, merge_events};
-pub use contribute::{apply, Contribution, SourceOutcome, SourceStatus};
 pub use context::SourceContext;
+pub use contribute::{apply, Contribution, SourceOutcome, SourceStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisabledBehaviour {
@@ -80,8 +148,31 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
     let mut dash = Dashboard::empty(&cfg.family_name, ctx.today);
     let mut notes: Vec<String> = Vec::new();
     let mut calendar = Vec::new();
+    let sources = all_sources();
 
-    for src in all_sources() {
+    // Independent HTTPS/MQTT loads in parallel; apply stays in registry order.
+    let fetched = join_all(sources.iter().map(|src| {
+        let enabled = src.enabled(cfg);
+        let ctx = ctx.clone();
+        async move {
+            if !enabled {
+                return (src.id(), None);
+            }
+            let timed = tokio::time::timeout(Duration::from_secs(35), src.load(&ctx)).await;
+            let result = match timed {
+                Ok(inner) => inner,
+                Err(_) => Err(anyhow::anyhow!("source timed out")),
+            };
+            (src.id(), Some(result))
+        }
+    }))
+    .await;
+    let mut by_id: HashMap<&'static str, Result<SourceOutcome>> = fetched
+        .into_iter()
+        .filter_map(|(id, maybe)| maybe.map(|result| (id, result)))
+        .collect();
+
+    for src in &sources {
         if !src.enabled(cfg) {
             if src.when_disabled(cfg) == DisabledBehaviour::Demo {
                 if let Some(demo) = src.demo(&ctx) {
@@ -92,20 +183,23 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
                     apply(&mut dash, &mut calendar, demo, ctx.today);
                 }
             }
-        } else {
-            match src.load(&ctx).await {
-                Ok(out) => {
-                    if !out.note.is_empty() {
-                        notes.push(out.note);
-                    }
-                    apply(&mut dash, &mut calendar, out.contribution, ctx.today);
+            continue;
+        }
+        match by_id
+            .remove(&src.id())
+            .unwrap_or_else(|| Err(anyhow::anyhow!("missing load result for {}", src.id())))
+        {
+            Ok(out) => {
+                if !out.note.is_empty() {
+                    notes.push(out.note);
                 }
-                Err(err) => {
-                    warn!(source = src.id(), %err, "source failed");
-                    if let Some(demo) = src.demo(&ctx) {
-                        notes.push(format!("{} unavailable", src.id()));
-                        apply(&mut dash, &mut calendar, demo, ctx.today);
-                    }
+                apply(&mut dash, &mut calendar, out.contribution, ctx.today);
+            }
+            Err(err) => {
+                warn!(source = src.id(), %err, "source failed");
+                if let Some(demo) = src.demo(&ctx) {
+                    notes.push(format!("{} unavailable", src.id()));
+                    apply(&mut dash, &mut calendar, demo, ctx.today);
                 }
             }
         }
@@ -162,10 +256,7 @@ mod tests {
             .filter(|s| s.enabled(&cfg))
             .map(|s| s.id())
             .collect();
-        assert_eq!(
-            enabled,
-            ["tfl", "jokes", "history", "birthdays", "saints"]
-        );
+        assert_eq!(enabled, ["tfl", "jokes", "history", "birthdays", "saints"]);
     }
 
     fn offline_demo_dashboard(today: NaiveDate) -> Dashboard {

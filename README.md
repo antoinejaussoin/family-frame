@@ -104,13 +104,14 @@ target) builds the SPA first, then runs the server.
 
 ```bash
 # terminal 1 — Rust API (rebuilds on src / templates / CSS)
-cd server && cargo run -- --watch   # or: make watch
+cd server && cargo run --features watch -- --watch   # or: make watch
 
 # terminal 2 — family UI
 cd server/ui && npm ci && npm run dev   # or: make ui-dev
 ```
 
-`--watch` is local only. Docker `CMD` is the binary with no flags.
+`--watch` is local only and needs the `watch` Cargo feature
+(`make watch` passes it). Docker `CMD` is the binary with no flags.
 Do not watch `config.toml` (the family UI edits that live) or `ui/`
 (use Vite).
 
@@ -318,6 +319,9 @@ a timestamped PNG under `pico-sim/out/` (gitignored).
    `all_sources()`, add `[sources.you]`, and (if you need a new slot) a
    section in `dashboard.html`. Four steps:
    [`server/src/sources/README.md`](server/src/sources/README.md).
+6. Optional Cargo features: default builds include `pronote` and `meross`.
+   `watch` is off unless you pass `--features watch`. Use
+   `--no-default-features` to compile without Pronote crypto or Meross MQTT.
 
 ## Security note
 

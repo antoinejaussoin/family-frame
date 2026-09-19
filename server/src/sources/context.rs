@@ -7,6 +7,7 @@ use chrono_tz::Tz;
 use crate::config::Config;
 
 /// Shared inputs for every [`super::DataSource::load`] call.
+#[derive(Clone)]
 pub struct SourceContext<'a> {
     pub cfg: &'a Config,
     pub tz: Tz,
