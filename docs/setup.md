@@ -43,7 +43,7 @@ Datasource secrets stay in `config.toml`. The SPA never edits them.
 
 | Piece | Where |
 |---|---|
-| Hardware shopping list | [`shopping.md`](../shopping.md) (list A: LiPo 2 XL W, or list B: Plus 2 W) |
+| Hardware shopping list | [`shopping.md`](../shopping.md) |
 | Wiring / stack | [`wiring.svg`](../wiring.svg), [`connections.svg`](../connections.svg) |
 | Pico firmware (LiPo 2 XL W) | [`firmware/`](../firmware/) |
 | Rust server + family UI + layout simulator | [`server/`](../server/) |
