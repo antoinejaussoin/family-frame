@@ -578,6 +578,10 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
 
+    fn report_of(polls: &[Poll], wakes: [f64; 7]) -> BatteryReport {
+        report(polls, Cell::DEFAULT, wakes)
+    }
+
     fn poll(mins: i64, mv: u32, usb: bool, status: u16) -> Poll {
         Poll {
             t: Utc.with_ymd_and_hms(2026, 9, 17, 7, 0, 0).unwrap() + Duration::minutes(mins),
@@ -649,7 +653,7 @@ mod tests {
 
     #[test]
     fn empty_report_uses_priors() {
-        let r = report(&[], Cell::DEFAULT, [12.0; 7]);
+        let r = report_of(&[], [12.0; 7]);
         assert_eq!(r.eta_kind, "empty");
         assert!((r.idle_ma - PRIOR_IDLE_MA).abs() < 1e-9);
         assert!((r.cycle_mah - PRIOR_CYCLE_MAH).abs() < 1e-9);
@@ -718,7 +722,7 @@ mod tests {
     #[test]
     fn one_poll_already_has_an_eta() {
         let polls = [poll(0, 4178, false, 200)];
-        let r = report(&polls, Cell::DEFAULT, [12.0; 7]);
+        let r = report_of(&polls, [12.0; 7]);
         assert_eq!(r.soc_pct, soc_pct(4178, 3300));
         assert_eq!(r.linear_pct, 97);
         assert!(
@@ -738,7 +742,7 @@ mod tests {
     #[test]
     fn usb_pauses_eta() {
         let polls = [poll(0, 4000, true, 204)];
-        let r = report(&polls, Cell::DEFAULT, [8.0; 7]);
+        let r = report_of(&polls, [8.0; 7]);
         assert_eq!(r.eta_kind, "usb");
         assert!(r.on_usb);
     }
@@ -757,7 +761,7 @@ mod tests {
         assert!(soc_pct(last.mv, 3300) >= 99);
         assert_eq!(linear_pct(last.mv), 97);
 
-        let r = report(&polls, Cell::DEFAULT, [12.0; 7]);
+        let r = report_of(&polls, [12.0; 7]);
         assert_eq!(r.soc_pct, soc_pct(4178, 3300));
         assert_eq!(r.linear_pct, 97);
         assert!(r.interval_count > 10, "intervals {}", r.interval_count);

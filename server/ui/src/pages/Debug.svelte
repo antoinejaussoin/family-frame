@@ -329,7 +329,7 @@
           <div class="debug-stat">
             <p class="debug-stat-label">Daily use</p>
             <p class="debug-stat-value">{fmtMah(bat.schedule_mah_per_day)} mAh</p>
-            <p class="debug-stat-hint">{fmtWakes(scheduleWakes)} wake-ups/day on average</p>
+            <p class="debug-stat-hint">{fmtWakes(scheduleWakes)} wake-ups/day on the configured schedule</p>
           </div>
         </div>
 
@@ -363,7 +363,9 @@
           {fmtWakes(sliderWakes)}
         </p>
         {#if Math.abs(sliderWakes - scheduleWakes) > 0.05}
-          <p class="text-sm font-semibold text-muted">Schedule is {fmtWakes(scheduleWakes)}</p>
+          <p class="text-sm font-semibold text-muted">
+            Schedule is {fmtWakes(scheduleWakes)}
+          </p>
         {/if}
         <input
           id="wake-sim"
