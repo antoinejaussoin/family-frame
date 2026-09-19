@@ -151,7 +151,7 @@ edge hidden; the stock 24 × 24 cm SANNAHED mount is too small and square.
 
 - a **2.4 GHz** Wi-Fi network (the Pico cannot join 5 GHz-only access points);
 - a computer that can run the Rust server (this repo) and Chromium, to turn HTML into a 1600×1200 PNG;
-- an Apple Account with two-factor authentication if you want the Family iCloud calendar (app-specific password from [account.apple.com](https://account.apple.com));
+- a published read-only calendar URL (Calendar.app webcal, or any public ICS) if you want live events rather than the demo calendar;
 - a non-flammable surface for first LiPo charges;
 - a soldering iron and 60/40 or SAC solder (the XL W ships without pins).
 

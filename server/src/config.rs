@@ -127,7 +127,6 @@ pub struct Config {
     #[serde(default = "default_battery_empty_mv")]
     pub battery_empty_mv: u32,
     pub chrome_path: String,
-    pub icloud: IcloudConfig,
     pub todoist: TodoistConfig,
     pub meross: MerossConfig,
     pub weather: WeatherConfig,
@@ -173,14 +172,6 @@ impl<'de> Deserialize<'de> for Birthday {
         let s = String::deserialize(deserializer)?;
         Birthday::parse(&s).map_err(serde::de::Error::custom)
     }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct IcloudConfig {
-    pub apple_id: String,
-    pub app_password: String,
-    pub calendars: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -250,7 +241,6 @@ impl Default for Config {
             battery_mah: DEFAULT_CAPACITY_MAH,
             battery_empty_mv: DEFAULT_EMPTY_MV,
             chrome_path: String::new(),
-            icloud: IcloudConfig::default(),
             todoist: TodoistConfig::default(),
             meross: MerossConfig::default(),
             weather: WeatherConfig::default(),
@@ -260,16 +250,6 @@ impl Default for Config {
             birthdays: Vec::new(),
             config_dir: PathBuf::from("."),
             config_path: None,
-        }
-    }
-}
-
-impl Default for IcloudConfig {
-    fn default() -> Self {
-        Self {
-            apple_id: String::new(),
-            app_password: String::new(),
-            calendars: vec!["Family".into()],
         }
     }
 }
@@ -682,10 +662,6 @@ impl Config {
         std::fs::write(path, doc.to_string())
             .with_context(|| format!("writing {}", path.display()))?;
         Ok(())
-    }
-
-    pub fn icloud_enabled(&self) -> bool {
-        !self.icloud.apple_id.trim().is_empty() && !self.icloud.app_password.trim().is_empty()
     }
 
     pub fn todoist_enabled(&self) -> bool {

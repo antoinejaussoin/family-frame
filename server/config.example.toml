@@ -50,16 +50,6 @@ rotate = []
 # wake-up = []
 # schedule_kind = "interval"
 
-[icloud]
-# Apple Account email + an *app-specific* password from
-# https://account.apple.com (not your normal Apple ID password).
-# Leave both empty to use the built-in demo calendar.
-apple_id = ""
-app_password = ""
-# Display names as they appear in Calendar.app.
-# Family Sharing calendars show up over CalDAV like any other calendar.
-calendars = ["Family"]
-
 [todoist]
 # Personal API token from Todoist → Settings → Integrations → Developer.
 # Leave empty to show the built-in demo to-do list.
@@ -93,9 +83,10 @@ rooms = []
 location_id = "2643743"
 
 [sources]
-# Extra public ICS URLs (no password). Calendar.app’s webcal:// links
-# are fine — they are fetched as https://. Useful if you publish the
-# family calendar as a read-only link instead of using CalDAV.
+# Public ICS URLs (no password). Calendar.app’s webcal:// links
+# are fine — they are fetched as https://. Publish a read-only
+# family calendar from Calendar.app and paste the link here.
+# A leftover [icloud] table in an old config.toml is ignored.
 ics_urls = []
 
 [pronote]

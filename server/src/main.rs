@@ -89,8 +89,8 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
     info!("Pico endpoint     POST http://{addr}/api/frame.bin");
     {
         let guard = cfg.read().await;
-        if !guard.icloud_enabled() {
-            warn!("no iCloud credentials — serving demo calendar unless ICS URLs are set");
+        if guard.sources.ics_urls.iter().all(|u| u.trim().is_empty()) {
+            warn!("no ICS URLs — serving demo calendar unless events arrive from other sources");
         }
         if !guard.todoist_enabled() {
             warn!("no Todoist token — serving demo to-dos");

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{DateTime, Duration, Local, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use icalendar::{
     Calendar, CalendarComponent, CalendarDateTime, Component, DatePerhapsTime, Event, EventStatus,
@@ -331,10 +331,6 @@ pub(crate) fn day_label(date: NaiveDate, today: NaiveDate) -> String {
 /// Used by fixture tests; keeps the compiler aware of Local if callers need it.
 pub fn today_local(tz: Tz) -> NaiveDate {
     Utc::now().with_timezone(&tz).date_naive()
-}
-
-pub fn _now_local() -> DateTime<Local> {
-    Local::now()
 }
 
 trait YearMonthDay {

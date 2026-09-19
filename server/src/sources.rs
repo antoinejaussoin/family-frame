@@ -1,9 +1,8 @@
 use anyhow::Result;
-use chrono::{Duration, TimeZone, Utc};
+use chrono::{Duration, Utc};
 use chrono_tz::Tz;
 use tracing::{info, warn};
 
-use crate::caldav::{self, CalDav};
 use crate::config::Config;
 use crate::history;
 use crate::ics;
@@ -66,24 +65,9 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
         }
     }
 
-    if cfg.icloud_enabled() {
-        match load_icloud(cfg, tz, today).await {
-            Ok((events, icloud_notes)) => {
-                if !events.is_empty() {
-                    dash.events_today.clear();
-                    dash.events_coming.clear();
-                    merge_events(&mut dash, events);
-                }
-                notes.extend(icloud_notes);
-            }
-            Err(err) => {
-                warn!(%err, "iCloud CalDAV failed; keeping ICS/demo calendar");
-                notes.push("iCloud unavailable".into());
-            }
-        }
-    } else if dash.events_today.is_empty() && dash.events_coming.is_empty() {
+    if dash.events_today.is_empty() && dash.events_coming.is_empty() {
         merge_events(&mut dash, demo_events(today));
-        notes.push("demo calendar (no iCloud credentials)".into());
+        notes.push("demo calendar (no ICS events)".into());
     }
 
     if dash.rooms.is_empty() && !cfg.meross_enabled() {
@@ -191,49 +175,6 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
     Ok(dash)
 }
 
-async fn load_icloud(
-    cfg: &Config,
-    tz: Tz,
-    today: chrono::NaiveDate,
-) -> Result<(Vec<crate::model::CalendarEvent>, Vec<String>)> {
-    let client = CalDav::new(&cfg.icloud)?;
-    let calendars = client.list_calendars().await?;
-    let start = tz
-        .with_ymd_and_hms(
-            chrono::Datelike::year(&today),
-            chrono::Datelike::month(&today),
-            chrono::Datelike::day(&today),
-            0,
-            0,
-            0,
-        )
-        .single()
-        .ok_or_else(|| anyhow::anyhow!("invalid timezone date"))?;
-    let end = start + Duration::days(crate::model::EVENT_HORIZON_DAYS);
-    let start_utc = start
-        .with_timezone(&Utc)
-        .format("%Y%m%dT%H%M%SZ")
-        .to_string();
-    let end_utc = end.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string();
-
-    let mut events = Vec::new();
-    let mut notes = Vec::new();
-    for cal in caldav::match_named(&calendars, &cfg.icloud.calendars) {
-        if !cal.supports_events {
-            continue;
-        }
-        let ics = client
-            .fetch_calendar_data(&cal.href, &caldav::event_report(&start_utc, &end_utc))
-            .await?;
-        let parsed = ics::parse_events(&ics, tz, today, crate::model::EVENT_HORIZON_DAYS)?;
-        info!(calendar = %cal.name, n = parsed.len(), "iCloud events");
-        events.extend(parsed);
-        notes.push(format!("iCloud calendar “{}”", cal.name));
-    }
-
-    Ok((events, notes))
-}
-
 /// Calendar.app copies `webcal://…`. That is just HTTPS with a scheme
 /// HTTP clients do not speak.
 fn http_ics_url(url: &str) -> String {
@@ -312,8 +253,8 @@ mod tests {
     #[test]
     fn webcal_becomes_https() {
         assert_eq!(
-            http_ics_url("webcal://p01-caldav.icloud.com/published/2/abc"),
-            "https://p01-caldav.icloud.com/published/2/abc"
+            http_ics_url("webcal://calendar.example.com/published/family.ics"),
+            "https://calendar.example.com/published/family.ics"
         );
         assert_eq!(
             http_ics_url("WEBCALS://example.com/cal.ics"),

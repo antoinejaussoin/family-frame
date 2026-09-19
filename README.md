@@ -10,9 +10,41 @@ homework and grades, and BBC weather in the section headers.
 
 Hardware to buy is in [`shopping.md`](shopping.md).
 
+![The finished 13.3″ frame on the kitchen wall](docs/images/hero-frame.jpg)
+
+*Antoine: replace this file — room, time of day, dashboard vs picture, anything you want a fork to notice (mat, SANNAHED, cable hiding).*
+
 ## THIS IS A WORK IN PROGRESS
 
 This is being worked on, not working yet.
+
+## Screenshots
+
+Photos to drop in later. Broken images are expected until then.
+
+![Dashboard panel at 1600×1200](docs/images/dashboard.png)
+
+*Antoine: replace this file — which block is which source; weather lives in the headings.*
+
+![Picture mode on the glass](docs/images/picture-mode.png)
+
+*Antoine: replace this file — same device, different `mode`.*
+
+![Family UI home](docs/images/ui-home.png)
+
+*Antoine: replace this file — mode, wake times, photo library. No datasource secrets here.*
+
+![Layout simulator at /preview](docs/images/ui-preview.png)
+
+*Antoine: replace this file — how you iterate HTML without flashing the Pico.*
+
+![Stats battery graph](docs/images/ui-stats.png)
+
+*Antoine: replace this file — Pico polls, 204 vs 200, drift.*
+
+![Weather icon sheet](docs/images/weather-icons.png)
+
+*Antoine: replace this file — optional; Spectra 6 icon set.*
 
 ## What you get
 
@@ -153,14 +185,16 @@ Each new frame is written as a timestamped PNG under `pico-sim/out/` (gitignored
 
 ## Family calendar
 
-Apple does not offer a public “Family Sharing API”. What works:
+Calendar input is **public ICS URLs** only (plus birthdays and Pronote school
+hours). There is no iCloud / CalDAV client.
 
-1. Create an **app-specific password** at [account.apple.com](https://account.apple.com).
-2. Put the Apple ID and that password in `config.toml`.
-3. Set `calendars = ["Family"]` (or whatever the shared calendar is called
-   in Calendar.app). Family Sharing calendars show up over CalDAV.
+1. In Calendar.app (or Google Calendar, Fastmail, …) publish the family
+   calendar as a **read-only** webcal / ICS link.
+2. Put that URL in `config.toml` under `sources.ics_urls`. `webcal://` is
+   rewritten to `https://` automatically.
 
-Or publish a read-only webcal URL in `sources.ics_urls`.
+If the list is empty, the server shows the built-in demo calendar. A leftover
+`[icloud]` table from an older config is ignored — publish an ICS URL instead.
 
 ## Birthdays
 
