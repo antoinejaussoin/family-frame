@@ -1,7 +1,7 @@
 # Family Frame UI
 
 Svelte 5 + Tailwind SPA: family home (mode, schedule, photos), layout
-simulator (`/preview`), and Pico debug (`/debug`).
+simulator (`/preview`), and Pico stats (`/stats`).
 
 ## Hot reload (recommended while iterating)
 
@@ -12,7 +12,7 @@ Vite’s proxy, so `fetch('/api/…')` stays same-origin and HMR keeps working.
 # terminal 1 — API + /dashboard (the 1600×1200 panel HTML)
 cd server && cargo run -- --watch   # or: make serve / make watch
 
-# terminal 2 — family UI (/, /preview, /debug)
+# terminal 2 — family UI (/, /preview, /stats)
 cd server/ui && npm ci && npm run dev   # or: make ui-dev
 ```
 

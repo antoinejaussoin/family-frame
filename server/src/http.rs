@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Form, Multipart, Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, put};
 use axum::{Json, Router};
 
@@ -78,8 +78,10 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         .route("/weather-icons/sheet", get(weather_icons_sheet))
         .route("/weather-icons/dither.png", get(weather_icons_dither))
         .route("/weather-icons/chrome.png", get(weather_icons_chrome))
-        // Old bookmarks; the SPA lives at /debug.
+        .route("/debug", get(legacy_debug_page))
+        // Old bookmarks; frames also live under /api/debug/frames/.
         .route("/debug/frames/{checksum}", get(debug_frame))
+        .route("/stats/frames/{checksum}", get(debug_frame))
         .route("/static/{*path}", get(static_asset))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -92,10 +94,14 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         app = app
             .route("/", get(spa_missing))
             .route("/preview", get(spa_missing))
-            .route("/debug", get(spa_missing));
+            .route("/stats", get(spa_missing));
     }
 
     app
+}
+
+async fn legacy_debug_page() -> Redirect {
+    Redirect::permanent("/stats")
 }
 
 async fn spa_missing() -> impl IntoResponse {
@@ -110,7 +116,7 @@ async fn spa_missing() -> impl IntoResponse {
   (Vite proxies <code>/api</code> here).</p>
   <p>Or run <code>npm ci &amp;&amp; npm run build</code> in <code>server/ui</code>
   and refresh this page.</p>
-  <p><a href="/preview">Layout simulator</a> · <a href="/debug">Debug</a></p>
+  <p><a href="/preview">Layout simulator</a> · <a href="/stats">Stats</a></p>
 </body></html>"#,
     )
 }
@@ -228,8 +234,7 @@ async fn debug_frame(State(state): State<AppState>, Path(name): Path<String>) ->
 }
 
 async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
-    let cfg = state.cache.snapshot_config().await;
-    Json(cfg.public_settings(Utc::now()))
+    Json(public_settings(&state).await)
 }
 
 async fn patch_settings(
@@ -279,8 +284,7 @@ async fn patch_settings(
                 let _ = state.cache.pictures().reset_index();
                 state.cache.invalidate().await;
             }
-            let cfg = state.cache.snapshot_config().await;
-            Json(cfg.public_settings(Utc::now())).into_response()
+            Json(public_settings(&state).await).into_response()
         }
         Err(err) => bad_request(err),
     }
@@ -396,8 +400,7 @@ async fn put_rotate(State(state): State<AppState>, Json(body): Json<RotateBody>)
         Ok(()) => {
             let _ = state.cache.pictures().reset_index();
             state.cache.invalidate().await;
-            let cfg = state.cache.snapshot_config().await;
-            Json(cfg.public_settings(Utc::now())).into_response()
+            Json(public_settings(&state).await).into_response()
         }
         Err(err) => bad_request(err),
     }
@@ -600,6 +603,15 @@ fn offered_checksum<'a>(headers: &'a HeaderMap, q: &'a FrameQuery) -> Option<&'a
             .get(header::IF_NONE_MATCH)
             .and_then(|v| v.to_str().ok())
     })
+}
+
+async fn public_settings(state: &AppState) -> crate::config::PublicSettings {
+    let cfg = state.cache.snapshot_config().await;
+    let polls = state.debug.snapshot().await;
+    let assigned = polls.last().and_then(|p| {
+        crate::schedule::assigned_wake_from_poll(p.wake_at, p.t, p.sleep_s, cfg.pico_drift)
+    });
+    cfg.public_settings_for_assigned_wake(Utc::now(), assigned)
 }
 
 async fn pico_sleep_secs(state: &AppState) -> u64 {

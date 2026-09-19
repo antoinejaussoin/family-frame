@@ -25,7 +25,7 @@ and cannot be used.
 
 Browsers still `GET /api/frame.bin` to download the packed file; those
 hits are not logged. Only POSTs from the Pico (or [`pico-sim`](../pico-sim/))
-show up on `/debug`.
+show up on `/stats`.
 
 The implementation lives in this directory. See [`README.md`](README.md).
 
@@ -101,7 +101,7 @@ store the new slot.
 | `GET /api/debug/frames/{checksum}.png` | Dithered frame stored for that checksum |
 | `GET /` | Family SPA (mode, schedule, photos) |
 | `GET /preview` | Layout workbench (same SPA) |
-| `GET /debug` | Battery graph and Pico request log (same SPA) |
+| `GET /stats` | Battery graph and Pico request log (same SPA). `/debug` redirects here. |
 | `GET /dashboard` | 1600×1200 HTML the server screenshots |
 | `GET /health` | `{ "ok": true, "version": "<VERSION>" }` (also at `/api/health`) |
 

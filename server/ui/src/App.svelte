@@ -1,13 +1,13 @@
 <script>
   import { route } from './lib/route.svelte.js'
-  import Debug from './pages/Debug.svelte'
   import Home from './pages/Home.svelte'
   import Preview from './pages/Preview.svelte'
+  import Stats from './pages/Stats.svelte'
 
   $effect(() => {
     const titles = {
       '/preview': 'Layout simulator',
-      '/debug': 'Frame debug',
+      '/stats': 'Frame stats',
     }
     document.title = titles[route.path] || 'Family Frame'
   })
@@ -15,8 +15,8 @@
 
 {#if route.path === '/preview'}
   <Preview />
-{:else if route.path === '/debug'}
-  <Debug />
+{:else if route.path === '/stats'}
+  <Stats />
 {:else}
   <Home />
 {/if}

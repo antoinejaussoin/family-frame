@@ -82,6 +82,8 @@ pub struct BatteryReport {
     pub mv: u32,
     pub remaining_mah: f64,
     pub capacity_mah: u32,
+    pub full_eta_seconds: i64,
+    pub full_eta_text: String,
     pub idle_ma: f64,
     pub wake_mah: f64,
     pub refresh_mah: f64,
@@ -114,6 +116,8 @@ impl BatteryReport {
             mv: 0,
             remaining_mah: 0.0,
             capacity_mah: DEFAULT_CAPACITY_MAH,
+            full_eta_seconds: 0,
+            full_eta_text: String::new(),
             idle_ma: PRIOR_IDLE_MA,
             wake_mah: PRIOR_WAKE_MAH,
             refresh_mah: PRIOR_REFRESH_MAH,
@@ -178,11 +182,11 @@ pub fn soc_pct(mv: u32, empty_mv: u32) -> u16 {
     usable_soc(mv, empty_mv).round().clamp(0.0, 100.0) as u16
 }
 
+/// Remaining mAh of the configured pack, using usable SoC (4.20 V = full,
+/// `empty_mv` = 0). A 10 Ah cell at 99% is about 9,900 mAh, not 7,880.
 pub fn remaining_mah(mv: u32, cell: Cell) -> f64 {
     let cell = cell.clamp();
-    let chem = chemical_soc(mv);
-    let empty = chemical_soc(cell.empty_mv);
-    (f64::from(cell.capacity_mah) * (chem - empty) / 100.0).max(0.0)
+    (f64::from(cell.capacity_mah) * usable_soc(mv, cell.empty_mv) / 100.0).max(0.0)
 }
 
 /// |d(chemical SoC fraction)/d(mV)| at `mv`, for ADC noise → mAh.
@@ -263,8 +267,19 @@ pub fn report(polls: &[Poll], cell: Cell, wakes_per_day: [f64; 7]) -> BatteryRep
     };
     let idle_mah_per_day = fit.idle_ma * 24.0;
     let schedule_mah_per_day = idle_mah_per_day + wakes_per_day_avg * cycle_mah.max(0.0);
-    let (eta_kind, eta_text, eta_seconds) =
-        eta_from_model(last.usb, remaining, schedule_mah_per_day);
+    let (eta_kind, eta_text, eta_seconds) = eta_from_model(
+        last.usb,
+        remaining,
+        schedule_mah_per_day,
+        "at the current schedule",
+    );
+    let full_mah = f64::from(cell.capacity_mah);
+    let (_, full_eta_text, full_eta_seconds) = eta_from_model(
+        last.usb,
+        full_mah,
+        schedule_mah_per_day,
+        "from a full charge",
+    );
 
     let span_h = interval_span_hours(&intervals);
     let mv_range = battery_mv_range(polls);
@@ -283,6 +298,8 @@ pub fn report(polls: &[Poll], cell: Cell, wakes_per_day: [f64; 7]) -> BatteryRep
         mv: last.mv,
         remaining_mah: remaining,
         capacity_mah: cell.capacity_mah,
+        full_eta_seconds,
+        full_eta_text,
         idle_ma: fit.idle_ma,
         wake_mah: fit.wake_mah,
         refresh_mah: fit.refresh_mah,
@@ -304,7 +321,7 @@ pub fn report(polls: &[Poll], cell: Cell, wakes_per_day: [f64; 7]) -> BatteryRep
     }
 }
 
-fn eta_from_model(usb: bool, remaining: f64, daily: f64) -> (String, String, i64) {
+fn eta_from_model(usb: bool, mah: f64, daily: f64, suffix: &str) -> (String, String, i64) {
     if usb {
         return (
             "usb".into(),
@@ -312,7 +329,7 @@ fn eta_from_model(usb: bool, remaining: f64, daily: f64) -> (String, String, i64
             0,
         );
     }
-    if remaining <= 1.0 {
+    if mah <= 1.0 {
         return ("dead".into(), "Battery looks empty.".into(), 0);
     }
     if daily <= 0.05 {
@@ -322,7 +339,7 @@ fn eta_from_model(usb: bool, remaining: f64, daily: f64) -> (String, String, i64
             0,
         );
     }
-    let hours_left = remaining / (daily / 24.0);
+    let hours_left = mah / (daily / 24.0);
     let remaining_secs = (hours_left * 3600.0) as i64;
     if remaining_secs <= 0 {
         return ("dead".into(), "Battery looks empty.".into(), 0);
@@ -330,7 +347,7 @@ fn eta_from_model(usb: bool, remaining: f64, daily: f64) -> (String, String, i64
     (
         "ok".into(),
         format!(
-            "About {} at the current schedule.",
+            "About {} {suffix}.",
             format_duration(Duration::seconds(remaining_secs))
         ),
         remaining_secs,
@@ -561,6 +578,10 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
 
+    fn report_of(polls: &[Poll], wakes: [f64; 7]) -> BatteryReport {
+        report(polls, Cell::DEFAULT, wakes)
+    }
+
     fn poll(mins: i64, mv: u32, usb: bool, status: u16) -> Poll {
         Poll {
             t: Utc.with_ymd_and_hms(2026, 9, 17, 7, 0, 0).unwrap() + Duration::minutes(mins),
@@ -621,13 +642,18 @@ mod tests {
     #[test]
     fn remaining_full_is_usable_window() {
         let mah = remaining_mah(4200, Cell::DEFAULT);
-        assert!((mah - 8000.0).abs() < 1.0, "got {mah}");
+        assert!((mah - 10_000.0).abs() < 1.0, "got {mah}");
         assert!(remaining_mah(3300, Cell::DEFAULT) < 1.0);
+        let almost_full = remaining_mah(4178, Cell::DEFAULT);
+        assert!(
+            almost_full > 9_800.0,
+            "99% usable should be ~9,900 mAh, got {almost_full}"
+        );
     }
 
     #[test]
     fn empty_report_uses_priors() {
-        let r = report(&[], Cell::DEFAULT, [12.0; 7]);
+        let r = report_of(&[], [12.0; 7]);
         assert_eq!(r.eta_kind, "empty");
         assert!((r.idle_ma - PRIOR_IDLE_MA).abs() < 1e-9);
         assert!((r.cycle_mah - PRIOR_CYCLE_MAH).abs() < 1e-9);
@@ -696,10 +722,17 @@ mod tests {
     #[test]
     fn one_poll_already_has_an_eta() {
         let polls = [poll(0, 4178, false, 200)];
-        let r = report(&polls, Cell::DEFAULT, [12.0; 7]);
+        let r = report_of(&polls, [12.0; 7]);
         assert_eq!(r.soc_pct, soc_pct(4178, 3300));
         assert_eq!(r.linear_pct, 97);
-        assert!(r.remaining_mah > 7000.0);
+        assert!(
+            (r.remaining_mah - 10_000.0 * f64::from(r.soc_pct) / 100.0).abs() < 80.0,
+            "remaining {} should track {}%",
+            r.remaining_mah,
+            r.soc_pct
+        );
+        assert!(r.full_eta_seconds >= r.eta_seconds);
+        assert!(r.full_eta_text.contains("full charge"));
         assert_eq!(r.eta_kind, "ok");
         assert!(r.eta_seconds > 3600);
         assert_eq!(r.interval_count, 0);
@@ -709,7 +742,7 @@ mod tests {
     #[test]
     fn usb_pauses_eta() {
         let polls = [poll(0, 4000, true, 204)];
-        let r = report(&polls, Cell::DEFAULT, [8.0; 7]);
+        let r = report_of(&polls, [8.0; 7]);
         assert_eq!(r.eta_kind, "usb");
         assert!(r.on_usb);
     }
@@ -728,7 +761,7 @@ mod tests {
         assert!(soc_pct(last.mv, 3300) >= 99);
         assert_eq!(linear_pct(last.mv), 97);
 
-        let r = report(&polls, Cell::DEFAULT, [12.0; 7]);
+        let r = report_of(&polls, [12.0; 7]);
         assert_eq!(r.soc_pct, soc_pct(4178, 3300));
         assert_eq!(r.linear_pct, 97);
         assert!(r.interval_count > 10, "intervals {}", r.interval_count);
