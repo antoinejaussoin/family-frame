@@ -124,10 +124,24 @@ async fn spa_missing() -> impl IntoResponse {
 async fn static_asset(Path(path): Path<String>) -> Response {
     let (body, content_type): (&[u8], &str) = match path.as_str() {
         "dashboard.css" => (assets::DASHBOARD_CSS.as_bytes(), "text/css; charset=utf-8"),
-        "fonts/AtkinsonHyperlegible-Regular.woff2" => (assets::FONT_REGULAR_WOFF2, "font/woff2"),
-        "fonts/AtkinsonHyperlegible-Bold.woff2" => (assets::FONT_BOLD_WOFF2, "font/woff2"),
-        "fonts/AtkinsonHyperlegible-Regular.ttf" => (assets::FONT_REGULAR_TTF, "font/ttf"),
-        "fonts/AtkinsonHyperlegible-Bold.ttf" => (assets::FONT_BOLD_TTF, "font/ttf"),
+        "fonts/AtkinsonHyperlegible-Regular.woff2" => {
+            (assets::FONT_ATKINSON_REGULAR_WOFF2, "font/woff2")
+        }
+        "fonts/AtkinsonHyperlegible-Bold.woff2" => (assets::FONT_ATKINSON_BOLD_WOFF2, "font/woff2"),
+        "fonts/AtkinsonHyperlegible-Regular.ttf" => (assets::FONT_ATKINSON_REGULAR_TTF, "font/ttf"),
+        "fonts/AtkinsonHyperlegible-Bold.ttf" => (assets::FONT_ATKINSON_BOLD_TTF, "font/ttf"),
+        "fonts/TRMNL12-Regular.woff2" => (assets::FONT_12_REGULAR_WOFF2, "font/woff2"),
+        "fonts/TRMNL12-Bold.woff2" => (assets::FONT_12_BOLD_WOFF2, "font/woff2"),
+        "fonts/TRMNL12-Regular.ttf" => (assets::FONT_12_REGULAR_TTF, "font/ttf"),
+        "fonts/TRMNL12-Bold.ttf" => (assets::FONT_12_BOLD_TTF, "font/ttf"),
+        "fonts/TRMNL16-Regular.woff2" => (assets::FONT_16_REGULAR_WOFF2, "font/woff2"),
+        "fonts/TRMNL16-Bold.woff2" => (assets::FONT_16_BOLD_WOFF2, "font/woff2"),
+        "fonts/TRMNL16-Regular.ttf" => (assets::FONT_16_REGULAR_TTF, "font/ttf"),
+        "fonts/TRMNL16-Bold.ttf" => (assets::FONT_16_BOLD_TTF, "font/ttf"),
+        "fonts/TRMNL21-Regular.woff2" => (assets::FONT_21_REGULAR_WOFF2, "font/woff2"),
+        "fonts/TRMNL21-Bold.woff2" => (assets::FONT_21_BOLD_WOFF2, "font/woff2"),
+        "fonts/TRMNL21-Regular.ttf" => (assets::FONT_21_REGULAR_TTF, "font/ttf"),
+        "fonts/TRMNL21-Bold.ttf" => (assets::FONT_21_BOLD_TTF, "font/ttf"),
         _ => {
             return (StatusCode::NOT_FOUND, "not found\n").into_response();
         }
@@ -724,7 +738,10 @@ fn binary(
         header::CONTENT_DISPOSITION,
         format!("inline; filename=\"{filename}\"").parse().unwrap(),
     );
-    headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+    headers.insert(
+        header::CACHE_CONTROL,
+        "max-age=10, must-revalidate".parse().unwrap(),
+    );
     (headers, Body::from(bytes)).into_response()
 }
 

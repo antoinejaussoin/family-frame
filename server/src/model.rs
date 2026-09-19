@@ -20,8 +20,8 @@ pub struct CalendarEvent {
 }
 
 /// Today/week title column is ~570px (half of 1600 − padding − time − gaps)
-/// at 30px Atkinson, ~15.5px per character → ~36 glyphs.
-pub const EVENT_TITLE_MAX_CHARS: usize = 36;
+/// at 33px Atkinson, ~17px per character → ~33 glyphs.
+pub const EVENT_TITLE_MAX_CHARS: usize = 33;
 
 /// How far ahead to pull events for Coming next. Today stays in Today.
 pub const EVENT_HORIZON_DAYS: i64 = 180;
@@ -57,14 +57,14 @@ pub const ROOM_ROW_PX: i32 = TUBE_ROW_PX;
 pub const HISTORY_POOL: usize = 12;
 pub const MAX_HISTORY_FACTS: usize = 5;
 pub const HISTORY_MAX_LINES: usize = 3;
-/// 20px Atkinson at `line-height: 1.3`.
-pub const HISTORY_LINE_PX: i32 = 26;
+/// 16px TRMNL16 at `line-height: 20px`.
+pub const HISTORY_LINE_PX: i32 = 20;
 pub const HISTORY_ITEM_PAD_Y: i32 = 12;
 pub const HISTORY_ITEM_BORDER_PX: i32 = 2;
 pub const HISTORY_YEAR_PX: i32 = 92;
 pub const HISTORY_TEXT_GAP_PX: i32 = 12;
-/// Conservative 20px Atkinson (~0.55em). Prefer skipping a fact to clipping.
-pub const HISTORY_CHAR_PX: i32 = 11;
+/// Conservative 16px TRMNL16 (~0.6em). Prefer skipping a fact to clipping.
+pub const HISTORY_CHAR_PX: i32 = 10;
 pub const MAX_HOMEWORK_ROWS: usize = 8;
 pub const MAX_GRADE_ROWS: usize = 8;
 /// Compact “+ N other todos” line under the pills (margin + height).
@@ -73,14 +73,14 @@ pub const TODOS_MORE_PX: i32 = 36;
 pub const TODO_PILL_MAX_PX: i32 = 748;
 pub const TODO_PILL_PAD_X: i32 = 24;
 pub const TODO_PILL_BORDER_X: i32 = 4;
-/// Conservative Noto Sans width at 22px (same ~0.55em as event titles).
-pub const TODO_PILL_CHAR_PX: i32 = 12;
-pub const TODO_PILL_ROW_PX: i32 = 40;
+/// Conservative 21px TRMNL21 bold (~0.65em).
+pub const TODO_PILL_CHAR_PX: i32 = 15;
+pub const TODO_PILL_ROW_PX: i32 = 37;
 pub const TODO_PILL_GAP_PX: i32 = 8;
 pub const TODO_PILL_TOP_PX: i32 = 10;
 pub const HISTORY_TEXT_MAX_PX: i32 = TODO_PILL_MAX_PX - HISTORY_YEAR_PX - HISTORY_TEXT_GAP_PX;
-/// 22px Atkinson at `line-height: 1.3`. Prefer skipping a joke to clipping.
-pub const JOKE_LINE_PX: i32 = 29;
+/// 21px TRMNL21 at `line-height: 26px`. Prefer skipping a joke to clipping.
+pub const JOKE_LINE_PX: i32 = 26;
 pub const JOKE_PAD_TOP_PX: i32 = 10;
 pub const JOKE_PUNCH_GAP_PX: i32 = 4;
 pub const JOKE_MAX_LINES: usize = 4;
@@ -669,8 +669,13 @@ mod tests {
     #[test]
     fn short_title_is_unchanged() {
         assert_eq!(
-            truncate_event_title("Household Waste and Recycling Centre"),
-            "Household Waste and Recycling Centre"
+            truncate_event_title("Household waste collection"),
+            "Household waste collection"
+        );
+        // 33 glyphs — fits the Today column at 33px Atkinson.
+        assert_eq!(
+            truncate_event_title("Household Waste and Recycling Cen"),
+            "Household Waste and Recycling Cen"
         );
     }
 
