@@ -31,6 +31,10 @@ impl DataSource for TodoistSource {
         cfg.todoist_enabled()
     }
 
+    fn private(&self) -> bool {
+        true
+    }
+
     fn when_disabled(&self, _cfg: &crate::config::Config) -> DisabledBehaviour {
         DisabledBehaviour::Demo
     }

@@ -141,6 +141,10 @@ pub struct Config {
     /// Absolute path to the loaded config.toml (when one was loaded from disk).
     #[serde(skip)]
     pub config_path: Option<PathBuf>,
+    /// Screenshot mode (`--fake` / `FAMILY_FRAME_FAKE`): demo household sources,
+    /// live public ones. Never written to config.toml.
+    #[serde(skip)]
+    pub fake_private: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -299,6 +303,7 @@ impl Default for Config {
             birthdays: Vec::new(),
             config_dir: PathBuf::from("."),
             config_path: None,
+            fake_private: false,
         }
     }
 }

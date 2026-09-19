@@ -30,7 +30,7 @@ const ROOT_FILES: &[&str] = &[
     "config.example.toml",
 ];
 
-pub async fn run(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
+pub async fn run(config: Option<PathBuf>, bind: Option<String>, fake: bool) -> Result<()> {
     let root = crate_root()?;
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
 
@@ -42,7 +42,7 @@ pub async fn run(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
         "watch mode — rebuild and restart on file changes (dev only)"
     );
 
-    let mut child = Some(spawn_server(&root, config.as_deref(), bind.as_deref())?);
+    let mut child = Some(spawn_server(&root, config.as_deref(), bind.as_deref(), fake)?);
 
     loop {
         let event = tokio::select! {
@@ -74,7 +74,7 @@ pub async fn run(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
                 match rebuild(&cargo, &root).await {
                     Ok(()) => {
                         stop_server(&mut child).await;
-                        match spawn_server(&root, config.as_deref(), bind.as_deref()) {
+                        match spawn_server(&root, config.as_deref(), bind.as_deref(), fake) {
                             Ok(next) => {
                                 info!("restarted server");
                                 child = Some(next);
@@ -183,7 +183,12 @@ fn debug_bin(root: &Path) -> PathBuf {
     target.join("debug").join(exe)
 }
 
-fn spawn_server(root: &Path, config: Option<&Path>, bind: Option<&str>) -> Result<Child> {
+fn spawn_server(
+    root: &Path,
+    config: Option<&Path>,
+    bind: Option<&str>,
+    fake: bool,
+) -> Result<Child> {
     let bin = debug_bin(root);
     if !bin.exists() {
         anyhow::bail!("expected compiled server at {}", bin.display());
@@ -195,6 +200,9 @@ fn spawn_server(root: &Path, config: Option<&Path>, bind: Option<&str>) -> Resul
     }
     if let Some(bind) = bind {
         cmd.arg("--bind").arg(bind);
+    }
+    if fake {
+        cmd.arg("--fake");
     }
     cmd.spawn()
         .with_context(|| format!("spawning {}", bin.display()))

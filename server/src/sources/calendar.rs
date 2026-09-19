@@ -21,8 +21,20 @@ impl DataSource for IcsSource {
         cfg.sources.ics_urls.iter().any(|u| !u.trim().is_empty())
     }
 
+    fn private(&self) -> bool {
+        true
+    }
+
     fn when_disabled(&self, _cfg: &crate::config::Config) -> DisabledBehaviour {
         DisabledBehaviour::Skip
+    }
+
+    fn disabled_note(&self) -> String {
+        "demo calendar".into()
+    }
+
+    fn demo(&self, ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Calendar(demo_events(ctx.today)))
     }
 
     async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {

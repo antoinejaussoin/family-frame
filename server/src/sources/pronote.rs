@@ -41,6 +41,10 @@ impl DataSource for PronoteSource {
         cfg.pronote_enabled()
     }
 
+    fn private(&self) -> bool {
+        true
+    }
+
     fn when_disabled(&self, cfg: &crate::config::Config) -> DisabledBehaviour {
         if cfg.config_path.is_none() {
             DisabledBehaviour::Demo
@@ -78,7 +82,9 @@ impl DataSource for PronoteSource {
 
     fn demo(&self, ctx: &SourceContext<'_>) -> Option<Contribution> {
         let mut school = demo_school(ctx.today);
-        school.student = display_student(&ctx.cfg.pronote, &school.student);
+        if !ctx.cfg.fake_private {
+            school.student = display_student(&ctx.cfg.pronote, &school.student);
+        }
         Some(Contribution::School(school))
     }
 }

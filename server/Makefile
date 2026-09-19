@@ -1,4 +1,4 @@
-.PHONY: all serve watch test docker-build docker-run docker ui ui-dev
+.PHONY: all serve fake watch test docker-build docker-run docker ui ui-dev
 
 IMAGE := antoinejaussoin/family-frame-server
 VERSION := $(shell tr -d '[:space:]' < ../VERSION)
@@ -9,6 +9,10 @@ all: ui
 # API only. Pair with `make ui-dev` for Svelte HMR on :5173.
 serve:
 	cargo run
+
+# Screenshot mode: demo household sources, live public ones. See README.
+fake:
+	cargo run -- --fake
 
 ui:
 	cd ui && npm ci && npm run build

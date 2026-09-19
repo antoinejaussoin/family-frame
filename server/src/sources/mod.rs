@@ -37,6 +37,9 @@ pub mod meross {
         fn enabled(&self, _cfg: &Config) -> bool {
             false
         }
+        fn private(&self) -> bool {
+            true
+        }
         async fn load(&self, _ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
             Ok(SourceOutcome::live(String::new(), Contribution::None))
         }
@@ -65,6 +68,9 @@ pub mod pronote {
         }
         fn enabled(&self, _cfg: &Config) -> bool {
             false
+        }
+        fn private(&self) -> bool {
+            true
         }
         async fn load(&self, _ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
             Ok(SourceOutcome::live(String::new(), Contribution::None))
@@ -110,8 +116,18 @@ pub trait DataSource: Send + Sync {
 
     fn enabled(&self, cfg: &Config) -> bool;
 
+    /// Household data that `--fake` must not fetch (ICS, todos, school, house, birthdays).
+    fn private(&self) -> bool {
+        false
+    }
+
     fn when_disabled(&self, _cfg: &Config) -> DisabledBehaviour {
         DisabledBehaviour::Skip
+    }
+
+    /// Live HTTP/MQTT only when enabled and not a private source in screenshot mode.
+    fn uses_live_fetch(&self, cfg: &Config) -> bool {
+        self.enabled(cfg) && !(cfg.fake_private && self.private())
     }
 
     fn disabled_note(&self) -> String {
@@ -152,10 +168,10 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
 
     // Independent HTTPS/MQTT loads in parallel; apply stays in registry order.
     let fetched = join_all(sources.iter().map(|src| {
-        let enabled = src.enabled(cfg);
+        let live = src.uses_live_fetch(cfg);
         let ctx = ctx.clone();
         async move {
-            if !enabled {
+            if !live {
                 return (src.id(), None);
             }
             let timed = tokio::time::timeout(Duration::from_secs(35), src.load(&ctx)).await;
@@ -173,8 +189,9 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
         .collect();
 
     for src in &sources {
-        if !src.enabled(cfg) {
-            if src.when_disabled(cfg) == DisabledBehaviour::Demo {
+        if !src.uses_live_fetch(cfg) {
+            let screenshot_demo = cfg.fake_private && src.private() && src.enabled(cfg);
+            if screenshot_demo || src.when_disabled(cfg) == DisabledBehaviour::Demo {
                 if let Some(demo) = src.demo(&ctx) {
                     let note = src.disabled_note();
                     if !note.is_empty() {
@@ -242,6 +259,56 @@ mod tests {
                 "saints",
             ]
         );
+    }
+
+    #[test]
+    fn private_sources_are_household_only() {
+        let mut ids: Vec<_> = all_sources()
+            .iter()
+            .filter(|s| s.private())
+            .map(|s| s.id())
+            .collect();
+        ids.sort();
+        assert_eq!(
+            ids,
+            ["birthdays", "calendar", "meross", "pronote", "todoist"]
+        );
+    }
+
+    #[test]
+    fn fake_mode_blocks_live_fetch_for_private_sources() {
+        let mut cfg = Config::default();
+        cfg.fake_private = true;
+        cfg.todoist.token = "secret".into();
+        cfg.sources.ics_urls = vec!["https://example.invalid/family.ics".into()];
+        cfg.meross.email = "a@b.c".into();
+        cfg.meross.password = "pw".into();
+        cfg.pronote.url = "https://example.invalid/pronote".into();
+        cfg.pronote.username = "kid".into();
+        cfg.pronote.password = "pw".into();
+        cfg.weather.location_id = "2643743".into();
+        let live: Vec<_> = all_sources()
+            .iter()
+            .filter(|s| s.uses_live_fetch(&cfg))
+            .map(|s| s.id())
+            .collect();
+        assert_eq!(live, ["weather", "tfl", "jokes", "history", "saints"]);
+        assert!(all_sources()
+            .iter()
+            .all(|s| !s.private() || !s.uses_live_fetch(&cfg)));
+    }
+
+    #[test]
+    fn credentials_enable_live_fetch_unless_fake() {
+        let mut cfg = Config::default();
+        cfg.todoist.token = "secret".into();
+        let todoist = all_sources()
+            .into_iter()
+            .find(|s| s.id() == "todoist")
+            .unwrap();
+        assert!(todoist.uses_live_fetch(&cfg));
+        cfg.fake_private = true;
+        assert!(!todoist.uses_live_fetch(&cfg));
     }
 
     #[test]

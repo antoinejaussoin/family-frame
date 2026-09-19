@@ -94,6 +94,7 @@ Chrome or Chromium is required only for dashboard `/api/frame.bin` /
 cd server
 cp config.example.toml config.toml   # optional; demo data is the default
 cargo run                            # or: make serve
+make fake                            # screenshot mode (see below)
 ```
 
 The family SPA is optional for the API. Without `ui/dist`, `/` explains
@@ -128,6 +129,14 @@ Open <http://127.0.0.1:5173/>. If the server is not on `:8765`, set
 
 Then <http://127.0.0.1:5173/> (Vite) or <http://127.0.0.1:8765/> (built
 SPA), `/preview`, `/stats`, `/dashboard`.
+
+### Screenshot mode
+
+`make fake` (or `cargo run -- --fake`, or `FAMILY_FRAME_FAKE=1`) starts
+the server with a real `config.toml` but **does not fetch household
+data**. Calendar / ICS, Todoist, Pronote, Meross, and birthdays use the
+built-in demo payloads. Weather, Tube, jokes, history, and saints stay
+live. Open `/dashboard` or `/preview` and shoot.
 
 ### Serve the built SPA from the API
 

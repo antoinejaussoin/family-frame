@@ -17,6 +17,8 @@ impl DataSource for YouSource {
         cfg.sources.you.enabled /* or non-empty secrets */
     }
 
+    fn private(&self) -> bool { false } // true → `--fake` uses demo(), never fetches
+
     fn when_disabled(&self, _cfg: &Config) -> DisabledBehaviour {
         DisabledBehaviour::Skip // or Demo
     }
@@ -73,3 +75,5 @@ go through that function so leftover height refills to-dos and history.
 - Do not put secrets in the Svelte UI.
 - Config `enabled = false` (or empty secrets) hides a slot. Cargo
   features (`pronote`, `meross`, `watch`) only shrink the binary.
+- Mark household sources `private()` so `make fake` / `--fake` can
+  screenshot without calendars, to-dos, school, house, or birthdays.
