@@ -38,6 +38,16 @@ mod tests {
     use crate::sources::weather;
 
     #[test]
+    fn dashboard_uses_today_title() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 19).unwrap());
+        dash.today_title = "Tomorrow 20th".into();
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("Tomorrow 20th"));
+        assert!(html.contains("Nothing on the family calendar tomorrow."));
+        assert!(!html.contains("Nothing on the family calendar today."));
+    }
+
+    #[test]
     fn dashboard_includes_weather_slots() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 12).unwrap());
         dash.weather = weather::demo_weather();

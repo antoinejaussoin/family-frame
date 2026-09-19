@@ -2,7 +2,8 @@
 //!
 //! BBC does not publish a documented API. The same CDN JSON the website uses
 //! (`weather-broker-cdn`) returns hourly reports; we keep 09:00 / 15:00 / 21:00
-//! as morning, afternoon, and evening.
+//! as morning, afternoon, and evening. Three days are built so an evening
+//! calendar rollover can show tomorrow and the day after.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -254,13 +255,17 @@ fn forecast_from_json(json: &str, today: NaiveDate, cache: &mut SlotCache) -> Re
     } else {
         parsed.location.name
     };
-    let tomorrow = today + ChronoDuration::days(1);
-    let days = [("Today", today), ("Tomorrow", tomorrow)]
-        .into_iter()
-        .map(|(label, date)| {
+    let days = (0..3)
+        .map(|offset| {
+            let date = today + ChronoDuration::days(offset);
+            let label = match offset {
+                0 => "Today".into(),
+                1 => "Tomorrow".into(),
+                _ => date.format("%a %-d").to_string(),
+            };
             let summary = summaries.get(&date);
             WeatherDay {
-                label: label.into(),
+                label,
                 slots: PERIODS
                     .iter()
                     .map(|period| slot_for(date, period, &hours, &summaries, cache))
@@ -304,6 +309,18 @@ pub fn demo_weather() -> Weather {
                 sunset: "19:16".into(),
                 pollen: "Moderate".into(),
                 pollen_level: "moderate".into(),
+            },
+            WeatherDay {
+                label: "Mon 21".into(),
+                slots: vec![
+                    demo_slot("Morning", "sun", "19°", "Sunny"),
+                    demo_slot("Afternoon", "partly-cloudy", "22°", "Sunny intervals"),
+                    demo_slot("Evening", "cloud", "14°", "Light cloud"),
+                ],
+                sunrise: "06:37".into(),
+                sunset: "19:14".into(),
+                pollen: "High".into(),
+                pollen_level: "high".into(),
             },
         ],
     }
@@ -682,7 +699,7 @@ mod tests {
         let mut cache = SlotCache::default();
         let weather = forecast_from_json(&fixture(), today, &mut cache).unwrap();
         assert_eq!(weather.location, "London");
-        assert_eq!(weather.days.len(), 2);
+        assert_eq!(weather.days.len(), 3);
 
         let today_slots = &weather.days[0].slots;
         assert_eq!(today_slots[0].period, "Morning");
@@ -708,6 +725,11 @@ mod tests {
         assert_eq!(weather.days[1].sunrise, "06:35");
         assert_eq!(weather.days[1].pollen, "Moderate");
         assert_eq!(weather.days[1].pollen_level, "moderate");
+        assert_eq!(weather.days[2].label, "Mon 14");
+        assert_eq!(weather.days[2].slots[0].icon, "sun");
+        assert_eq!(weather.days[2].slots[0].temperature, "12°");
+        assert_eq!(weather.days[2].pollen, "High");
+        assert_eq!(weather.days[2].pollen_level, "high");
     }
 
     #[test]

@@ -29,8 +29,13 @@ pub struct CalendarEvent {
 /// at 33px Atkinson, ~17px per character → ~33 glyphs.
 pub const EVENT_TITLE_MAX_CHARS: usize = 33;
 
-/// How far ahead to pull events for Coming next. Today stays in Today.
+/// How far ahead to pull events for Coming next. The focused day stays
+/// in the primary list (`Today`, or tomorrow after the evening rollover).
 pub const EVENT_HORIZON_DAYS: i64 = 180;
+
+fn default_today_title() -> String {
+    "Today".into()
+}
 
 /// Config birthdays are merged into the calendar this far ahead (inclusive).
 pub const BIRTHDAY_HORIZON_DAYS: i64 = 14;
@@ -252,6 +257,10 @@ pub struct Dashboard {
     pub saint_title: String,
     #[serde(default)]
     pub saint_name: String,
+    /// Primary calendar heading: `Today`, or `Tomorrow 20th` after 18:00
+    /// when nothing later remains on the calendar day.
+    #[serde(default = "default_today_title")]
+    pub today_title: String,
     pub events_today: Vec<CalendarEvent>,
     pub events_coming: Vec<CalendarEvent>,
     pub todos: Vec<TodoItem>,
@@ -299,6 +308,7 @@ impl Dashboard {
             date_iso: date.format("%Y-%m-%d").to_string(),
             saint_title: saint.title.to_string(),
             saint_name: saint.name.to_string(),
+            today_title: default_today_title(),
             events_today: Vec::new(),
             events_coming: Vec::new(),
             todos: Vec::new(),
