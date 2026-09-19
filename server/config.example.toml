@@ -47,8 +47,8 @@ rotate = []
 # wake-up = []
 # schedule_kind = "interval"
 
-# Datasources. The family UI Setup page (/config) edits calendar, birthdays,
-# Todoist, and weather. See server/src/sources/README.md to add one.
+# Datasources. The family UI Setup page (/config) edits calendar, bins,
+# birthdays, Todoist, and weather. See server/src/sources/README.md to add one.
 # Legacy [todoist] / [weather] / [meross] / [pronote] tables and
 # top-level birthdays / [sources].ics_urls still load for one release.
 # A leftover [icloud] table is ignored.
@@ -57,6 +57,14 @@ rotate = []
 # Public ICS URLs (no password). Calendar.app’s webcal:// links are fetched
 # as https://. Publish a read-only family calendar and paste the link here.
 ics_urls = []
+
+[sources.bins]
+# Wandsworth Unique Property Reference Number. Empty = off.
+# Find it at https://www.findmyaddress.co.uk or pick your address on
+# https://www.wandsworth.gov.uk/my-property/ (UPRN=… in the URL).
+# A full My Property URL is accepted. Food and recycling merge into one
+# all-day calendar row (orange time column).
+uprn = ""
 
 [sources.birthdays]
 # Each entry is `Name,YYYY-MM-DD`. Merged into Today / Coming next up to

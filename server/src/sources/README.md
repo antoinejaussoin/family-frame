@@ -63,7 +63,7 @@ exist for one release. Do not add new top-level keys.
 The template is a fixed grid. Reuse an existing slot (`sidebar.transit`
 is already generic status lines) or add a section to
 `templates/dashboard.html` + `static/dashboard.css`. Event flags
-`birthday` / `school` / `recurring` / `all_day` are CSS classes, not
+`birthday` / `school` / `bin` / `recurring` / `all_day` are CSS classes, not
 plugin renderers.
 
 `fit_to_panel()` still owns the pixel budget. Disabling a source must

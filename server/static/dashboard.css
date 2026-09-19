@@ -97,10 +97,12 @@
   --yellow-ink: #ff9900;
   /* Calendar time column. Not Spectra primaries — Chrome paints these, then
      Floyd–Steinberg mixes them on the panel (pink→red+white, purple→red+
-     blue+black, school blue→blue+white). Recurring rows stay paper white. */
+     blue+black, school blue→blue+white, bin orange→yellow+red). Recurring
+     rows stay paper white. */
   --when-one-off: #ffb6c1;
   --when-birthday: #3d0066;
   --when-school: #7373ff;
+  --when-bin: #ff6a00;
   /* Small UI: TRMNL at native px only. */
   --type-xs-family: "TRMNL12", sans-serif;
   --type-xs-size: 12px;
@@ -524,6 +526,12 @@ li {
 .today li.school-day .when,
 .coming li.school-day .when {
   background: var(--when-school);
+  color: var(--black);
+}
+
+.today li.bin-day .when,
+.coming li.bin-day .when {
+  background: var(--when-bin);
   color: var(--black);
 }
 

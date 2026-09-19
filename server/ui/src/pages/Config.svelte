@@ -61,6 +61,7 @@
   let timezone = $state('Europe/London')
   let batteryMah = $state(10000)
   let calendars = $state([])
+  let binUprn = $state('')
   let birthdays = $state([])
   let todoistToken = $state('')
   let todoistProject = $state('Family')
@@ -91,6 +92,7 @@
         dob: person.dob || '',
       })),
     )
+    binUprn = s.bins?.uprn || ''
     todoistToken = s.todoist?.token || ''
     todoistProject = s.todoist?.project || 'Family'
     weatherId = s.weather?.location_id || ''
@@ -154,6 +156,7 @@
         calendar: {
           ics_urls: calendars.map((row) => row.url.trim()).filter(Boolean),
         },
+        bins: { uprn: binUprn.trim() },
         birthdays: people,
         todoist: {
           token: todoistToken.trim(),
@@ -395,9 +398,71 @@
           Add another calendar
         </button>
         <p class="field-hint mt-3">
-          Leave the list empty to drop calendars. Birthdays and school hours can still fill
-          Today; otherwise the board shows the demo week.
+          Leave the list empty to drop calendars. Birthdays, bin day, and school hours can still
+          fill Today; otherwise the board shows the demo week.
         </p>
+      </section>
+
+      <section class="card p-5 sm:p-6">
+        <h2 class="font-display text-2xl font-semibold text-ink">Bin day</h2>
+        <p class="mt-1 text-sm font-semibold text-muted">
+          Wandsworth food waste and recycling become one all-day calendar row. The time column
+          is orange.
+        </p>
+
+        <details class="howto mt-4" open>
+          <summary>How to get your UPRN</summary>
+          <p>
+            A UPRN is the Unique Property Reference Number for your house — a string of digits,
+            not the postcode. Wandsworth’s collection days are per property, so the same street
+            can differ. The frame looks up the next dates from the UK Bin Day JSON feed.
+          </p>
+
+          <h3>Find My Address (any UK home)</h3>
+          <ol>
+            <li>
+              Open
+              <a href="https://www.findmyaddress.co.uk" target="_blank" rel="noreferrer"
+                >findmyaddress.co.uk</a
+              >.
+            </li>
+            <li>Enter your postcode or start typing the address and pick your house.</li>
+            <li>Copy the UPRN shown on the property page (digits only, such as <code>100022659217</code>).</li>
+          </ol>
+
+          <h3>Wandsworth My Property</h3>
+          <ol>
+            <li>
+              Open
+              <a href="https://www.wandsworth.gov.uk/my-property/" target="_blank" rel="noreferrer"
+                >wandsworth.gov.uk/my-property</a
+              >.
+            </li>
+            <li>Enter your postcode and choose your address.</li>
+            <li>
+              Look at the address bar. The number after <code>UPRN=</code> is what you need:
+              <code>?UPRN=100022659217</code>.
+            </li>
+            <li>Paste either those digits or the whole My Property URL below.</li>
+          </ol>
+          <p>
+            Leave the field empty to hide bin day. Rubbish, garden waste, and small electricals
+            are ignored on purpose — only food and recycling are shown.
+          </p>
+        </details>
+
+        <div class="field-block mt-5">
+          <label class="field-label" for="bins_uprn">UPRN</label>
+          <input
+            id="bins_uprn"
+            class="field"
+            name="bins_uprn"
+            autocomplete="off"
+            spellcheck="false"
+            bind:value={binUprn}
+            placeholder="100022659217 or a My Property URL"
+          />
+        </div>
       </section>
 
       <section class="card p-5 sm:p-6">

@@ -15,7 +15,7 @@ The 1600×1200 dashboard is a fixed grid, not a widget toolkit.
 | Block | Source | Notes |
 |---|---|---|
 | Mast (weekday, day, month, saint) | `saints` | French civil calendar |
-| Today / Next events | `calendar` (ICS) + `birthdays` + Pronote hours | Weather icons sit in the headings |
+| Today / Next events | `calendar` (ICS) + `bins` + `birthdays` + Pronote hours | Weather icons sit in the headings |
 | Sidebar to-dos | `todoist` | Demo list if no token |
 | Joke / On this day | `jokes` / `history` | Kid-safe skip lists |
 | Transit | `tfl` | Default: Northern, Circle, District, Victoria |
@@ -39,8 +39,8 @@ Switch from the family UI (trusted LAN — no auth):
 
 The family UI **Setup** page (`/config`) writes household settings into
 `config.toml`: frame name, timezone, battery size, calendar links,
-birthdays, Todoist, and BBC weather. Pronote, Meross, and Tube lines
-still live in the file. Trusted LAN — no auth.
+Wandsworth bin UPRN, birthdays, Todoist, and BBC weather. Pronote,
+Meross, and Tube lines still live in the file. Trusted LAN — no auth.
 
 ## Repository map
 

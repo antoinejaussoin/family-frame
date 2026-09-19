@@ -120,6 +120,7 @@ mod tests {
             birthday: false,
             school: true,
             recurring: false,
+            bin: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: "08:15".into(),
@@ -130,6 +131,7 @@ mod tests {
             birthday: false,
             school: true,
             recurring: false,
+            bin: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"school-day\""));
@@ -177,6 +179,7 @@ mod tests {
             birthday: true,
             school: false,
             recurring: false,
+            bin: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
@@ -187,6 +190,7 @@ mod tests {
             birthday: true,
             school: false,
             recurring: false,
+            bin: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"birthday\""));
@@ -212,6 +216,7 @@ mod tests {
             birthday: false,
             school: false,
             recurring: false,
+            bin: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
@@ -222,6 +227,7 @@ mod tests {
             birthday: false,
             school: false,
             recurring: true,
+            bin: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert_eq!(html.matches("class=\"all-day\"").count(), 2);
@@ -245,6 +251,7 @@ mod tests {
             birthday: false,
             school: false,
             recurring: false,
+            bin: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: "15:15".into(),
@@ -255,6 +262,7 @@ mod tests {
             birthday: false,
             school: false,
             recurring: true,
+            bin: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"one-off\""));
@@ -263,6 +271,42 @@ mod tests {
         assert!(!html.contains("class=\"birthday\""));
         assert!(!html.contains("class=\"school-day\""));
         assert_eq!(html.matches("class=\"one-off\"").count(), 1);
+    }
+
+    #[test]
+    fn dashboard_marks_bin_day_calendar_rows() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.events_today.push(crate::model::CalendarEvent {
+            start: String::new(),
+            title: "Bins collection".into(),
+            all_day: true,
+            day_label: "Today".into(),
+            date: "2026-09-19".into(),
+            birthday: false,
+            school: false,
+            recurring: false,
+            bin: true,
+        });
+        dash.events_coming.push(crate::model::CalendarEvent {
+            start: String::new(),
+            title: "Bins collection".into(),
+            all_day: true,
+            day_label: "Wed 23".into(),
+            date: "2026-09-23".into(),
+            birthday: false,
+            school: false,
+            recurring: false,
+            bin: true,
+        });
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert_eq!(html.matches("class=\"bin-day\"").count(), 2);
+        assert!(html.contains("Bins collection"));
+        assert!(html.contains("All day"));
+        assert!(html.contains("Wed 23</span>"));
+        assert!(!html.contains("09:17"));
+        assert!(!html.contains("class=\"one-off\""));
+        assert!(!html.contains("class=\"all-day\""));
     }
 
     #[test]

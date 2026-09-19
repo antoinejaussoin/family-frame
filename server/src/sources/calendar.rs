@@ -111,6 +111,7 @@ pub fn demo_events(today: chrono::NaiveDate) -> Vec<CalendarEvent> {
             birthday: false,
             school: false,
             recurring,
+            bin: false,
         }
     };
 

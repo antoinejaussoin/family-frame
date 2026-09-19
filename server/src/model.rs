@@ -20,6 +20,9 @@ pub struct CalendarEvent {
     /// stay `false` so the time column can use a different fill.
     #[serde(default)]
     pub recurring: bool,
+    /// Wandsworth food & recycling, merged into one calendar row.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bin: bool,
 }
 
 /// Today/week title column is ~570px (half of 1600 − padding − time − gaps)
@@ -1114,6 +1117,7 @@ mod tests {
             birthday: false,
             school: false,
             recurring: false,
+            bin: false,
         }
     }
 

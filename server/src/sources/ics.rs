@@ -134,6 +134,7 @@ fn calendar_event(
         birthday: false,
         school: false,
         recurring,
+        bin: false,
     }
 }
 
