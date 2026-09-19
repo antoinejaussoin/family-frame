@@ -453,8 +453,23 @@ impl DataSource for SaintsSource {
         "saints"
     }
 
-    fn enabled(&self, _cfg: &crate::config::Config) -> bool {
-        true
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.sources.saints.enabled
+    }
+
+    fn when_disabled(&self, _cfg: &crate::config::Config) -> super::DisabledBehaviour {
+        super::DisabledBehaviour::Demo
+    }
+
+    fn disabled_note(&self) -> String {
+        String::new()
+    }
+
+    fn demo(&self, _ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Mast {
+            saint_title: String::new(),
+            saint_name: String::new(),
+        })
     }
 
     async fn load(&self, ctx: &SourceContext<'_>) -> anyhow::Result<SourceOutcome> {

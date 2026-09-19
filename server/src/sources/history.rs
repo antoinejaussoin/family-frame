@@ -3,14 +3,14 @@
 //! Uses the public REST feed, keeps a day’s facts in memory, and drops grim
 //! items (crashes, murders) so the kitchen board stays family-friendly.
 
-use std::sync::Mutex;
-
 use anyhow::{Context, Result};
 use chrono::{Datelike, NaiveDate};
 use serde::Deserialize;
 use tracing::info;
 
 use crate::model::{HistoryFact, HISTORY_POOL};
+use crate::sources::cache::TtlCache;
+use crate::sources::filter::is_family_friendly;
 
 use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
@@ -24,8 +24,8 @@ impl DataSource for HistorySource {
         "history"
     }
 
-    fn enabled(&self, _cfg: &crate::config::Config) -> bool {
-        true
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.sources.history.enabled
     }
 
     async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
@@ -52,7 +52,7 @@ impl DataSource for HistorySource {
 const SELECTED_URL: &str = "https://en.wikipedia.org/api/rest_v1/feed/onthisday/selected";
 const EVENTS_URL: &str = "https://en.wikipedia.org/api/rest_v1/feed/onthisday/events";
 
-static LAST: Mutex<Option<(NaiveDate, Vec<HistoryFact>)>> = Mutex::new(None);
+static LAST: TtlCache<(NaiveDate, Vec<HistoryFact>)> = TtlCache::new();
 
 const SKIP_TERMS: &[&str] = &[
     "assassin",
@@ -94,10 +94,10 @@ struct RawEvent {
 }
 
 pub async fn load_facts(today: NaiveDate) -> Result<Vec<HistoryFact>> {
-    if let Some((date, facts)) = LAST.lock().ok().and_then(|g| g.clone()) {
-        if date == today && !facts.is_empty() {
-            return Ok(facts);
-        }
+    if let Some((_, facts)) =
+        LAST.get_untimed(|(date, facts)| *date == today && !facts.is_empty())
+    {
+        return Ok(facts);
     }
 
     let mut raw = fetch_feed(SELECTED_URL, today).await.unwrap_or_default();
@@ -111,9 +111,7 @@ pub async fn load_facts(today: NaiveDate) -> Result<Vec<HistoryFact>> {
     if facts.is_empty() {
         anyhow::bail!("no family-friendly on-this-day facts");
     }
-    if let Ok(mut guard) = LAST.lock() {
-        *guard = Some((today, facts.clone()));
-    }
+    LAST.set((today, facts.clone()));
     info!(n = facts.len(), "loaded Wikipedia on this day");
     Ok(facts)
 }
@@ -191,26 +189,7 @@ fn format_year(year: i32) -> String {
 }
 
 fn family_friendly(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    if SKIP_TERMS.iter().any(|term| lower.contains(term)) {
-        return false;
-    }
-    !SKIP_WORDS.iter().any(|word| contains_word(&lower, word))
-}
-
-fn contains_word(hay: &str, word: &str) -> bool {
-    let mut from = 0;
-    while let Some(rel) = hay[from..].find(word) {
-        let at = from + rel;
-        let before_ok = at == 0 || !hay.as_bytes()[at - 1].is_ascii_alphabetic();
-        let end = at + word.len();
-        let after_ok = end >= hay.len() || !hay.as_bytes()[end].is_ascii_alphabetic();
-        if before_ok && after_ok {
-            return true;
-        }
-        from = at + 1;
-    }
-    false
+    is_family_friendly(text, SKIP_TERMS, SKIP_WORDS)
 }
 
 fn tidy_text(text: &str) -> String {

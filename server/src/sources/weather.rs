@@ -6,8 +6,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use chrono::{Duration as ChronoDuration, NaiveDate};
@@ -16,6 +15,7 @@ use tracing::{info, warn};
 
 use crate::config::WeatherConfig;
 use crate::model::{Weather, WeatherDay, WeatherSlot};
+use crate::sources::cache::TtlCache;
 
 use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
@@ -33,7 +33,7 @@ impl DataSource for WeatherSource {
         cfg.weather_enabled()
     }
 
-    fn when_disabled(&self) -> DisabledBehaviour {
+    fn when_disabled(&self, _cfg: &crate::config::Config) -> DisabledBehaviour {
         DisabledBehaviour::Demo
     }
 
@@ -72,7 +72,7 @@ impl DataSource for WeatherSource {
 const FORECAST_URL: &str = "https://weather-broker-cdn.api.bbci.co.uk/en/forecast/aggregated";
 const FETCH_TTL: Duration = Duration::from_secs(15 * 60);
 
-static LAST: Mutex<Option<(Instant, String, Weather)>> = Mutex::new(None);
+static LAST: TtlCache<(String, Weather)> = TtlCache::new();
 
 const PERIODS: [Period; 3] = [
     Period {
@@ -214,10 +214,10 @@ pub async fn load_forecast(
     if location_id.is_empty() {
         anyhow::bail!("BBC weather location_id is empty");
     }
-    if let Some((at, id, weather)) = LAST.lock().ok().and_then(|g| g.clone()) {
-        if id == location_id && at.elapsed() < FETCH_TTL && !weather.days.is_empty() {
-            return Ok(weather);
-        }
+    if let Some((_, weather)) = LAST.get(FETCH_TTL, |(id, weather)| {
+        id == location_id && !weather.days.is_empty()
+    }) {
+        return Ok(weather);
     }
 
     let url = format!("{FORECAST_URL}/{location_id}");
@@ -236,9 +236,7 @@ pub async fn load_forecast(
     let mut cache = load_slot_cache(cache_path, location_id);
     let weather = forecast_from_json(&body, today, &mut cache)?;
     save_slot_cache(cache_path, &cache);
-    if let Ok(mut guard) = LAST.lock() {
-        *guard = Some((Instant::now(), location_id.to_string(), weather.clone()));
-    }
+    LAST.set((location_id.to_string(), weather.clone()));
     info!(
         location = %weather.location,
         days = weather.days.len(),

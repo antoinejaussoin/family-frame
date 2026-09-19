@@ -47,7 +47,6 @@ pub fn upcoming_events(birthdays: &[Birthday], today: NaiveDate) -> Vec<Calendar
         out.push(CalendarEvent {
             start: String::new(),
             title: crate::model::truncate_event_title(&format!("{name} turns {age}")),
-            who: String::new(),
             all_day: true,
             day_label: ics::day_label(next, today),
             date: next.format("%Y-%m-%d").to_string(),

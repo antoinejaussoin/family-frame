@@ -23,6 +23,7 @@ use uuid::Uuid;
 
 use crate::config::MerossConfig;
 use crate::model::RoomClimate;
+use crate::sources::cache::TtlCache;
 
 use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
@@ -40,8 +41,12 @@ impl DataSource for MerossSource {
         cfg.meross_enabled()
     }
 
-    fn when_disabled(&self) -> DisabledBehaviour {
-        DisabledBehaviour::Skip
+    fn when_disabled(&self, _cfg: &crate::config::Config) -> DisabledBehaviour {
+        DisabledBehaviour::Demo
+    }
+
+    fn disabled_note(&self) -> String {
+        "demo rooms (no Meross credentials)".into()
     }
 
     async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
@@ -78,7 +83,7 @@ const MQTT_TIMEOUT: Duration = Duration::from_secs(15);
 const ROOMS_TTL: Duration = Duration::from_secs(90);
 
 static CREDS: Mutex<Option<CloudCreds>> = Mutex::new(None);
-static ROOMS: Mutex<Option<(Instant, Vec<RoomClimate>)>> = Mutex::new(None);
+static ROOMS: TtlCache<Vec<RoomClimate>> = TtlCache::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CloudCreds {
@@ -122,10 +127,8 @@ struct SubdeviceInfo {
 }
 
 pub async fn load_rooms(cfg: &MerossConfig, creds_path: &Path) -> Result<Vec<RoomClimate>> {
-    if let Some((at, rooms)) = ROOMS.lock().ok().and_then(|g| g.clone()) {
-        if at.elapsed() < ROOMS_TTL {
-            return Ok(rooms);
-        }
+    if let Some(rooms) = ROOMS.get(ROOMS_TTL, |_| true) {
+        return Ok(rooms);
     }
 
     let creds = login(cfg, creds_path).await?;
@@ -144,9 +147,7 @@ pub async fn load_rooms(cfg: &MerossConfig, creds_path: &Path) -> Result<Vec<Roo
         Err(err) => return Err(err),
     };
 
-    if let Ok(mut guard) = ROOMS.lock() {
-        *guard = Some((Instant::now(), rooms.clone()));
-    }
+    ROOMS.set(rooms.clone());
     Ok(rooms)
 }
 
@@ -159,9 +160,7 @@ pub fn invalidate_cache() {
 
 /// Drop cached thermometer readings so the next dashboard load talks to the hub.
 pub fn invalidate_rooms() {
-    if let Ok(mut guard) = ROOMS.lock() {
-        *guard = None;
-    }
+    ROOMS.invalidate();
 }
 
 async fn login(cfg: &MerossConfig, creds_path: &Path) -> Result<CloudCreds> {
@@ -952,7 +951,7 @@ fn thermostat_display_name(raw: &str, id: &str, cfg: &MerossConfig) -> String {
     }
     let stripped = strip_thermostat_suffix(raw);
     if stripped.is_empty() || looks_like_thermostat_model(&stripped) {
-        "Kitchen".into()
+        "Thermostat".into()
     } else {
         stripped
     }
@@ -1107,7 +1106,7 @@ mod tests {
     }
 
     #[test]
-    fn unlabeled_thermostat_defaults_to_kitchen() {
+    fn unlabeled_thermostat_defaults_to_thermostat() {
         let payload = json!({
             "all": [{
                 "id": "0300A3EA",
@@ -1116,7 +1115,7 @@ mod tests {
             }]
         });
         let rooms = rooms_from_mts100_all(&payload, &HashMap::new(), &MerossConfig::default());
-        assert_eq!(rooms[0].name, "Kitchen");
+        assert_eq!(rooms[0].name, "Thermostat");
         assert_eq!(rooms[0].temperature, "19.8°");
     }
 
@@ -1236,10 +1235,7 @@ mod tests {
 
     #[test]
     fn invalidate_rooms_drops_ttl_cache_only() {
-        {
-            let mut guard = ROOMS.lock().unwrap();
-            *guard = Some((Instant::now(), demo_rooms()));
-        }
+        ROOMS.set(demo_rooms());
         {
             let mut guard = CREDS.lock().unwrap();
             *guard = Some(CloudCreds {
@@ -1252,7 +1248,7 @@ mod tests {
             });
         }
         invalidate_rooms();
-        assert!(ROOMS.lock().unwrap().is_none());
+        assert!(ROOMS.get(ROOMS_TTL, |_| true).is_none());
         assert!(CREDS.lock().unwrap().is_some());
         invalidate_cache();
         assert!(CREDS.lock().unwrap().is_none());

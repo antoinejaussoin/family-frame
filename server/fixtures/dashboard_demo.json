@@ -6,17 +6,6 @@
   "day": "18",
   "events_coming": [
     {
-      "all_day": true,
-      "birthday": false,
-      "date": "2026-09-19",
-      "day_label": "Tomorrow",
-      "recurring": true,
-      "school": false,
-      "start": "",
-      "title": "Swim",
-      "who": ""
-    },
-    {
       "all_day": false,
       "birthday": false,
       "date": "2026-09-21",
@@ -24,85 +13,7 @@
       "recurring": false,
       "school": true,
       "start": "08:15",
-      "title": "School: Léa (finishes at 15:45)",
-      "who": ""
-    },
-    {
-      "all_day": false,
-      "birthday": false,
-      "date": "2026-09-21",
-      "day_label": "Mon 21",
-      "recurring": false,
-      "school": false,
-      "start": "16:00",
-      "title": "Parents’ evening",
-      "who": ""
-    },
-    {
-      "all_day": false,
-      "birthday": false,
-      "date": "2026-09-23",
-      "day_label": "Wed 23",
-      "recurring": false,
-      "school": false,
-      "start": "09:30",
-      "title": "Dentist",
-      "who": ""
-    },
-    {
-      "all_day": false,
-      "birthday": false,
-      "date": "2026-09-26",
-      "day_label": "Sat 26",
-      "recurring": false,
-      "school": false,
-      "start": "18:00",
-      "title": "Cinema",
-      "who": ""
-    },
-    {
-      "all_day": true,
-      "birthday": false,
-      "date": "2026-09-30",
-      "day_label": "Wed 30",
-      "recurring": false,
-      "school": false,
-      "start": "",
-      "title": "Half term",
-      "who": ""
-    },
-    {
-      "all_day": false,
-      "birthday": false,
-      "date": "2026-10-06",
-      "day_label": "6 Oct",
-      "recurring": true,
-      "school": false,
-      "start": "10:00",
-      "title": "Football club",
-      "who": ""
-    },
-    {
-      "all_day": false,
-      "birthday": false,
-      "date": "2026-10-13",
-      "day_label": "13 Oct",
-      "recurring": true,
-      "school": false,
-      "start": "19:00",
-      "title": "Book club",
-      "who": ""
-    },
-    {
-      "all_day": false,
-      "birthday": false,
-      "date": "2026-10-28",
-      "day_label": "28 Oct",
-      "recurring": false,
-      "school": false,
-      "start": "15:00",
-      "title": "Granny’s birthday",
-      "who": ""
+      "title": "School: Léa (finishes at 15:45)"
     }
   ],
   "events_today": [
@@ -111,33 +22,10 @@
       "birthday": false,
       "date": "2026-09-18",
       "day_label": "Today",
-      "recurring": true,
-      "school": false,
-      "start": "08:15",
-      "title": "School run",
-      "who": ""
-    },
-    {
-      "all_day": false,
-      "birthday": false,
-      "date": "2026-09-18",
-      "day_label": "Today",
       "recurring": false,
       "school": true,
       "start": "08:30",
-      "title": "School: Léa (finishes at 16:30)",
-      "who": ""
-    },
-    {
-      "all_day": false,
-      "birthday": false,
-      "date": "2026-09-18",
-      "day_label": "Today",
-      "recurring": false,
-      "school": false,
-      "start": "18:30",
-      "title": "Dinner at Sam’s",
-      "who": ""
+      "title": "School: Léa (finishes at 16:30)"
     }
   ],
   "family_name": "Family",
@@ -190,7 +78,7 @@
     "homework": [],
     "student": "Léa"
   },
-  "source_note": "demo to-dos (no Todoist token) · demo calendar (no ICS events) · demo rooms (no Meross credentials) · demo weather (no BBC location) · TfL tube · icanhazdadjoke · demo school (no Pronote credentials)",
+  "source_note": "demo to-dos (no Todoist token) · demo rooms (no Meross credentials) · demo weather (no BBC location) · TfL tube · icanhazdadjoke · demo school (no Pronote credentials)",
   "todos": [
     {
       "done": false,

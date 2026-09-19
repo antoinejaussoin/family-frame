@@ -3,14 +3,15 @@
 //! Polls the public Unified API for a fixed set of lines. No API key is
 //! required at household poll rates.
 
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use tracing::{info, warn};
 
-use crate::model::TubeLine;
+use crate::config::TflLineConfig;
+use crate::model::StatusLine;
+use crate::sources::cache::TtlCache;
 
 use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
@@ -24,12 +25,13 @@ impl DataSource for TflSource {
         "tfl"
     }
 
-    fn enabled(&self, _cfg: &crate::config::Config) -> bool {
-        true
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.sources.tfl.enabled
     }
 
-    async fn load(&self, _ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
-        match load_tube().await {
+    async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        let specs = &ctx.cfg.sources.tfl.lines;
+        match load_tube(specs).await {
             Ok(lines) if !lines.is_empty() => {
                 Ok(SourceOutcome::live("TfL tube", Contribution::Transit(lines)))
             }
@@ -37,58 +39,27 @@ impl DataSource for TflSource {
                 warn!("TfL returned no lines");
                 Ok(SourceOutcome::unavailable(
                     "TfL empty — demo tube",
-                    Contribution::Transit(demo_tube()),
+                    Contribution::Transit(demo_tube_for(specs)),
                 ))
             }
             Err(err) => {
                 warn!(%err, "TfL failed; using demo tube");
                 Ok(SourceOutcome::unavailable(
                     "TfL unavailable",
-                    Contribution::Transit(demo_tube()),
+                    Contribution::Transit(demo_tube_for(specs)),
                 ))
             }
         }
     }
 
-    fn demo(&self, _ctx: &SourceContext<'_>) -> Option<Contribution> {
-        Some(Contribution::Transit(demo_tube()))
+    fn demo(&self, ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Transit(demo_tube_for(&ctx.cfg.sources.tfl.lines)))
     }
 }
 
-const STATUS_URL: &str = "https://api.tfl.gov.uk/Line/northern,circle,district,victoria/Status";
 const FETCH_TTL: Duration = Duration::from_secs(15 * 60);
 
-/// Display order on the panel.
-const LINES: [LineSpec; 4] = [
-    LineSpec {
-        id: "northern",
-        name: "Northern",
-        colour: "black",
-    },
-    LineSpec {
-        id: "circle",
-        name: "Circle",
-        colour: "yellow",
-    },
-    LineSpec {
-        id: "district",
-        name: "District",
-        colour: "green",
-    },
-    LineSpec {
-        id: "victoria",
-        name: "Victoria",
-        colour: "blue",
-    },
-];
-
-struct LineSpec {
-    id: &'static str,
-    name: &'static str,
-    colour: &'static str,
-}
-
-static LAST: Mutex<Option<(Instant, Vec<TubeLine>)>> = Mutex::new(None);
+static LAST: TtlCache<(String, Vec<StatusLine>)> = TtlCache::new();
 
 #[derive(Debug, Deserialize)]
 struct ApiLine {
@@ -107,52 +78,60 @@ struct ApiStatus {
     status_severity_description: String,
 }
 
-pub async fn load_tube() -> Result<Vec<TubeLine>> {
-    if let Some((at, lines)) = LAST.lock().ok().and_then(|g| g.clone()) {
-        if at.elapsed() < FETCH_TTL && !lines.is_empty() {
-            return Ok(lines);
-        }
+fn status_url(lines: &[TflLineConfig]) -> String {
+    let ids = lines
+        .iter()
+        .map(|l| l.id.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("https://api.tfl.gov.uk/Line/{ids}/Status")
+}
+
+pub async fn load_tube(lines: &[TflLineConfig]) -> Result<Vec<StatusLine>> {
+    let url = status_url(lines);
+    if let Some((_, cached)) = LAST.get(FETCH_TTL, |(cached_url, rows)| {
+        cached_url == &url && !rows.is_empty()
+    }) {
+        return Ok(cached);
     }
 
     let body = reqwest::Client::new()
-        .get(STATUS_URL)
+        .get(&url)
         .header("accept", "application/json")
         .timeout(Duration::from_secs(20))
         .send()
         .await
-        .with_context(|| format!("TfL GET {STATUS_URL}"))?
+        .with_context(|| format!("TfL GET {url}"))?
         .error_for_status()
-        .with_context(|| format!("TfL status {STATUS_URL}"))?
+        .with_context(|| format!("TfL status {url}"))?
         .text()
         .await?;
 
-    let lines = tube_from_json(&body)?;
-    if let Ok(mut guard) = LAST.lock() {
-        *guard = Some((Instant::now(), lines.clone()));
-    }
-    info!(n = lines.len(), "loaded TfL tube status");
-    Ok(lines)
+    let parsed = tube_from_json(&body, lines)?;
+    LAST.set((url, parsed.clone()));
+    info!(n = parsed.len(), "loaded TfL tube status");
+    Ok(parsed)
 }
 
-pub fn tube_from_json(json: &str) -> Result<Vec<TubeLine>> {
+pub fn tube_from_json(json: &str, lines: &[TflLineConfig]) -> Result<Vec<StatusLine>> {
     let parsed: Vec<ApiLine> = serde_json::from_str(json).context("parsing TfL JSON")?;
     let mut by_id = std::collections::HashMap::new();
     for line in parsed {
         by_id.insert(line.id.to_ascii_lowercase(), line);
     }
 
-    let mut out = Vec::with_capacity(LINES.len());
-    for spec in &LINES {
-        let line = match by_id.get(spec.id) {
+    let mut out = Vec::with_capacity(lines.len());
+    for spec in lines {
+        let line = match by_id.get(&spec.id.to_ascii_lowercase()) {
             Some(line) => line_from_api(spec, line),
             None => {
-                warn!(id = spec.id, "TfL response missing line");
-                TubeLine {
-                    id: spec.id.into(),
-                    name: spec.name.into(),
+                warn!(id = %spec.id, "TfL response missing line");
+                StatusLine {
+                    id: spec.id.clone(),
+                    name: spec.name.clone(),
                     status: "Unknown".into(),
                     severity: "delay".into(),
-                    colour: spec.colour.into(),
+                    colour: spec.colour.clone(),
                 }
             }
         };
@@ -161,7 +140,7 @@ pub fn tube_from_json(json: &str) -> Result<Vec<TubeLine>> {
     Ok(out)
 }
 
-fn line_from_api(spec: &LineSpec, line: &ApiLine) -> TubeLine {
+fn line_from_api(spec: &TflLineConfig, line: &ApiLine) -> StatusLine {
     let (severity_code, description) = line
         .line_statuses
         .iter()
@@ -169,17 +148,12 @@ fn line_from_api(spec: &LineSpec, line: &ApiLine) -> TubeLine {
         .map(|s| (s.status_severity, s.status_severity_description.as_str()))
         .unwrap_or((-1, "Unknown"));
     let (status, severity) = shorten_status(severity_code, description);
-    TubeLine {
-        id: spec.id.into(),
-        name: if line.name.is_empty() {
-            spec.name.into()
-        } else {
-            // TfL returns "Northern" etc.; keep our short names.
-            spec.name.into()
-        },
+    StatusLine {
+        id: spec.id.clone(),
+        name: spec.name.clone(),
         status,
         severity: severity.into(),
-        colour: spec.colour.into(),
+        colour: spec.colour.clone(),
     }
 }
 
@@ -217,37 +191,31 @@ fn shorten_status(severity: i32, description: &str) -> (String, &'static str) {
     ("Check status".into(), "delay")
 }
 
-pub fn demo_tube() -> Vec<TubeLine> {
-    vec![
-        TubeLine {
-            id: "northern".into(),
-            name: "Northern".into(),
-            status: "Good service".into(),
-            severity: "good".into(),
-            colour: "black".into(),
-        },
-        TubeLine {
-            id: "circle".into(),
-            name: "Circle".into(),
-            status: "Good service".into(),
-            severity: "good".into(),
-            colour: "yellow".into(),
-        },
-        TubeLine {
-            id: "district".into(),
-            name: "District".into(),
-            status: "Severe delays".into(),
-            severity: "severe".into(),
-            colour: "green".into(),
-        },
-        TubeLine {
-            id: "victoria".into(),
-            name: "Victoria".into(),
-            status: "Minor delays".into(),
-            severity: "delay".into(),
-            colour: "blue".into(),
-        },
-    ]
+pub fn demo_tube() -> Vec<StatusLine> {
+    demo_tube_for(&crate::config::default_tfl_lines())
+}
+
+pub fn demo_tube_for(lines: &[TflLineConfig]) -> Vec<StatusLine> {
+    let demos = [
+        ("Good service", "good"),
+        ("Good service", "good"),
+        ("Severe delays", "severe"),
+        ("Minor delays", "delay"),
+    ];
+    lines
+        .iter()
+        .enumerate()
+        .map(|(i, spec)| {
+            let (status, severity) = demos.get(i).copied().unwrap_or(("Good service", "good"));
+            StatusLine {
+                id: spec.id.clone(),
+                name: spec.name.clone(),
+                status: status.into(),
+                severity: severity.into(),
+                colour: spec.colour.clone(),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -263,7 +231,7 @@ mod tests {
 
     #[test]
     fn parses_ordered_lines() {
-        let lines = tube_from_json(&fixture()).unwrap();
+        let lines = tube_from_json(&fixture(), &crate::config::default_tfl_lines()).unwrap();
         assert_eq!(lines.len(), 4);
         assert_eq!(lines[0].name, "Northern");
         assert_eq!(lines[0].status, "Good service");

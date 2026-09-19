@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 pub struct CalendarEvent {
     pub start: String,
     pub title: String,
-    pub who: String,
     pub all_day: bool,
     pub day_label: String,
     /// Local `YYYY-MM-DD` so Today / Coming next stay in chronological order.
@@ -43,10 +42,6 @@ pub const EVENT_ROW_PX: i32 = 60;
 /// absorbed above Coming next so that section sits on the column bottom.
 pub const SECTION_GAP_PX: i32 = EVENT_ROW_PX;
 pub const EMPTY_SECTION_BODY_PX: i32 = 54;
-
-/// Homework and Grades panel sections. Markup, CSS, and Pronote fetch stay;
-/// flip this to put the two quarter-columns back on the glass.
-pub const SHOW_SCHOOL_SECTIONS: bool = false;
 
 /// Right-hand columns (same grid row as events). Keep in sync with
 /// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/joke/history/tube/rooms,
@@ -168,7 +163,7 @@ pub struct Weather {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct TubeLine {
+pub struct StatusLine {
     pub id: String,
     pub name: String,
     pub status: String,
@@ -177,6 +172,9 @@ pub struct TubeLine {
     /// Spectra 6 colour class: `black`, `yellow`, `green`, or `blue`.
     pub colour: String,
 }
+
+/// Back-compat name; TfL is the only status-line source today.
+pub type TubeLine = StatusLine;
 
 /// Pronote homework and recent grades for the two school quarter-sections.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -259,7 +257,7 @@ pub struct Dashboard {
     pub todos_more: usize,
     pub rooms: Vec<RoomClimate>,
     pub weather: Weather,
-    pub tube: Vec<TubeLine>,
+    pub tube: Vec<StatusLine>,
     #[serde(default)]
     pub history: Vec<HistoryFact>,
     #[serde(default)]
@@ -267,6 +265,9 @@ pub struct Dashboard {
     #[serde(default)]
     pub school: School,
     pub source_note: String,
+    /// Homework / grades columns. Skipped in the layout hash JSON.
+    #[serde(default, skip)]
+    pub show_school_sections: bool,
     /// Pico has reported a battery reading. Hidden on the panel until then.
     #[serde(default)]
     pub has_battery: bool,
@@ -306,6 +307,7 @@ impl Dashboard {
             joke: None,
             school: School::default(),
             source_note: String::new(),
+            show_school_sections: false,
             has_battery: false,
             battery_pct: 0,
             battery_level: String::new(),
@@ -351,7 +353,7 @@ impl Dashboard {
     }
 
     fn hide_school_sections_from_hash(hashed: &mut Self) {
-        if SHOW_SCHOOL_SECTIONS {
+        if hashed.show_school_sections {
             return;
         }
         hashed.school.homework.clear();
@@ -379,7 +381,7 @@ impl Dashboard {
     /// Leftover height is On this day — facts are added only while
     /// they still fit, up to three wrapped lines each.
     pub fn fit_sidebar_to_panel(&mut self) {
-        self.fit_sidebar(SHOW_SCHOOL_SECTIONS && self.school.is_visible());
+        self.fit_sidebar(self.show_school_sections && self.school.is_visible());
     }
 
     fn fit_sidebar(&mut self, school_on: bool) {
@@ -732,7 +734,7 @@ mod tests {
 
     fn tube_lines(n: usize) -> Vec<TubeLine> {
         (0..n)
-            .map(|i| TubeLine {
+            .map(|i| StatusLine {
                 id: format!("l{i}"),
                 name: format!("Line {i}"),
                 status: "Good service".into(),
@@ -1081,7 +1083,6 @@ mod tests {
         CalendarEvent {
             start: start.into(),
             title: title.into(),
-            who: String::new(),
             all_day: false,
             day_label: date.format("%a %-d").to_string(),
             date: date.format("%Y-%m-%d").to_string(),

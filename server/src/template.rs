@@ -26,7 +26,7 @@ impl Templates {
             .get_template("dashboard.html")
             .context("templates/dashboard.html")?;
         Ok(tmpl.render(minijinja::context! {
-            show_school_sections => crate::model::SHOW_SCHOOL_SECTIONS,
+            show_school_sections => dash.show_school_sections,
             ..minijinja::Value::from_serialize(dash),
         })?)
     }
@@ -123,7 +123,6 @@ mod tests {
         dash.events_today.push(crate::model::CalendarEvent {
             start: "08:30".into(),
             title: "School: Léa (finishes at 16:30)".into(),
-            who: String::new(),
             all_day: false,
             day_label: "Today".into(),
             date: "2026-09-18".into(),
@@ -134,7 +133,6 @@ mod tests {
         dash.events_coming.push(crate::model::CalendarEvent {
             start: "08:15".into(),
             title: "School: Léa (finishes at 15:45)".into(),
-            who: String::new(),
             all_day: false,
             day_label: "Mon 21".into(),
             date: "2026-09-21".into(),
@@ -182,7 +180,6 @@ mod tests {
         dash.events_today.push(crate::model::CalendarEvent {
             start: String::new(),
             title: "Maya turns 8".into(),
-            who: String::new(),
             all_day: true,
             day_label: "Today".into(),
             date: "2026-09-14".into(),
@@ -193,7 +190,6 @@ mod tests {
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
             title: "Sam turns 11".into(),
-            who: String::new(),
             all_day: true,
             day_label: "Mon 28".into(),
             date: "2026-09-28".into(),
@@ -219,7 +215,6 @@ mod tests {
         dash.events_today.push(crate::model::CalendarEvent {
             start: String::new(),
             title: "Test eink".into(),
-            who: String::new(),
             all_day: true,
             day_label: "Today".into(),
             date: "2026-09-18".into(),
@@ -230,7 +225,6 @@ mod tests {
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
             title: "Swim".into(),
-            who: String::new(),
             all_day: true,
             day_label: "Tomorrow".into(),
             date: "2026-09-19".into(),
@@ -254,7 +248,6 @@ mod tests {
         dash.events_today.push(crate::model::CalendarEvent {
             start: "18:30".into(),
             title: "Dinner at Sam’s".into(),
-            who: String::new(),
             all_day: false,
             day_label: "Today".into(),
             date: "2026-09-18".into(),
@@ -265,7 +258,6 @@ mod tests {
         dash.events_coming.push(crate::model::CalendarEvent {
             start: "15:15".into(),
             title: "Pick-up Armand".into(),
-            who: String::new(),
             all_day: false,
             day_label: "Thu 24".into(),
             date: "2026-09-24".into(),

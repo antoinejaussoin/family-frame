@@ -8,8 +8,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine;
@@ -23,6 +22,7 @@ use tracing::info;
 
 use crate::config::PronoteConfig;
 use crate::model::{CalendarEvent, School, SchoolDay, SchoolItem};
+use crate::sources::cache::TtlCache;
 
 use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
@@ -41,8 +41,12 @@ impl DataSource for PronoteSource {
         cfg.pronote_enabled()
     }
 
-    fn when_disabled(&self) -> DisabledBehaviour {
-        DisabledBehaviour::Demo
+    fn when_disabled(&self, cfg: &crate::config::Config) -> DisabledBehaviour {
+        if cfg.config_path.is_none() {
+            DisabledBehaviour::Demo
+        } else {
+            DisabledBehaviour::Skip
+        }
     }
 
     fn disabled_note(&self) -> String {
@@ -96,7 +100,7 @@ const SUBJECT_MAX: usize = 32;
 const GRADE_SUBJECT_MAX: usize = 28;
 const DETAIL_MAX: usize = 10;
 
-static LAST: Mutex<Option<(Instant, String, School)>> = Mutex::new(None);
+static LAST: TtlCache<(String, School)> = TtlCache::new();
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Account {
@@ -127,10 +131,8 @@ pub async fn load_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School
         bail!("Pronote url/username/password are empty");
     }
     let cache_key = format!("{url}\0{username}\0{}", cfg.child.trim());
-    if let Some((at, key, school)) = LAST.lock().ok().and_then(|g| g.clone()) {
-        if key == cache_key && at.elapsed() < FETCH_TTL {
-            return Ok(school);
-        }
+    if let Some((_, school)) = LAST.get(FETCH_TTL, |(key, _)| key == &cache_key) {
+        return Ok(school);
     }
 
     let school = fetch_school(cfg, today).await?;
@@ -141,9 +143,7 @@ pub async fn load_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School
         days = school.days.len(),
         "loaded Pronote school"
     );
-    if let Ok(mut guard) = LAST.lock() {
-        *guard = Some((Instant::now(), cache_key, school.clone()));
-    }
+    LAST.set((cache_key, school.clone()));
     Ok(school)
 }
 
@@ -832,7 +832,6 @@ fn school_hours_event(
     CalendarEvent {
         start: day.start.clone(),
         title: format!("School: {student} (finishes at {})", day.end),
-        who: String::new(),
         all_day: false,
         day_label: ics::day_label(date, today),
         date: day.date.clone(),

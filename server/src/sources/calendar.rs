@@ -21,7 +21,7 @@ impl DataSource for IcsSource {
         cfg.sources.ics_urls.iter().any(|u| !u.trim().is_empty())
     }
 
-    fn when_disabled(&self) -> DisabledBehaviour {
+    fn when_disabled(&self, _cfg: &crate::config::Config) -> DisabledBehaviour {
         DisabledBehaviour::Skip
     }
 
@@ -76,7 +76,6 @@ pub fn merge_events(dash: &mut Dashboard, events: Vec<CalendarEvent>) {
         if !ev.school {
             ev.title = crate::model::truncate_event_title(&ev.title);
         }
-        ev.who.clear();
         if ev.day_label == "Today" {
             dash.events_today.push(ev);
         } else {
@@ -91,7 +90,6 @@ pub fn demo_events(today: chrono::NaiveDate) -> Vec<CalendarEvent> {
         CalendarEvent {
             start: if all_day { String::new() } else { start.into() },
             title: title.into(),
-            who: String::new(),
             all_day,
             day_label: ics::day_label(date, today),
             date: date.format("%Y-%m-%d").to_string(),

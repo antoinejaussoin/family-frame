@@ -1,9 +1,5 @@
 //! Dashboard datasources: one [`DataSource`] impl each, registered in
 //! [`all_sources`].
-//!
-//! Phase 1 keeps post-iCloud load order and demo injection (early demo
-//! calendar, demo school hours when Pronote is off). Config tables land in
-//! Phase 2.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -13,9 +9,11 @@ use crate::config::Config;
 use crate::model::Dashboard;
 
 pub mod birthdays;
+pub mod cache;
 pub mod calendar;
 pub mod contribute;
 pub mod context;
+pub mod filter;
 pub mod history;
 pub mod ics;
 pub mod jokes;
@@ -44,7 +42,7 @@ pub trait DataSource: Send + Sync {
 
     fn enabled(&self, cfg: &Config) -> bool;
 
-    fn when_disabled(&self) -> DisabledBehaviour {
+    fn when_disabled(&self, _cfg: &Config) -> DisabledBehaviour {
         DisabledBehaviour::Skip
     }
 
@@ -85,9 +83,12 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
 
     for src in all_sources() {
         if !src.enabled(cfg) {
-            if src.when_disabled() == DisabledBehaviour::Demo {
+            if src.when_disabled(cfg) == DisabledBehaviour::Demo {
                 if let Some(demo) = src.demo(&ctx) {
-                    notes.push(src.disabled_note());
+                    let note = src.disabled_note();
+                    if !note.is_empty() {
+                        notes.push(note);
+                    }
                     apply(&mut dash, &mut calendar, demo, ctx.today);
                 }
             }
@@ -108,27 +109,15 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
                 }
             }
         }
+    }
 
-        // Legacy parity: demo calendar before birthdays / school hours,
-        // then demo rooms if Meross is off.
-        if src.id() == "calendar" {
-            if calendar.is_empty() {
-                calendar.extend(demo_events(ctx.today));
-                notes.push("demo calendar (no ICS events)".into());
-            }
-            if dash.rooms.is_empty() && !cfg.meross_enabled() {
-                apply(
-                    &mut dash,
-                    &mut calendar,
-                    Contribution::Rooms(meross::demo_rooms()),
-                    ctx.today,
-                );
-                notes.push("demo rooms (no Meross credentials)".into());
-            }
-        }
+    if calendar.is_empty() {
+        calendar.extend(demo_events(ctx.today));
+        notes.push("demo calendar (no ICS events)".into());
     }
 
     merge_events(&mut dash, calendar);
+    dash.show_school_sections = cfg.pronote.show_sections;
     dash.fit_to_panel();
     dash.source_note = notes.join(" · ");
     Ok(dash)
@@ -162,11 +151,11 @@ mod tests {
     }
 
     #[test]
-    fn default_config_enablement_matches_post_icloud() {
+    fn default_config_enablement_skips_credential_sources() {
         let cfg = Config::default();
         assert!(!cfg.todoist_enabled());
         assert!(!cfg.meross_enabled());
-        assert!(cfg.weather_enabled());
+        assert!(!cfg.weather_enabled());
         assert!(!cfg.pronote_enabled());
         let enabled: Vec<_> = all_sources()
             .iter()
@@ -175,7 +164,7 @@ mod tests {
             .collect();
         assert_eq!(
             enabled,
-            ["weather", "tfl", "jokes", "history", "birthdays", "saints"]
+            ["tfl", "jokes", "history", "birthdays", "saints"]
         );
     }
 
@@ -189,7 +178,6 @@ mod tests {
             Contribution::Todos(todoist::demo_todos()),
             today,
         );
-        calendar.extend(demo_events(today));
         apply(
             &mut dash,
             &mut calendar,
@@ -226,11 +214,13 @@ mod tests {
             Contribution::Calendar(birthdays::upcoming_events(&cfg.birthdays, today)),
             today,
         );
+        if calendar.is_empty() {
+            calendar.extend(demo_events(today));
+        }
         merge_events(&mut dash, calendar);
         dash.fit_to_panel();
         dash.source_note = [
             "demo to-dos (no Todoist token)",
-            "demo calendar (no ICS events)",
             "demo rooms (no Meross credentials)",
             "demo weather (no BBC location)",
             "TfL tube",
@@ -239,6 +229,22 @@ mod tests {
         ]
         .join(" · ");
         dash
+    }
+
+    #[test]
+    fn birthdays_suppress_demo_calendar() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let people = [crate::config::Birthday {
+            name: "Maya".into(),
+            dob: NaiveDate::from_ymd_opt(2018, 9, 20).unwrap(),
+        }];
+        let mut calendar = birthdays::upcoming_events(&people, today);
+        assert!(!calendar.is_empty());
+        if calendar.is_empty() {
+            calendar.extend(demo_events(today));
+        }
+        assert!(calendar.iter().all(|e| e.birthday));
+        assert!(!calendar.iter().any(|e| e.title == "School run"));
     }
 
     #[test]

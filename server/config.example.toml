@@ -6,9 +6,6 @@ family_name = "Family"
 # Display mode: "dashboard" (calendars & house) or "picture" (photo rotation).
 # Switch from the family UI at http://<host>:8765/ — no restart needed.
 mode = "dashboard"
-# Birthdays live here, not on a calendar. Each entry is `Name,YYYY-MM-DD`.
-# Merged into Today / Coming next up to two weeks ahead as “Name turns N”.
-birthdays = ["Maya,2018-03-15", "Sam,2015-11-02"]
 # Seconds the Pico should sleep between polls when `schedule_kind` is "interval".
 # Top-level values are the *dashboard* schedule. Picture mode can override
 # them under `[pictures]` (the family UI edits each mode separately).
@@ -50,16 +47,31 @@ rotate = []
 # wake-up = []
 # schedule_kind = "interval"
 
-[todoist]
+# Datasources. Legacy [todoist] / [weather] / [meross] / [pronote] tables and
+# top-level birthdays / [sources].ics_urls still load for one release.
+# A leftover [icloud] table is ignored.
+
+[sources.calendar]
+# Public ICS URLs (no password). Calendar.app’s webcal:// links are fetched
+# as https://. Publish a read-only family calendar and paste the link here.
+ics_urls = []
+
+[sources.birthdays]
+# Each entry is `Name,YYYY-MM-DD`. Merged into Today / Coming next up to
+# two weeks ahead as “Name turns N”.
+people = ["Maya,2018-03-15", "Sam,2015-11-02"]
+
+[sources.todoist]
 # Personal API token from Todoist → Settings → Integrations → Developer.
-# Leave empty to show the built-in demo to-do list.
+# Leave empty to show the built-in demo to-do list. To remove: keep token empty.
 token = ""
 # Shared project name or id. Invite the family to this project.
 project = "Family"
 
-[meross]
+[sources.meross]
 # Meross app email + password. MS100 sensors report through the hub;
 # MTS200 wall thermostats are Wi-Fi devices on the same account.
+# Leave empty for demo rooms. To remove: leave email/password empty.
 email = ""
 password = ""
 # Leave empty unless the Meross app asks for a one-time code.
@@ -71,30 +83,44 @@ hub_hosts = []
 # Optional display order / filter (Meross name or label). Empty = all rooms.
 rooms = []
 
-# “Kitchen Thermostat” is shortened to Kitchen. Override other names here:
-# [meross.labels]
+# “Kitchen Thermostat” is shortened to Kitchen (suffix strip). Unlabeled
+# model names fall back to “Thermostat”, not Kitchen. Override names here:
+# [sources.meross.labels]
 # "Sensor living room" = "Living room"
 # "Hall TRV" = "Hall"
 
-[weather]
+[sources.weather]
 # GeoNames id from the BBC Weather page URL:
 # https://www.bbc.co.uk/weather/2643743  →  2643743
-# Leave empty to show the built-in demo forecast.
+# Empty = disabled (demo forecast). A missing table does not fetch London.
 location_id = "2643743"
 
-[sources]
-# Public ICS URLs (no password). Calendar.app’s webcal:// links
-# are fine — they are fetched as https://. Publish a read-only
-# family calendar from Calendar.app and paste the link here.
-# A leftover [icloud] table in an old config.toml is ignored.
-ics_urls = []
+[sources.tfl]
+# To remove this source: enabled = false
+enabled = true
+lines = [
+  { id = "northern", name = "Northern", colour = "black" },
+  { id = "circle",   name = "Circle",   colour = "yellow" },
+  { id = "district", name = "District", colour = "green" },
+  { id = "victoria", name = "Victoria", colour = "blue" },
+]
 
-[pronote]
+[sources.jokes]
+enabled = true
+
+[sources.history]
+enabled = true
+
+[sources.saints]
+enabled = true
+
+[sources.pronote]
 # Direct PRONOTE space URL (the eleve.html or parent.html page), not an ENT
 # portal. Index Education’s public demo:
 #   https://demo.index-education.net/pronote/eleve.html
 #   username demonstration / password pronotevs
-# Leave url empty to show the built-in demo school list.
+# Leave url empty on a live config.toml to skip school (no invented Léa hours).
+# In-process Config::default() (no file) still uses the demo school profile.
 url = ""
 username = ""
 password = ""
@@ -106,3 +132,5 @@ child = ""
 student = ""
 # Optional 2FA PIN if Pronote asks for one.
 pin = ""
+# Homework / grades quarter-columns. Hours still merge when Pronote is live.
+show_sections = false

@@ -128,7 +128,6 @@ fn calendar_event(
             local.format("%H:%M").to_string()
         },
         title: crate::model::truncate_event_title(title),
-        who: String::new(),
         all_day,
         day_label: day_label(local.date_naive(), from),
         date: local.date_naive().format("%Y-%m-%d").to_string(),
@@ -411,7 +410,6 @@ END:VCALENDAR
         let day = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
         let events = parse_events(ics, tz, day, 1).unwrap();
         assert_eq!(events.len(), 1);
-        assert!(events[0].who.is_empty());
         assert!(!events[0].title.contains("https://"));
         assert!(!events[0].title.contains("Book MOT"));
         assert!(events[0].title.ends_with('…'));
