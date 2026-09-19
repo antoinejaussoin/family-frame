@@ -1,0 +1,187 @@
+{
+  "battery_level": "",
+  "battery_pct": 0,
+  "date_iso": "2026-09-18",
+  "date_long": "18 September",
+  "day": "18",
+  "events_coming": [
+    {
+      "all_day": false,
+      "birthday": false,
+      "date": "2026-09-21",
+      "day_label": "Mon 21",
+      "recurring": false,
+      "school": true,
+      "start": "08:15",
+      "title": "School: Léa (finishes at 15:45)"
+    }
+  ],
+  "events_today": [
+    {
+      "all_day": false,
+      "birthday": false,
+      "date": "2026-09-18",
+      "day_label": "Today",
+      "recurring": false,
+      "school": true,
+      "start": "08:30",
+      "title": "School: Léa (finishes at 16:30)"
+    }
+  ],
+  "family_name": "Family",
+  "has_battery": false,
+  "history": [],
+  "joke": {
+    "punchline": "Because they make up everything.",
+    "setup": "Why don't scientists trust atoms?"
+  },
+  "last_refresh": "",
+  "month": "September",
+  "next_refresh": "",
+  "rooms": [
+    {
+      "humidity": "48%",
+      "name": "Kitchen",
+      "online": true,
+      "temperature": "21.4°"
+    },
+    {
+      "humidity": "51%",
+      "name": "Studio",
+      "online": true,
+      "temperature": "20.1°"
+    },
+    {
+      "humidity": "53%",
+      "name": "Bedroom",
+      "online": true,
+      "temperature": "19.8°"
+    }
+  ],
+  "saint_name": "Nadège",
+  "saint_title": "Sainte",
+  "school": {
+    "average": "",
+    "days": [
+      {
+        "date": "2026-09-18",
+        "end": "16:30",
+        "start": "08:30"
+      },
+      {
+        "date": "2026-09-21",
+        "end": "15:45",
+        "start": "08:15"
+      }
+    ],
+    "grades": [],
+    "homework": [],
+    "student": "Léa"
+  },
+  "source_note": "demo to-dos (no Todoist token) · demo rooms (no Meross credentials) · demo weather (no BBC location) · TfL tube · icanhazdadjoke · demo school (no Pronote credentials)",
+  "todos": [
+    {
+      "done": false,
+      "title": "Email the school office"
+    },
+    {
+      "done": false,
+      "title": "Book MOT"
+    },
+    {
+      "done": false,
+      "title": "Return library books"
+    }
+  ],
+  "todos_more": 0,
+  "tube": [
+    {
+      "colour": "black",
+      "id": "northern",
+      "name": "Northern",
+      "severity": "good",
+      "status": "Good service"
+    },
+    {
+      "colour": "yellow",
+      "id": "circle",
+      "name": "Circle",
+      "severity": "good",
+      "status": "Good service"
+    },
+    {
+      "colour": "green",
+      "id": "district",
+      "name": "District",
+      "severity": "severe",
+      "status": "Severe delays"
+    },
+    {
+      "colour": "blue",
+      "id": "victoria",
+      "name": "Victoria",
+      "severity": "delay",
+      "status": "Minor delays"
+    }
+  ],
+  "weather": {
+    "days": [
+      {
+        "label": "Today",
+        "pollen": "Low",
+        "pollen_level": "low",
+        "slots": [
+          {
+            "icon": "sun",
+            "period": "Morning",
+            "summary": "Sunny",
+            "temperature": "18°"
+          },
+          {
+            "icon": "partly-cloudy",
+            "period": "Afternoon",
+            "summary": "Sunny intervals",
+            "temperature": "21°"
+          },
+          {
+            "icon": "rain",
+            "period": "Evening",
+            "summary": "Light rain",
+            "temperature": "16°"
+          }
+        ],
+        "sunrise": "06:33",
+        "sunset": "19:18"
+      },
+      {
+        "label": "Tomorrow",
+        "pollen": "Moderate",
+        "pollen_level": "moderate",
+        "slots": [
+          {
+            "icon": "cloud",
+            "period": "Morning",
+            "summary": "Thick cloud",
+            "temperature": "15°"
+          },
+          {
+            "icon": "storm",
+            "period": "Afternoon",
+            "summary": "Thundery showers",
+            "temperature": "17°"
+          },
+          {
+            "icon": "moon",
+            "period": "Evening",
+            "summary": "Clear sky",
+            "temperature": "13°"
+          }
+        ],
+        "sunrise": "06:35",
+        "sunset": "19:16"
+      }
+    ],
+    "location": "London"
+  },
+  "weekday": "Friday"
+}

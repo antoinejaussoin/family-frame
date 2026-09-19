@@ -1,4 +1,4 @@
-.PHONY: all serve watch test docker-build docker-run docker ui ui-dev
+.PHONY: all serve fake watch test docker-build docker-run docker ui ui-dev
 
 IMAGE := antoinejaussoin/family-frame-server
 VERSION := $(shell tr -d '[:space:]' < ../VERSION)
@@ -10,6 +10,10 @@ all: ui
 serve:
 	cargo run
 
+# Screenshot mode: demo household sources, live public ones. See README.
+fake:
+	cargo run -- --fake
+
 ui:
 	cd ui && npm ci && npm run build
 
@@ -20,10 +24,10 @@ ui-dev:
 # Local only: rebuild and restart when source / templates change.
 # Does not watch ui/ — use `make ui-dev` for the family SPA.
 watch:
-	cargo run -- --watch
+	cargo run --features watch -- --watch
 
 test:
-	cargo test
+	cargo test --features watch
 
 docker-build:
 	docker build \

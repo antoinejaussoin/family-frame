@@ -1,8 +1,62 @@
 use chrono::{Datelike, Duration, NaiveDate};
 
 use crate::config::Birthday;
-use crate::ics;
 use crate::model::{CalendarEvent, BIRTHDAY_HORIZON_DAYS};
+
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::ics;
+use super::DataSource;
+
+pub struct BirthdaysSource;
+
+#[async_trait::async_trait]
+impl DataSource for BirthdaysSource {
+    fn id(&self) -> &'static str {
+        "birthdays"
+    }
+
+    fn enabled(&self, _cfg: &crate::config::Config) -> bool {
+        true
+    }
+
+    fn private(&self) -> bool {
+        true
+    }
+
+    fn disabled_note(&self) -> String {
+        String::new()
+    }
+
+    fn demo(&self, ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Calendar(demo_birthday_events(ctx.today)))
+    }
+
+    async fn load(&self, ctx: &SourceContext<'_>) -> anyhow::Result<SourceOutcome> {
+        Ok(SourceOutcome::live(
+            String::new(),
+            Contribution::Calendar(upcoming_events(&ctx.cfg.birthdays, ctx.today)),
+        ))
+    }
+}
+
+/// Canned people for `--fake` screenshots. Dates sit inside the two-week window.
+pub fn demo_birthday_events(today: NaiveDate) -> Vec<CalendarEvent> {
+    upcoming_events(&demo_people(today), today)
+}
+
+fn demo_people(today: NaiveDate) -> Vec<Birthday> {
+    let person = |name: &str, offset_days: i64, age: i32| {
+        let next = today + Duration::days(offset_days);
+        let dob = NaiveDate::from_ymd_opt(next.year() - age, next.month(), next.day())
+            .unwrap_or(next);
+        Birthday {
+            name: name.into(),
+            dob,
+        }
+    };
+    vec![person("Maya", 0, 8), person("Sam", 6, 11)]
+}
 
 /// Birthdays whose next occurrence is today or within two weeks.
 pub fn upcoming_events(birthdays: &[Birthday], today: NaiveDate) -> Vec<CalendarEvent> {
@@ -23,7 +77,6 @@ pub fn upcoming_events(birthdays: &[Birthday], today: NaiveDate) -> Vec<Calendar
         out.push(CalendarEvent {
             start: String::new(),
             title: crate::model::truncate_event_title(&format!("{name} turns {age}")),
-            who: String::new(),
             all_day: true,
             day_label: ics::day_label(next, today),
             date: next.format("%Y-%m-%d").to_string(),
@@ -109,6 +162,19 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].date, "2027-02-28");
         assert_eq!(events[0].title, "Leap turns 11");
+    }
+
+    #[test]
+    fn demo_birthdays_sit_inside_the_horizon() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let events = demo_birthday_events(today);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].title, "Maya turns 8");
+        assert_eq!(events[0].day_label, "Today");
+        assert!(events[0].birthday);
+        assert_eq!(events[1].title, "Sam turns 11");
+        assert_eq!(events[1].date, "2026-09-24");
+        assert!(!events.iter().any(|e| e.title.contains("REAL")));
     }
 
     #[test]

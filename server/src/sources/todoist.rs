@@ -3,8 +3,7 @@
 //! Personal API token from Todoist → Settings → Integrations → Developer.
 //! The server is read-only: it lists open tasks in one shared project.
 
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
@@ -14,12 +13,62 @@ use tracing::info;
 
 use crate::config::TodoistConfig;
 use crate::model::TodoItem;
+use crate::sources::cache::TtlCache;
+
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::{DataSource, DisabledBehaviour};
+
+pub struct TodoistSource;
+
+#[async_trait::async_trait]
+impl DataSource for TodoistSource {
+    fn id(&self) -> &'static str {
+        "todoist"
+    }
+
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.todoist_enabled()
+    }
+
+    fn private(&self) -> bool {
+        true
+    }
+
+    fn when_disabled(&self, _cfg: &crate::config::Config) -> DisabledBehaviour {
+        DisabledBehaviour::Demo
+    }
+
+    fn disabled_note(&self) -> String {
+        "demo to-dos (no Todoist token)".into()
+    }
+
+    async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        match load_todos(&ctx.cfg.todoist).await {
+            Ok(todos) => Ok(SourceOutcome::live(
+                format!("Todoist “{}”", ctx.cfg.todoist.project),
+                Contribution::Todos(todos),
+            )),
+            Err(err) => {
+                tracing::warn!(%err, "Todoist failed; using demo to-dos");
+                Ok(SourceOutcome::unavailable(
+                    "Todoist unavailable",
+                    Contribution::Todos(demo_todos()),
+                ))
+            }
+        }
+    }
+
+    fn demo(&self, _ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Todos(demo_todos()))
+    }
+}
 
 const API: &str = "https://api.todoist.com/api/v1";
 const FETCH_TTL: Duration = Duration::from_secs(60);
 const PAGE_LIMIT: &str = "200";
 
-static LAST: Mutex<Option<(Instant, String, String, Vec<TodoItem>)>> = Mutex::new(None);
+static LAST: TtlCache<(String, String, Vec<TodoItem>)> = TtlCache::new();
 
 #[derive(Debug, Deserialize)]
 struct Page<T> {
@@ -51,10 +100,10 @@ pub async fn load_todos(cfg: &TodoistConfig) -> Result<Vec<TodoItem>> {
         bail!("Todoist token is empty");
     }
     let project = cfg.project.trim();
-    if let Some((at, tok, proj, todos)) = LAST.lock().ok().and_then(|g| g.clone()) {
-        if tok == token && proj == project && at.elapsed() < FETCH_TTL {
-            return Ok(todos);
-        }
+    if let Some((_, _, todos)) =
+        LAST.get(FETCH_TTL, |(tok, proj, _)| tok == token && proj == project)
+    {
+        return Ok(todos);
     }
 
     let client = Client::builder()
@@ -72,14 +121,7 @@ pub async fn load_todos(cfg: &TodoistConfig) -> Result<Vec<TodoItem>> {
     .context("listing Todoist tasks")?;
     let todos = tasks_to_items(tasks);
     info!(project, n = todos.len(), "loaded Todoist tasks");
-    if let Ok(mut guard) = LAST.lock() {
-        *guard = Some((
-            Instant::now(),
-            token.to_string(),
-            project.to_string(),
-            todos.clone(),
-        ));
-    }
+    LAST.set((token.to_string(), project.to_string(), todos.clone()));
     Ok(todos)
 }
 

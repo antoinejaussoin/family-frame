@@ -8,6 +8,7 @@ description = "Family wall-frame server: dashboard + picture mode, family UI, Sp
 
 [dependencies]
 anyhow = "1.0.99"
+async-trait = "0.1"
 axum = { version = "0.8.4", features = ["macros", "multipart"] }
 base64 = "0.22.1"
 chrono = { version = "0.4.41", features = ["serde"] }
@@ -19,15 +20,14 @@ icalendar = "0.16.15"
 rrule = "0.14"
 image = { version = "0.25.8", default-features = false, features = ["jpeg", "png", "webp"] }
 minijinja = { version = "2.12.0", features = ["loader"] }
-notify = "8.2.0"
+futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+notify = { version = "8.2.0", optional = true }
 reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls", "charset", "cookies"] }
-rumqttc = { version = "0.24.0", default-features = false, features = ["use-rustls"] }
-roxmltree = "0.20.0"
+rumqttc = { version = "0.24.0", default-features = false, features = ["use-rustls"], optional = true }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
 sha2 = "0.10.9"
 tempfile = "3.21.0"
-thiserror = "2.0.16"
 tokio = { version = "1.47.1", features = ["full"] }
 toml = "0.8.23"
 uuid = { version = "1.18.0", features = ["v4"] }
@@ -36,12 +36,14 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 epaper-dithering-core = "5.0.0"
 toml_edit = "0.25.15"
-aes = "0.8"
-cbc = { version = "0.1", features = ["alloc"] }
-num-bigint = "0.4"
+aes = { version = "0.8", optional = true }
+cbc = { version = "0.1", features = ["alloc"], optional = true }
+num-bigint = { version = "0.4", optional = true }
 rand = "0.8"
-flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"], optional = true }
 
-[dev-dependencies]
-http-body-util = "0.1.3"
-tower = { version = "0.5.2", features = ["util"] }
+[features]
+default = ["meross", "pronote"]
+watch = ["dep:notify"]
+meross = ["dep:rumqttc"]
+pronote = ["dep:aes", "dep:cbc", "dep:num-bigint", "dep:flate2"]

@@ -8,8 +8,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine;
@@ -22,8 +21,73 @@ use sha2::Sha256;
 use tracing::info;
 
 use crate::config::PronoteConfig;
-use crate::ics;
 use crate::model::{CalendarEvent, School, SchoolDay, SchoolItem};
+use crate::sources::cache::TtlCache;
+
+use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
+use super::ics;
+use super::{DataSource, DisabledBehaviour};
+
+pub struct PronoteSource;
+
+#[async_trait::async_trait]
+impl DataSource for PronoteSource {
+    fn id(&self) -> &'static str {
+        "pronote"
+    }
+
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.pronote_enabled()
+    }
+
+    fn private(&self) -> bool {
+        true
+    }
+
+    fn when_disabled(&self, cfg: &crate::config::Config) -> DisabledBehaviour {
+        if cfg.config_path.is_none() {
+            DisabledBehaviour::Demo
+        } else {
+            DisabledBehaviour::Skip
+        }
+    }
+
+    fn disabled_note(&self) -> String {
+        "demo school (no Pronote credentials)".into()
+    }
+
+    async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        match load_school(&ctx.cfg.pronote, ctx.today).await {
+            Ok(mut school) => {
+                school.student = display_student(&ctx.cfg.pronote, &school.student);
+                let note = if school.student.is_empty() {
+                    "Pronote".into()
+                } else {
+                    format!("Pronote “{}”", school.student)
+                };
+                Ok(SourceOutcome::live(note, Contribution::School(school)))
+            }
+            Err(err) => {
+                tracing::warn!(%err, "Pronote failed; using demo school");
+                let mut school = demo_school(ctx.today);
+                school.student = display_student(&ctx.cfg.pronote, &school.student);
+                Ok(SourceOutcome::unavailable(
+                    "Pronote unavailable",
+                    Contribution::School(school),
+                ))
+            }
+        }
+    }
+
+    fn demo(&self, ctx: &SourceContext<'_>) -> Option<Contribution> {
+        let mut school = demo_school(ctx.today);
+        if !ctx.cfg.fake_private {
+            school.student = display_student(&ctx.cfg.pronote, &school.student);
+        }
+        Some(Contribution::School(school))
+    }
+}
 
 const FETCH_TTL: Duration = Duration::from_secs(15 * 60);
 const USER_AGENT: &str =
@@ -42,7 +106,7 @@ const SUBJECT_MAX: usize = 32;
 const GRADE_SUBJECT_MAX: usize = 28;
 const DETAIL_MAX: usize = 10;
 
-static LAST: Mutex<Option<(Instant, String, School)>> = Mutex::new(None);
+static LAST: TtlCache<(String, School)> = TtlCache::new();
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Account {
@@ -72,11 +136,13 @@ pub async fn load_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School
     if url.is_empty() || username.is_empty() || password.is_empty() {
         bail!("Pronote url/username/password are empty");
     }
-    let cache_key = format!("{url}\0{username}\0{}", cfg.child.trim());
-    if let Some((at, key, school)) = LAST.lock().ok().and_then(|g| g.clone()) {
-        if key == cache_key && at.elapsed() < FETCH_TTL {
-            return Ok(school);
-        }
+    let cache_key = format!(
+        "{url}\0{username}\0{}\0{}",
+        cfg.child.trim(),
+        cfg.show_sections
+    );
+    if let Some((_, school)) = LAST.get(FETCH_TTL, |(key, _)| key == &cache_key) {
+        return Ok(school);
     }
 
     let school = fetch_school(cfg, today).await?;
@@ -87,9 +153,7 @@ pub async fn load_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School
         days = school.days.len(),
         "loaded Pronote school"
     );
-    if let Ok(mut guard) = LAST.lock() {
-        *guard = Some((Instant::now(), cache_key, school.clone()));
-    }
+    LAST.set((cache_key, school.clone()));
     Ok(school)
 }
 
@@ -172,7 +236,7 @@ async fn fetch_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School> {
     if account == Account::Parent {
         session.select_child(cfg.child.trim()).await?;
     }
-    session.load_school(today).await
+    session.load_school(today, cfg.show_sections).await
 }
 
 impl Session {
@@ -373,7 +437,7 @@ impl Session {
         Ok(())
     }
 
-    async fn load_school(&mut self, today: NaiveDate) -> Result<School> {
+    async fn load_school(&mut self, today: NaiveDate, show_sections: bool) -> Result<School> {
         let student = first_name(&json_str(&self.ressource, &["L"]).unwrap_or_default());
         let start_day = self
             .general
@@ -389,18 +453,25 @@ impl Session {
             .unwrap_or(today + chrono::Duration::days(14));
 
         let homework_to = (today + chrono::Duration::days(14)).min(last_day);
-        let homework = self
-            .homework(today, homework_to, start_day)
-            .await
-            .unwrap_or_default();
+        let homework = if show_sections {
+            self.homework(today, homework_to, start_day)
+                .await
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
 
         let period = current_period(&self.ressource, &self.general, today);
-        let (average, grades) = match period {
-            Some((id, name)) => self
-                .grades(&id, &name)
-                .await
-                .unwrap_or((String::new(), Vec::new())),
-            None => (String::new(), Vec::new()),
+        let (average, grades) = if show_sections {
+            match period {
+                Some((id, name)) => self
+                    .grades(&id, &name)
+                    .await
+                    .unwrap_or((String::new(), Vec::new())),
+                None => (String::new(), Vec::new()),
+            }
+        } else {
+            (String::new(), Vec::new())
         };
 
         let until = (today + chrono::Duration::days(14)).min(last_day);
@@ -778,7 +849,6 @@ fn school_hours_event(
     CalendarEvent {
         start: day.start.clone(),
         title: format!("School: {student} (finishes at {})", day.end),
-        who: String::new(),
         all_day: false,
         day_label: ics::day_label(date, today),
         date: day.date.clone(),

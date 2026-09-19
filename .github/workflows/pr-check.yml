@@ -8,7 +8,29 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  server-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+          cache-on-failure: true
+          add-rust-environment-hash-key: false
+          key: ${{ hashFiles('server/Cargo.lock', 'server/Cargo.toml', 'server/rust-toolchain.toml') }}
+      - name: cargo test
+        run: make test
+      - name: cargo check without Pronote/Meross
+        run: cargo check --no-default-features --features watch
+
   server:
     runs-on: ubuntu-latest
     steps:
@@ -37,5 +59,64 @@ jobs:
           platforms: linux/amd64
           push: false
           provenance: false
-          cache-from: type=gha,scope=family-frame-server
-          cache-to: type=gha,mode=max,scope=family-frame-server
+          cache-from: |
+            type=gha,scope=family-frame-server
+            type=gha,scope=family-frame-server-pr-${{ github.event.pull_request.number }}
+          cache-to: type=gha,mode=max,scope=family-frame-server-pr-${{ github.event.pull_request.number }}
+
+  firmware-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: firmware
+          cache-on-failure: true
+          add-rust-environment-hash-key: false
+          key: ${{ hashFiles('firmware/Cargo.lock', 'firmware/Cargo.toml', 'firmware/rust-toolchain.toml', 'firmware/.cargo/config.toml') }}
+      - name: make test
+        run: make test
+
+  firmware-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv8m.main-none-eabihf
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: firmware
+          cache-on-failure: true
+          add-rust-environment-hash-key: false
+          key: ${{ hashFiles('firmware/Cargo.lock', 'firmware/Cargo.toml', 'firmware/rust-toolchain.toml', 'firmware/.cargo/config.toml') }}
+      - name: make build
+        run: make build
+      - name: make build-oled
+        run: make build-oled
+
+  pico-sim:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pico-sim
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pico-sim
+          cache-on-failure: true
+          add-rust-environment-hash-key: false
+          key: ${{ hashFiles('pico-sim/Cargo.lock', 'pico-sim/Cargo.toml', 'pico-sim/rust-toolchain.toml') }}
+      - name: make test
+        run: make test
+      - name: cargo build
+        run: cargo build

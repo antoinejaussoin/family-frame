@@ -13,6 +13,7 @@ use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
+#[cfg(feature = "watch")]
 mod watch;
 
 #[derive(Parser, Debug)]
@@ -30,6 +31,10 @@ struct Cli {
     /// Local development only — do not use in production.
     #[arg(long)]
     watch: bool,
+    /// Screenshot mode: demo calendar, todos, school, house, and birthdays.
+    /// Weather, Tube, jokes, history, and saints stay live.
+    #[arg(long)]
+    fake: bool,
 }
 
 #[tokio::main]
@@ -42,15 +47,35 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+    let fake = cli.fake || fake_from_env();
     if cli.watch {
-        watch::run(cli.config, cli.bind).await
+        #[cfg(feature = "watch")]
+        {
+            watch::run(cli.config, cli.bind, fake).await
+        }
+        #[cfg(not(feature = "watch"))]
+        {
+            anyhow::bail!("--watch needs a rebuild with --features watch (make watch)")
+        }
     } else {
-        serve(cli.config, cli.bind).await
+        serve(cli.config, cli.bind, fake).await
     }
 }
 
-async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
+fn fake_from_env() -> bool {
+    matches!(
+        std::env::var("FAMILY_FRAME_FAKE")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+async fn serve(config: Option<PathBuf>, bind: Option<String>, fake: bool) -> Result<()> {
     let mut cfg = Config::load_or_default(config.as_deref())?;
+    cfg.fake_private = fake;
     if let Some(bind) = bind {
         cfg.bind = bind;
     }
@@ -85,12 +110,14 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
     info!("layout simulator  http://{addr}/preview");
     info!("stats             http://{addr}/stats");
     info!("dashboard only    http://{addr}/dashboard");
-    info!("weather icons     http://{addr}/weather-icons");
     info!("Pico endpoint     POST http://{addr}/api/frame.bin");
+    if fake {
+        info!("screenshot mode   household sources are demo; weather / Tube / jokes / history / saints stay live");
+    }
     {
         let guard = cfg.read().await;
-        if !guard.icloud_enabled() {
-            warn!("no iCloud credentials — serving demo calendar unless ICS URLs are set");
+        if guard.sources.ics_urls.iter().all(|u| u.trim().is_empty()) {
+            warn!("no ICS URLs — serving demo calendar unless events arrive from other sources");
         }
         if !guard.todoist_enabled() {
             warn!("no Todoist token — serving demo to-dos");
@@ -117,6 +144,14 @@ mod tests {
     fn cli_parses_watch() {
         let cli = Cli::try_parse_from(["eink-frame", "--watch"]).unwrap();
         assert!(cli.watch);
+        assert!(!cli.fake);
+    }
+
+    #[test]
+    fn cli_parses_fake() {
+        let cli = Cli::try_parse_from(["eink-frame", "--fake"]).unwrap();
+        assert!(cli.fake);
+        assert!(!cli.watch);
     }
 
     #[test]

@@ -14,6 +14,44 @@ use serde::Deserialize;
 use tracing::{info, warn};
 
 use crate::model::{joke_fits_panel, Joke};
+use crate::sources::filter::is_family_friendly;
+
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::DataSource;
+
+pub struct JokesSource;
+
+#[async_trait::async_trait]
+impl DataSource for JokesSource {
+    fn id(&self) -> &'static str {
+        "jokes"
+    }
+
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.sources.jokes.enabled
+    }
+
+    async fn load(&self, _ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        match load_joke().await {
+            Ok(joke) => Ok(SourceOutcome::live(
+                "icanhazdadjoke",
+                Contribution::Joke(joke),
+            )),
+            Err(err) => {
+                warn!(%err, "Joke of the day failed; using a classic");
+                Ok(SourceOutcome::unavailable(
+                    "demo joke",
+                    Contribution::Joke(fallback_joke()),
+                ))
+            }
+        }
+    }
+
+    fn demo(&self, _ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Joke(fallback_joke()))
+    }
+}
 
 const SEARCH_URL: &str = "https://icanhazdadjoke.com/search";
 const RANDOM_URL: &str = "https://icanhazdadjoke.com/";
@@ -235,26 +273,7 @@ fn remember(id: &str) {
 }
 
 fn family_friendly(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    if SKIP_TERMS.iter().any(|term| lower.contains(term)) {
-        return false;
-    }
-    !SKIP_WORDS.iter().any(|word| contains_word(&lower, word))
-}
-
-fn contains_word(hay: &str, word: &str) -> bool {
-    let mut from = 0;
-    while let Some(rel) = hay[from..].find(word) {
-        let at = from + rel;
-        let before_ok = at == 0 || !hay.as_bytes()[at - 1].is_ascii_alphabetic();
-        let end = at + word.len();
-        let after_ok = end >= hay.len() || !hay.as_bytes()[end].is_ascii_alphabetic();
-        if before_ok && after_ok {
-            return true;
-        }
-        from = at + 1;
-    }
-    false
+    is_family_friendly(text, SKIP_TERMS, SKIP_WORDS)
 }
 
 fn split_joke(text: &str) -> Joke {

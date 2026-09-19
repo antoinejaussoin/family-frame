@@ -127,7 +127,6 @@ pub struct Config {
     #[serde(default = "default_battery_empty_mv")]
     pub battery_empty_mv: u32,
     pub chrome_path: String,
-    pub icloud: IcloudConfig,
     pub todoist: TodoistConfig,
     pub meross: MerossConfig,
     pub weather: WeatherConfig,
@@ -142,6 +141,10 @@ pub struct Config {
     /// Absolute path to the loaded config.toml (when one was loaded from disk).
     #[serde(skip)]
     pub config_path: Option<PathBuf>,
+    /// Screenshot mode (`--fake` / `FAMILY_FRAME_FAKE`): demo household sources,
+    /// live public ones. Never written to config.toml.
+    #[serde(skip)]
+    pub fake_private: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,14 +176,6 @@ impl<'de> Deserialize<'de> for Birthday {
         let s = String::deserialize(deserializer)?;
         Birthday::parse(&s).map_err(serde::de::Error::custom)
     }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct IcloudConfig {
-    pub apple_id: String,
-    pub app_password: String,
-    pub calendars: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -228,12 +223,61 @@ pub struct PronoteConfig {
     pub student: String,
     /// Optional 2FA PIN if Pronote asks for one.
     pub pin: String,
+    /// Homework / grades quarter-columns. Hours still merge when the source runs.
+    #[serde(default)]
+    pub show_sections: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct CalendarSourceConfig {
+    pub ics_urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct BirthdaysSourceConfig {
+    pub people: Vec<Birthday>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct TflLineConfig {
+    pub id: String,
+    pub name: String,
+    pub colour: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct TflConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_tfl_lines")]
+    pub lines: Vec<TflLineConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ToggleConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct SourcesConfig {
+    /// Legacy `[sources].ics_urls`. Prefer `[sources.calendar].ics_urls`.
     pub ics_urls: Vec<String>,
+    pub calendar: Option<CalendarSourceConfig>,
+    pub birthdays: Option<BirthdaysSourceConfig>,
+    pub todoist: Option<TodoistConfig>,
+    pub meross: Option<MerossConfig>,
+    pub weather: Option<WeatherConfig>,
+    pub tfl: TflConfig,
+    pub jokes: ToggleConfig,
+    pub history: ToggleConfig,
+    pub saints: ToggleConfig,
+    pub pronote: Option<PronoteConfig>,
 }
 
 impl Default for Config {
@@ -250,7 +294,6 @@ impl Default for Config {
             battery_mah: DEFAULT_CAPACITY_MAH,
             battery_empty_mv: DEFAULT_EMPTY_MV,
             chrome_path: String::new(),
-            icloud: IcloudConfig::default(),
             todoist: TodoistConfig::default(),
             meross: MerossConfig::default(),
             weather: WeatherConfig::default(),
@@ -260,16 +303,7 @@ impl Default for Config {
             birthdays: Vec::new(),
             config_dir: PathBuf::from("."),
             config_path: None,
-        }
-    }
-}
-
-impl Default for IcloudConfig {
-    fn default() -> Self {
-        Self {
-            apple_id: String::new(),
-            app_password: String::new(),
-            calendars: vec!["Family".into()],
+            fake_private: false,
         }
     }
 }
@@ -301,7 +335,7 @@ impl Default for MerossConfig {
 impl Default for WeatherConfig {
     fn default() -> Self {
         Self {
-            location_id: "2643743".into(),
+            location_id: String::new(),
         }
     }
 }
@@ -316,7 +350,37 @@ impl Default for PronoteConfig {
             child: String::new(),
             student: String::new(),
             pin: String::new(),
+            show_sections: false,
         }
+    }
+}
+
+impl Default for CalendarSourceConfig {
+    fn default() -> Self {
+        Self {
+            ics_urls: Vec::new(),
+        }
+    }
+}
+
+impl Default for BirthdaysSourceConfig {
+    fn default() -> Self {
+        Self { people: Vec::new() }
+    }
+}
+
+impl Default for TflConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            lines: default_tfl_lines(),
+        }
+    }
+}
+
+impl Default for ToggleConfig {
+    fn default() -> Self {
+        Self { enabled: true }
     }
 }
 
@@ -324,6 +388,16 @@ impl Default for SourcesConfig {
     fn default() -> Self {
         Self {
             ics_urls: Vec::new(),
+            calendar: None,
+            birthdays: None,
+            todoist: None,
+            meross: None,
+            weather: None,
+            tfl: TflConfig::default(),
+            jokes: ToggleConfig::default(),
+            history: ToggleConfig::default(),
+            saints: ToggleConfig::default(),
+            pronote: None,
         }
     }
 }
@@ -416,6 +490,7 @@ impl Config {
         let text = std::fs::read_to_string(path)
             .with_context(|| format!("reading config {}", path.display()))?;
         let mut cfg: Config = toml::from_str(&text).context("parsing config.toml")?;
+        cfg.resolve_source_aliases();
         cfg.config_dir = path
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
@@ -427,6 +502,32 @@ impl Config {
         cfg.battery_empty_mv = cfg.battery_empty_mv.clamp(2500, 4000);
         cfg.materialize_pictures_schedule();
         Ok(cfg)
+    }
+
+    /// Copy `[sources.<id>]` over legacy top-level keys when the new table is set.
+    fn resolve_source_aliases(&mut self) {
+        if let Some(cal) = &self.sources.calendar {
+            if !cal.ics_urls.is_empty() {
+                self.sources.ics_urls = cal.ics_urls.clone();
+            }
+        }
+        if let Some(b) = &self.sources.birthdays {
+            if !b.people.is_empty() {
+                self.birthdays = b.people.clone();
+            }
+        }
+        if let Some(todoist) = self.sources.todoist.clone() {
+            self.todoist = todoist;
+        }
+        if let Some(meross) = self.sources.meross.clone() {
+            self.meross = meross;
+        }
+        if let Some(weather) = self.sources.weather.clone() {
+            self.weather = weather;
+        }
+        if let Some(pronote) = self.sources.pronote.clone() {
+            self.pronote = pronote;
+        }
     }
 
     pub fn load_or_default(path: Option<&Path>) -> Result<Self> {
@@ -684,10 +785,6 @@ impl Config {
         Ok(())
     }
 
-    pub fn icloud_enabled(&self) -> bool {
-        !self.icloud.apple_id.trim().is_empty() && !self.icloud.app_password.trim().is_empty()
-    }
-
     pub fn todoist_enabled(&self) -> bool {
         !self.todoist.token.trim().is_empty()
     }
@@ -896,6 +993,35 @@ fn default_battery_empty_mv() -> u32 {
     DEFAULT_EMPTY_MV
 }
 
+fn default_true() -> bool {
+    true
+}
+
+pub fn default_tfl_lines() -> Vec<TflLineConfig> {
+    vec![
+        TflLineConfig {
+            id: "northern".into(),
+            name: "Northern".into(),
+            colour: "black".into(),
+        },
+        TflLineConfig {
+            id: "circle".into(),
+            name: "Circle".into(),
+            colour: "yellow".into(),
+        },
+        TflLineConfig {
+            id: "district".into(),
+            name: "District".into(),
+            colour: "green".into(),
+        },
+        TflLineConfig {
+            id: "victoria".into(),
+            name: "Victoria".into(),
+            colour: "blue".into(),
+        },
+    ]
+}
+
 pub fn parse_wake_time(entry: &str) -> Result<NaiveTime, String> {
     let entry = entry.trim();
     let Some((hour_s, minute_s)) = entry.split_once(':') else {
@@ -1010,6 +1136,9 @@ mod tests {
         assert_eq!(cfg.weather.location_id, "2643743");
         assert!(cfg.weather_enabled());
         assert!(!cfg.pronote_enabled());
+        assert!(!cfg.pronote.show_sections);
+        assert!(cfg.sources.tfl.enabled);
+        assert_eq!(cfg.sources.tfl.lines.len(), 4);
         assert_eq!(cfg.birthdays.len(), 2);
         assert_eq!(cfg.birthdays[0].name, "Maya");
         assert_eq!(
@@ -1019,6 +1148,88 @@ mod tests {
         assert_eq!(cfg.birthdays[1].name, "Sam");
         assert_eq!(cfg.battery_mah, DEFAULT_CAPACITY_MAH);
         assert_eq!(cfg.battery_empty_mv, DEFAULT_EMPTY_MV);
+    }
+
+    #[test]
+    fn weather_default_location_is_empty() {
+        let cfg = Config::default();
+        assert!(cfg.weather.location_id.is_empty());
+        assert!(!cfg.weather_enabled());
+    }
+
+    #[test]
+    fn leftover_icloud_table_is_ignored() {
+        let cfg: Config = toml::from_str(
+            r#"
+            [icloud]
+            apple_id = "x@icloud.com"
+            app_password = "secret"
+            "#,
+        )
+        .unwrap();
+        assert!(!cfg.weather_enabled());
+    }
+
+    #[test]
+    fn sources_tables_alias_legacy_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[sources.calendar]
+ics_urls = ["https://example.com/family.ics"]
+
+[sources.birthdays]
+people = ["Maya,2018-03-15"]
+
+[sources.todoist]
+token = "tok"
+project = "Chores"
+
+[sources.weather]
+location_id = "2643743"
+
+[sources.pronote]
+url = "https://example.com/pronote/eleve.html"
+username = "a"
+password = "b"
+show_sections = true
+"#,
+        )
+        .unwrap();
+        let cfg = Config::load(&path).unwrap();
+        assert_eq!(cfg.sources.ics_urls, ["https://example.com/family.ics"]);
+        assert_eq!(cfg.birthdays.len(), 1);
+        assert_eq!(cfg.birthdays[0].name, "Maya");
+        assert_eq!(cfg.todoist.token, "tok");
+        assert_eq!(cfg.todoist.project, "Chores");
+        assert!(cfg.todoist_enabled());
+        assert_eq!(cfg.weather.location_id, "2643743");
+        assert!(cfg.pronote.show_sections);
+        assert!(cfg.pronote_enabled());
+    }
+
+    #[test]
+    fn legacy_todoist_and_birthdays_still_parse() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+birthdays = ["Sam,2015-11-02"]
+[todoist]
+token = "legacy"
+project = "Family"
+[sources]
+ics_urls = ["https://example.com/old.ics"]
+"#,
+        )
+        .unwrap();
+        let cfg = Config::load(&path).unwrap();
+        assert_eq!(cfg.todoist.token, "legacy");
+        assert_eq!(cfg.birthdays[0].name, "Sam");
+        assert_eq!(cfg.sources.ics_urls, ["https://example.com/old.ics"]);
     }
 
     #[test]

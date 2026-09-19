@@ -6,6 +6,10 @@
 
 use chrono::{Datelike, NaiveDate};
 
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::DataSource;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SaintDay {
     pub title: &'static str,
@@ -440,6 +444,45 @@ const DEC: &[SaintDay] = &[
 ];
 
 const SAINTS: [&[SaintDay]; 12] = [JAN, FEB, MAR, APR, MAY, JUN, JUL, AUG, SEP, OCT, NOV, DEC];
+
+pub struct SaintsSource;
+
+#[async_trait::async_trait]
+impl DataSource for SaintsSource {
+    fn id(&self) -> &'static str {
+        "saints"
+    }
+
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.sources.saints.enabled
+    }
+
+    fn when_disabled(&self, _cfg: &crate::config::Config) -> super::DisabledBehaviour {
+        super::DisabledBehaviour::Demo
+    }
+
+    fn disabled_note(&self) -> String {
+        String::new()
+    }
+
+    fn demo(&self, _ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Mast {
+            saint_title: String::new(),
+            saint_name: String::new(),
+        })
+    }
+
+    async fn load(&self, ctx: &SourceContext<'_>) -> anyhow::Result<SourceOutcome> {
+        let saint = of_date(ctx.today);
+        Ok(SourceOutcome::live(
+            String::new(),
+            Contribution::Mast {
+                saint_title: saint.title.to_string(),
+                saint_name: saint.name.to_string(),
+            },
+        ))
+    }
+}
 
 pub fn of_date(date: NaiveDate) -> SaintDay {
     let month = date.month() as usize;

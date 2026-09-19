@@ -10,7 +10,7 @@ Vite’s proxy, so `fetch('/api/…')` stays same-origin and HMR keeps working.
 
 ```bash
 # terminal 1 — API + /dashboard (the 1600×1200 panel HTML)
-cd server && cargo run -- --watch   # or: make serve / make watch
+cd server && cargo run --features watch -- --watch   # or: make watch
 
 # terminal 2 — family UI (/, /preview, /stats)
 cd server/ui && npm ci && npm run dev   # or: make ui-dev

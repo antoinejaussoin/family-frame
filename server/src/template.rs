@@ -15,8 +15,6 @@ impl Templates {
             .context("templates/dashboard.html")?;
         env.add_template("wx-sprite.html", assets::WX_SPRITE_HTML)
             .context("templates/wx-sprite.html")?;
-        env.add_template("weather-icons.html", assets::WEATHER_ICONS_HTML)
-            .context("templates/weather-icons.html")?;
         Ok(Self { env })
     }
 
@@ -26,17 +24,9 @@ impl Templates {
             .get_template("dashboard.html")
             .context("templates/dashboard.html")?;
         Ok(tmpl.render(minijinja::context! {
-            show_school_sections => crate::model::SHOW_SCHOOL_SECTIONS,
+            show_school_sections => dash.show_school_sections,
             ..minijinja::Value::from_serialize(dash),
         })?)
-    }
-
-    pub fn render_weather_icons(&self) -> Result<String> {
-        let tmpl = self
-            .env
-            .get_template("weather-icons.html")
-            .context("templates/weather-icons.html")?;
-        Ok(tmpl.render(minijinja::context! { icons => crate::weather::ICONS })?)
     }
 }
 
@@ -45,13 +35,13 @@ mod tests {
     use chrono::NaiveDate;
 
     use super::*;
-    use crate::weather;
+    use crate::sources::weather;
 
     #[test]
     fn dashboard_includes_weather_slots() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 12).unwrap());
         dash.weather = weather::demo_weather();
-        dash.tube = crate::tfl::demo_tube();
+        dash.tube = crate::sources::tfl::demo_tube();
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("wx-sun"));
         assert!(html.contains("18°"));
@@ -96,7 +86,7 @@ mod tests {
     #[test]
     fn dashboard_keeps_school_markup_hidden() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
-        dash.school = crate::pronote::demo_school(NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        dash.school = crate::sources::pronote::demo_school(NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("icon-school"));
         assert!(html.contains("icon-grades"));
@@ -123,7 +113,6 @@ mod tests {
         dash.events_today.push(crate::model::CalendarEvent {
             start: "08:30".into(),
             title: "School: Léa (finishes at 16:30)".into(),
-            who: String::new(),
             all_day: false,
             day_label: "Today".into(),
             date: "2026-09-18".into(),
@@ -134,7 +123,6 @@ mod tests {
         dash.events_coming.push(crate::model::CalendarEvent {
             start: "08:15".into(),
             title: "School: Léa (finishes at 15:45)".into(),
-            who: String::new(),
             all_day: false,
             day_label: "Mon 21".into(),
             date: "2026-09-21".into(),
@@ -182,7 +170,6 @@ mod tests {
         dash.events_today.push(crate::model::CalendarEvent {
             start: String::new(),
             title: "Maya turns 8".into(),
-            who: String::new(),
             all_day: true,
             day_label: "Today".into(),
             date: "2026-09-14".into(),
@@ -193,7 +180,6 @@ mod tests {
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
             title: "Sam turns 11".into(),
-            who: String::new(),
             all_day: true,
             day_label: "Mon 28".into(),
             date: "2026-09-28".into(),
@@ -219,7 +205,6 @@ mod tests {
         dash.events_today.push(crate::model::CalendarEvent {
             start: String::new(),
             title: "Test eink".into(),
-            who: String::new(),
             all_day: true,
             day_label: "Today".into(),
             date: "2026-09-18".into(),
@@ -230,7 +215,6 @@ mod tests {
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
             title: "Swim".into(),
-            who: String::new(),
             all_day: true,
             day_label: "Tomorrow".into(),
             date: "2026-09-19".into(),
@@ -254,7 +238,6 @@ mod tests {
         dash.events_today.push(crate::model::CalendarEvent {
             start: "18:30".into(),
             title: "Dinner at Sam’s".into(),
-            who: String::new(),
             all_day: false,
             day_label: "Today".into(),
             date: "2026-09-18".into(),
@@ -265,7 +248,6 @@ mod tests {
         dash.events_coming.push(crate::model::CalendarEvent {
             start: "15:15".into(),
             title: "Pick-up Armand".into(),
-            who: String::new(),
             all_day: false,
             day_label: "Thu 24".into(),
             date: "2026-09-24".into(),
@@ -300,7 +282,7 @@ mod tests {
     #[test]
     fn dashboard_shows_on_this_day_facts() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
-        dash.history = crate::history::demo_history();
+        dash.history = crate::sources::history::demo_history();
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"history\""));
         assert!(html.contains("On this day"));
@@ -315,7 +297,7 @@ mod tests {
     #[test]
     fn dashboard_shows_joke_of_the_day() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
-        dash.joke = Some(crate::jokes::demo_joke());
+        dash.joke = Some(crate::sources::jokes::demo_joke());
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"joke\""));
         assert!(html.contains("Joke of the day"));
@@ -323,23 +305,5 @@ mod tests {
         assert!(html.contains("Why don&#x27;t scientists trust atoms?"));
         assert!(html.contains("Because they make up everything."));
         assert!(!html.contains("no-joke"));
-    }
-
-    #[test]
-    fn weather_icons_sheet_lists_every_symbol() {
-        let html = Templates::load().unwrap().render_weather_icons().unwrap();
-        for icon in crate::weather::ICONS {
-            assert!(
-                html.contains(&format!("href=\"#wx-{}\"", icon.id)),
-                "{}",
-                icon.id
-            );
-        }
-        assert_eq!(
-            html.matches("class=\"at-80\"").count(),
-            crate::weather::ICONS.len()
-        );
-        assert!(html.contains("class=\"at-40\""));
-        assert!(html.contains("/static/dashboard.css"));
     }
 }

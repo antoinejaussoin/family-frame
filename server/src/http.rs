@@ -20,8 +20,8 @@ use crate::battery;
 use crate::config::SettingsPatch;
 use crate::debug::{page_from_polls_full, DebugExtras, DebugLog, Poll};
 use crate::frame::{checksum_matches, FrameCache};
-use crate::meross;
 use crate::sources;
+use crate::sources::meross;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -74,10 +74,6 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         .nest("/api", api)
         .route("/health", get(health))
         .route("/dashboard", get(dashboard))
-        .route("/weather-icons", get(weather_icons_view))
-        .route("/weather-icons/sheet", get(weather_icons_sheet))
-        .route("/weather-icons/dither.png", get(weather_icons_dither))
-        .route("/weather-icons/chrome.png", get(weather_icons_chrome))
         .route("/debug", get(legacy_debug_page))
         // Old bookmarks; frames also live under /api/debug/frames/.
         .route("/debug/frames/{checksum}", get(debug_frame))
@@ -150,42 +146,6 @@ async fn static_asset(Path(path): Path<String>) -> Response {
     headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
     headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
     (headers, body).into_response()
-}
-
-async fn weather_icons_view() -> impl IntoResponse {
-    no_store_html(crate::assets::WEATHER_ICONS_VIEW_HTML.to_string())
-}
-
-async fn weather_icons_sheet(State(state): State<AppState>) -> impl IntoResponse {
-    match state.cache.templates().render_weather_icons() {
-        Ok(html) => no_store_html(html),
-        Err(err) => error_response(err),
-    }
-}
-
-async fn weather_icons_dither(State(state): State<AppState>) -> Response {
-    match state.cache.weather_icon_sheet().await {
-        Ok((_, dither)) => png_bytes(dither, "weather-icons-dither.png"),
-        Err(err) => error_response(err),
-    }
-}
-
-async fn weather_icons_chrome(State(state): State<AppState>) -> Response {
-    match state.cache.weather_icon_sheet().await {
-        Ok((chrome, _)) => png_bytes(chrome, "weather-icons-chrome.png"),
-        Err(err) => error_response(err),
-    }
-}
-
-fn png_bytes(bytes: Vec<u8>, filename: &str) -> Response {
-    let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, "image/png".parse().unwrap());
-    headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
-    headers.insert(
-        header::CONTENT_DISPOSITION,
-        format!("inline; filename=\"{filename}\"").parse().unwrap(),
-    );
-    (headers, Body::from(bytes)).into_response()
 }
 
 async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
