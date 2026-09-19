@@ -64,8 +64,6 @@ static LAST: TtlCache<(String, Vec<StatusLine>)> = TtlCache::new();
 #[derive(Debug, Deserialize)]
 struct ApiLine {
     id: String,
-    #[serde(default)]
-    name: String,
     #[serde(rename = "lineStatuses", default)]
     line_statuses: Vec<ApiStatus>,
 }

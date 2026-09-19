@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -549,9 +549,16 @@ fn load_jsonl(path: &Path) -> Vec<Poll> {
         if line.is_empty() {
             continue;
         }
-        match serde_json::from_str::<Poll>(line) {
-            Ok(p) => polls.push(p),
-            Err(err) => warn!(%err, "skipping bad debug poll line"),
+        // One value per line is the usual case; also recover glued records
+        // (`}{`) left by a crash between writing JSON and the trailing newline.
+        for item in serde_json::Deserializer::from_str(line).into_iter::<Poll>() {
+            match item {
+                Ok(p) => polls.push(p),
+                Err(err) => {
+                    warn!(%err, "skipping bad debug poll line");
+                    break;
+                }
+            }
         }
     }
     if polls.len() > MAX_POLLS {
@@ -564,11 +571,29 @@ fn load_jsonl(path: &Path) -> Vec<Poll> {
 fn append_jsonl(path: &Path, poll: &Poll) -> Result<()> {
     let mut file = OpenOptions::new()
         .create(true)
+        .read(true)
         .append(true)
         .open(path)
         .with_context(|| format!("opening {}", path.display()))?;
+    ensure_trailing_newline(&mut file)?;
     serde_json::to_writer(&mut file, poll)?;
     file.write_all(b"\n")?;
+    Ok(())
+}
+
+fn ensure_trailing_newline(file: &mut File) -> Result<()> {
+    let len = file.metadata().context("stat poll log")?.len();
+    if len == 0 {
+        return Ok(());
+    }
+    file.seek(SeekFrom::Start(len - 1))
+        .context("seek poll log")?;
+    let mut last = [0u8; 1];
+    file.read_exact(&mut last)
+        .context("read poll log tail")?;
+    if last[0] != b'\n' {
+        file.write_all(b"\n").context("repair poll log newline")?;
+    }
     Ok(())
 }
 
@@ -689,6 +714,52 @@ mod tests {
             .flatten()
             .collect();
         assert_eq!(frames.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn loads_concatenated_json_objects_on_one_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let debug_dir = dir.path().join("debug");
+        fs::create_dir_all(debug_dir.join("frames")).unwrap();
+        let a = poll_at(0, 80, false, 200, "aa");
+        let b = poll_at(60, 78, false, 204, "bb");
+        fs::write(
+            debug_dir.join("polls.jsonl"),
+            format!(
+                "{}{}\n",
+                serde_json::to_string(&a).unwrap(),
+                serde_json::to_string(&b).unwrap()
+            ),
+        )
+        .unwrap();
+        let log = DebugLog::open(dir.path()).unwrap();
+        let snap = log.snapshot().await;
+        assert_eq!(snap.len(), 2);
+        assert_eq!(snap[0].checksum, "aa");
+        assert_eq!(snap[1].checksum, "bb");
+    }
+
+    #[tokio::test]
+    async fn append_starts_new_line_if_file_missing_newline() {
+        let dir = tempfile::tempdir().unwrap();
+        let debug_dir = dir.path().join("debug");
+        fs::create_dir_all(&debug_dir).unwrap();
+        let first = poll_at(0, 80, false, 200, "aa");
+        fs::write(
+            debug_dir.join("polls.jsonl"),
+            serde_json::to_string(&first).unwrap(),
+        )
+        .unwrap();
+        let log = DebugLog::open(dir.path()).unwrap();
+        log.record(poll_at(60, 78, false, 204, "bb"), None)
+            .await
+            .unwrap();
+        let text = fs::read_to_string(debug_dir.join("polls.jsonl")).unwrap();
+        assert_eq!(text.matches('\n').count(), 2, "{text}");
+        assert!(!text.contains("}{"), "{text}");
+        let snap = log.snapshot().await;
+        assert_eq!(snap.len(), 2);
+        assert_eq!(snap[1].checksum, "bb");
     }
 
     #[tokio::test]
