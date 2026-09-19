@@ -211,9 +211,9 @@ select {
 }
 
 .chip-sm {
-  gap: 0.2rem;
-  padding: 0.15rem 0.45rem 0.15rem 0.5rem;
-  font-size: 0.75rem;
+  gap: 0.25rem;
+  padding: 0.28rem 0.5rem 0.28rem 0.6rem;
+  font-size: 0.8rem;
 }
 
 .chip-x {
@@ -238,16 +238,16 @@ select {
 .wake-week {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.55rem;
 }
 
 .wake-day {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 0.35rem 0.4rem;
-  padding: 0.4rem 0.45rem;
-  border-radius: 0.9rem;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 1rem;
   border: 1.5px solid transparent;
   background: rgba(243, 230, 211, 0.45);
 }
@@ -268,19 +268,20 @@ select {
 .wake-day-main {
   display: flex;
   min-width: 0;
-  align-items: flex-start;
-  gap: 0.55rem;
-  padding: 0.1rem 0.15rem;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.05rem 0;
 }
 
 .wake-day-name {
   display: flex;
-  width: 4.85rem;
+  width: 2.75rem;
   flex-shrink: 0;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.1rem;
-  padding: 0.15rem 0;
+  justify-content: center;
+  gap: 0.12rem;
+  padding: 0;
   border: 0;
   background: transparent;
   text-align: left;
@@ -303,16 +304,14 @@ select {
   flex: 1;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.3rem;
-  padding-top: 0.1rem;
+  gap: 0.4rem;
 }
 
 .wake-day-actions {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 0.2rem;
-  padding-top: 0.1rem;
+  gap: 0.3rem;
 }
 
 .wake-plus,
@@ -371,6 +370,30 @@ select {
 
 .wake-copy-day:hover {
   background: #ffe7c2;
+}
+
+.wake-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.wake-add .field {
+  width: 8.25rem;
+  flex-shrink: 0;
+}
+
+.wake-add-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.wake-add-actions .btn {
+  white-space: nowrap;
+  padding: 0.55rem 0.85rem;
 }
 
 .board {

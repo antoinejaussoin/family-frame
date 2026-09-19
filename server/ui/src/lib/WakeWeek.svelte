@@ -104,7 +104,7 @@
     copyFrom = copyFrom === id ? null : id
   }
 
-  const selectedLabel = $derived(dayMeta(selected)?.label || 'this day')
+  const selectedLabel = $derived(dayMeta(selected)?.short || 'this day')
 </script>
 
 <p class="mt-3 text-xs font-semibold text-muted">
@@ -131,7 +131,7 @@
             copyFrom = null
           }}
         >
-          <span class="font-extrabold">{day.label}</span>
+          <span class="font-extrabold">{day.short}</span>
           {#if isToday}
             <span class="wake-today">today</span>
           {/if}
@@ -193,7 +193,7 @@
       {#if copyFrom === day.id}
         <div class="wake-copy-panel">
           <p class="mb-2 text-xs font-extrabold text-ink">
-            Copy {day.label} to
+            Copy {day.short} to
           </p>
           <div class="flex flex-wrap gap-1.5">
             <button
@@ -241,12 +241,14 @@
   </p>
 {/if}
 
-<div class="mt-3 flex flex-wrap items-center gap-2">
+<div class="wake-add mt-4">
   <input type="time" class="field" bind:value={newWake} />
-  <button type="button" class="btn btn-ink" onclick={() => addToDays([selected])}>
-    Add to {selectedLabel}
-  </button>
-  <button type="button" class="btn btn-ghost" onclick={() => addToDays(ALL)}>
-    Add to every day
-  </button>
+  <div class="wake-add-actions">
+    <button type="button" class="btn btn-ink" onclick={() => addToDays([selected])}>
+      Add to {selectedLabel}
+    </button>
+    <button type="button" class="btn btn-ghost" onclick={() => addToDays(ALL)}>
+      Every day
+    </button>
+  </div>
 </div>
