@@ -15,7 +15,18 @@ birthdays = ["Maya,2018-03-15", "Sam,2015-11-02"]
 poll_interval_secs = 3600
 # Optional local times (HH:MM in `timezone`). Used when `schedule_kind` is "times".
 # Both this list and `poll_interval_secs` are kept so you can switch between them.
+# A single list applies every day:
 # wake-up = ["06:00", "07:00", "08:30", "15:00", "23:15"]
+# Or set each weekday (Mon–Sun). Omit a day to skip it (the frame sleeps until
+# the next day that has a time). A day may also be a single "HH:MM" string.
+# [wake-up]
+# mon = ["06:30", "07:45", "15:30"]
+# tue = ["06:30", "07:45", "15:30"]
+# wed = ["06:30", "07:45", "15:30"]
+# thu = ["06:30", "07:45", "15:30"]
+# fri = ["06:30", "07:45", "15:30"]
+# sat = ["08:00"]
+# sun = ["08:00"]
 # "interval" (every N seconds) or "times" (the wake-up list). Omitted: times
 # if `wake-up` is non-empty, otherwise interval.
 # schedule_kind = "interval"

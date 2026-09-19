@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -6,6 +6,8 @@ use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Deserializer, Serialize};
 use toml_edit::{Array, DocumentMut, Item, Value};
+
+use crate::schedule::{WeeklyWakes, WEEKDAY_KEYS};
 
 /// Seconds the Pico sleeps between polls when the active schedule is the interval.
 pub const DEFAULT_POLL_INTERVAL_SECS: u64 = 3600;
@@ -80,9 +82,10 @@ pub struct PicturesConfig {
         default,
         rename = "wake-up",
         alias = "wake_up",
-        deserialize_with = "deserialize_optional_wake_times"
+        deserialize_with = "deserialize_optional_weekly_wakes",
+        skip_serializing
     )]
-    pub wake_up: Option<Vec<NaiveTime>>,
+    pub wake_up: Option<WeeklyWakes>,
     /// Picture-mode schedule kind. `None` is inferred from that mode’s wake list.
     #[serde(default, alias = "schedule-kind")]
     pub schedule_kind: Option<ScheduleKind>,
@@ -100,14 +103,15 @@ pub struct Config {
     /// Seconds between Pico polls when [`Self::schedule_kind`] is `interval`.
     #[serde(default = "default_poll_interval_secs", alias = "interval")]
     pub poll_interval_secs: u64,
-    /// Local `HH:MM` times (in [`Config::timezone`]). Used when the kind is `times`.
+    /// Local `HH:MM` times per weekday (in [`Config::timezone`]). Used when the kind is `times`.
+    /// A TOML array applies to every day; a table keys `mon`…`sun`.
     #[serde(
         default,
         rename = "wake-up",
         alias = "wake_up",
-        deserialize_with = "deserialize_wake_times"
+        deserialize_with = "deserialize_weekly_wakes"
     )]
-    pub wake_up: Vec<NaiveTime>,
+    pub wake_up: WeeklyWakes,
     /// Which stored schedule is active. Omitted: `times` if `wake-up` is non-empty.
     #[serde(default, alias = "schedule-kind")]
     pub schedule_kind: Option<ScheduleKind>,
@@ -233,7 +237,7 @@ impl Default for Config {
             family_name: "Family".into(),
             mode: FrameMode::Dashboard,
             poll_interval_secs: DEFAULT_POLL_INTERVAL_SECS,
-            wake_up: Vec::new(),
+            wake_up: WeeklyWakes::EMPTY,
             schedule_kind: None,
             pico_drift: 0.0,
             chrome_path: String::new(),
@@ -326,12 +330,33 @@ pub fn asset_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
 
+/// Wake times for each weekday, Monday first.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicWakeDays {
+    #[serde(default)]
+    pub mon: Vec<String>,
+    #[serde(default)]
+    pub tue: Vec<String>,
+    #[serde(default)]
+    pub wed: Vec<String>,
+    #[serde(default)]
+    pub thu: Vec<String>,
+    #[serde(default)]
+    pub fri: Vec<String>,
+    #[serde(default)]
+    pub sat: Vec<String>,
+    #[serde(default)]
+    pub sun: Vec<String>,
+}
+
 /// Public schedule for one display mode. Both values are always present;
 /// [`Self::schedule_kind`] says which one the Pico currently follows.
 #[derive(Debug, Clone, Serialize)]
 pub struct PublicSchedule {
     pub poll_interval_secs: u64,
+    /// Same list every day, or the unique union when days differ (older clients).
     pub wake_up: Vec<String>,
+    pub wake_up_by_day: PublicWakeDays,
     pub schedule_kind: String,
 }
 
@@ -342,6 +367,7 @@ pub struct PublicSettings {
     /// Schedule for the current [`Self::mode`] (family UI editor).
     pub poll_interval_secs: u64,
     pub wake_up: Vec<String>,
+    pub wake_up_by_day: PublicWakeDays,
     pub schedule_kind: String,
     pub dashboard_schedule: PublicSchedule,
     pub pictures_schedule: PublicSchedule,
@@ -358,9 +384,12 @@ pub struct PublicSettings {
 pub struct SettingsPatch {
     pub mode: Option<String>,
     pub poll_interval_secs: Option<u64>,
-    /// When present (including empty), replaces the stored wake-up list.
+    /// When present (including empty), replaces every weekday with this list.
     /// Does not by itself choose the interval; send [`Self::schedule_kind`].
+    /// Ignored when [`Self::wake_up_by_day`] is set.
     pub wake_up: Option<Vec<String>>,
+    /// When present, replaces the whole week. Missing days are empty.
+    pub wake_up_by_day: Option<PublicWakeDays>,
     /// `"interval"` or `"times"`. When omitted, inferred from a wake-up patch
     /// (empty → interval, non-empty → times) so older clients keep working.
     pub schedule_kind: Option<String>,
@@ -431,7 +460,7 @@ impl Config {
         match mode {
             FrameMode::Dashboard => ModeSchedule {
                 interval_secs: self.poll_interval_secs,
-                wake_up: self.wake_up.as_slice(),
+                wake_up: &self.wake_up,
                 kind: infer_schedule_kind(self.schedule_kind, &self.wake_up),
             },
             FrameMode::Picture => {
@@ -439,11 +468,7 @@ impl Config {
                     .pictures
                     .poll_interval_secs
                     .unwrap_or(self.poll_interval_secs);
-                let wakes = self
-                    .pictures
-                    .wake_up
-                    .as_deref()
-                    .unwrap_or(self.wake_up.as_slice());
+                let wakes = self.pictures.wake_up.as_ref().unwrap_or(&self.wake_up);
                 ModeSchedule {
                     interval_secs: interval,
                     wake_up: wakes,
@@ -455,10 +480,11 @@ impl Config {
 
     /// Effective poll for a display mode: interval always, wake times only when selected.
     /// Picture mode inherits the dashboard schedule until it is saved separately.
-    pub fn schedule(&self, mode: FrameMode) -> (u64, &[NaiveTime]) {
+    pub fn schedule(&self, mode: FrameMode) -> (u64, &WeeklyWakes) {
+        static EMPTY: WeeklyWakes = WeeklyWakes::EMPTY;
         let stored = self.mode_schedule(mode);
         match stored.kind {
-            ScheduleKind::Interval => (stored.interval_secs, &[]),
+            ScheduleKind::Interval => (stored.interval_secs, &EMPTY),
             ScheduleKind::Times => (stored.interval_secs, stored.wake_up),
         }
     }
@@ -466,7 +492,8 @@ impl Config {
     fn public_schedule(stored: ModeSchedule<'_>) -> PublicSchedule {
         PublicSchedule {
             poll_interval_secs: stored.interval_secs,
-            wake_up: format_wake_times(stored.wake_up),
+            wake_up: format_public_wake_list(stored.wake_up),
+            wake_up_by_day: format_wake_days(stored.wake_up),
             schedule_kind: stored.kind.as_str().to_string(),
         }
     }
@@ -476,7 +503,8 @@ impl Config {
         PublicSettings {
             mode: self.mode.as_str().to_string(),
             poll_interval_secs: current.interval_secs,
-            wake_up: format_wake_times(current.wake_up),
+            wake_up: format_public_wake_list(current.wake_up),
+            wake_up_by_day: format_wake_days(current.wake_up),
             schedule_kind: current.kind.as_str().to_string(),
             dashboard_schedule: Self::public_schedule(self.mode_schedule(FrameMode::Dashboard)),
             pictures_schedule: Self::public_schedule(self.mode_schedule(FrameMode::Picture)),
@@ -502,15 +530,20 @@ impl Config {
         };
         if patch.poll_interval_secs.is_some()
             || patch.wake_up.is_some()
+            || patch.wake_up_by_day.is_some()
             || patch.schedule_kind.is_some()
         {
+            let wakes = if let Some(by_day) = &patch.wake_up_by_day {
+                Some(weekly_from_public_days(by_day)?)
+            } else if let Some(times) = &patch.wake_up {
+                Some(WeeklyWakes::every_day(parse_wake_list(times)?))
+            } else {
+                None
+            };
             self.set_schedule(
                 schedule_mode,
                 patch.poll_interval_secs,
-                match &patch.wake_up {
-                    Some(times) => Some(parse_wake_list(times)?),
-                    None => None,
-                },
+                wakes,
                 match patch.schedule_kind.as_deref() {
                     Some(s) => Some(ScheduleKind::parse(s)?),
                     None => None,
@@ -528,7 +561,7 @@ impl Config {
         &mut self,
         mode: FrameMode,
         interval: Option<u64>,
-        wakes: Option<Vec<NaiveTime>>,
+        wakes: Option<WeeklyWakes>,
         kind: Option<ScheduleKind>,
     ) -> Result<()> {
         if let Some(secs) = interval {
@@ -537,8 +570,8 @@ impl Config {
             }
         }
         let kind = kind.or_else(|| {
-            wakes.as_ref().map(|times| {
-                if times.is_empty() {
+            wakes.as_ref().map(|week| {
+                if week.is_empty() {
                     ScheduleKind::Interval
                 } else {
                     ScheduleKind::Times
@@ -587,7 +620,7 @@ impl Config {
         let dash = self.mode_schedule(FrameMode::Dashboard);
         doc["mode"] = Item::Value(Value::from(self.mode.as_str()));
         doc["poll_interval_secs"] = Item::Value(Value::from(dash.interval_secs as i64));
-        doc["wake-up"] = Item::Value(Value::Array(wake_toml_array(dash.wake_up)));
+        write_wake_key(doc.as_table_mut(), "wake-up", dash.wake_up);
         doc["schedule_kind"] = Item::Value(Value::from(dash.kind.as_str()));
         write_pico_drift(&mut doc, self.pico_drift);
 
@@ -602,7 +635,9 @@ impl Config {
 
         let pic = self.mode_schedule(FrameMode::Picture);
         doc["pictures"]["poll_interval_secs"] = Item::Value(Value::from(pic.interval_secs as i64));
-        doc["pictures"]["wake-up"] = Item::Value(Value::Array(wake_toml_array(pic.wake_up)));
+        if let Some(Item::Table(pictures)) = doc.get_mut("pictures") {
+            write_wake_key(pictures, "wake-up", pic.wake_up);
+        }
         doc["pictures"]["schedule_kind"] = Item::Value(Value::from(pic.kind.as_str()));
 
         std::fs::write(path, doc.to_string())
@@ -716,11 +751,11 @@ impl Config {
 
 struct ModeSchedule<'a> {
     interval_secs: u64,
-    wake_up: &'a [NaiveTime],
+    wake_up: &'a WeeklyWakes,
     kind: ScheduleKind,
 }
 
-fn infer_schedule_kind(kind: Option<ScheduleKind>, wakes: &[NaiveTime]) -> ScheduleKind {
+fn infer_schedule_kind(kind: Option<ScheduleKind>, wakes: &WeeklyWakes) -> ScheduleKind {
     kind.unwrap_or(if wakes.is_empty() {
         ScheduleKind::Interval
     } else {
@@ -735,6 +770,42 @@ fn format_wake_times(times: &[NaiveTime]) -> Vec<String> {
         .collect()
 }
 
+fn format_public_wake_list(wakes: &WeeklyWakes) -> Vec<String> {
+    if let Some(shared) = wakes.shared_times() {
+        return format_wake_times(shared);
+    }
+    let mut all: Vec<NaiveTime> = (0..7)
+        .flat_map(|i| wakes.get_index(i).iter().copied())
+        .collect();
+    all.sort();
+    all.dedup();
+    format_wake_times(&all)
+}
+
+fn format_wake_days(wakes: &WeeklyWakes) -> PublicWakeDays {
+    PublicWakeDays {
+        mon: format_wake_times(wakes.get_index(0)),
+        tue: format_wake_times(wakes.get_index(1)),
+        wed: format_wake_times(wakes.get_index(2)),
+        thu: format_wake_times(wakes.get_index(3)),
+        fri: format_wake_times(wakes.get_index(4)),
+        sat: format_wake_times(wakes.get_index(5)),
+        sun: format_wake_times(wakes.get_index(6)),
+    }
+}
+
+fn weekly_from_public_days(days: &PublicWakeDays) -> Result<WeeklyWakes> {
+    Ok(WeeklyWakes::from_days([
+        parse_wake_list(&days.mon)?,
+        parse_wake_list(&days.tue)?,
+        parse_wake_list(&days.wed)?,
+        parse_wake_list(&days.thu)?,
+        parse_wake_list(&days.fri)?,
+        parse_wake_list(&days.sat)?,
+        parse_wake_list(&days.sun)?,
+    ]))
+}
+
 fn write_pico_drift(doc: &mut DocumentMut, drift: f64) {
     doc["pico_drift"] = Item::Value(Value::from(crate::schedule::round_pico_drift(drift)));
 }
@@ -745,6 +816,26 @@ fn wake_toml_array(times: &[NaiveTime]) -> Array {
         wake.push(t.format("%H:%M").to_string());
     }
     wake
+}
+
+fn write_wake_key(parent: &mut toml_edit::Table, key: &str, wakes: &WeeklyWakes) {
+    // Drop any previous array/table so a week table is a real `[wake-up]`
+    // section, not `wake-up = { mon = ... }` inline.
+    parent.remove(key);
+    parent[key] = wake_toml_item(wakes);
+}
+
+fn wake_toml_item(wakes: &WeeklyWakes) -> Item {
+    if wakes.is_uniform() {
+        return Item::Value(Value::Array(wake_toml_array(wakes.get_index(0))));
+    }
+    let mut table = toml_edit::Table::new();
+    table.set_implicit(false);
+    table.set_dotted(false);
+    for (i, key) in WEEKDAY_KEYS.iter().enumerate() {
+        table[*key] = Item::Value(Value::Array(wake_toml_array(wakes.get_index(i))));
+    }
+    Item::Table(table)
 }
 
 fn parse_wake_list(times: &[String]) -> Result<Vec<NaiveTime>> {
@@ -778,24 +869,75 @@ pub fn parse_wake_time(entry: &str) -> Result<NaiveTime, String> {
         .ok_or_else(|| format!("wake-up `{entry}` is not a valid time of day"))
 }
 
-fn deserialize_wake_times<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Vec<NaiveTime>, D::Error> {
-    let raw = Option::<Vec<String>>::deserialize(deserializer)?.unwrap_or_default();
-    raw.iter()
-        .map(|s| parse_wake_time(s).map_err(serde::de::Error::custom))
-        .collect()
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawWeeklyWakes {
+    Daily(Vec<String>),
+    Weekly(BTreeMap<String, RawDayTimes>),
 }
 
-fn deserialize_optional_wake_times<'de, D: Deserializer<'de>>(
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawDayTimes {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl RawDayTimes {
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            Self::One(s) => vec![s],
+            Self::Many(v) => v,
+        }
+    }
+}
+
+fn weekly_from_raw(raw: RawWeeklyWakes) -> Result<WeeklyWakes, String> {
+    match raw {
+        RawWeeklyWakes::Daily(times) => {
+            let parsed = times
+                .iter()
+                .map(|s| parse_wake_time(s))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(WeeklyWakes::every_day(parsed))
+        }
+        RawWeeklyWakes::Weekly(map) => {
+            let mut days: [Vec<NaiveTime>; 7] = Default::default();
+            let mut seen = [false; 7];
+            for (key, times) in map {
+                let idx = WeeklyWakes::parse_day_key(&key)?;
+                if seen[idx] {
+                    return Err(format!("wake-up day `{key}` specified more than once"));
+                }
+                seen[idx] = true;
+                days[idx] = times
+                    .into_vec()
+                    .iter()
+                    .map(|s| parse_wake_time(s))
+                    .collect::<Result<Vec<_>, _>>()?;
+            }
+            Ok(WeeklyWakes::from_days(days))
+        }
+    }
+}
+
+fn deserialize_weekly_wakes<'de, D: Deserializer<'de>>(
     deserializer: D,
-) -> Result<Option<Vec<NaiveTime>>, D::Error> {
-    let raw = Vec::<String>::deserialize(deserializer)?;
-    let times = raw
-        .iter()
-        .map(|s| parse_wake_time(s).map_err(serde::de::Error::custom))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(Some(times))
+) -> Result<WeeklyWakes, D::Error> {
+    let raw = Option::<RawWeeklyWakes>::deserialize(deserializer)?;
+    match raw {
+        None => Ok(WeeklyWakes::EMPTY),
+        Some(raw) => weekly_from_raw(raw).map_err(serde::de::Error::custom),
+    }
+}
+
+fn deserialize_optional_weekly_wakes<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<WeeklyWakes>, D::Error> {
+    let raw = RawWeeklyWakes::deserialize(deserializer)?;
+    weekly_from_raw(raw)
+        .map(Some)
+        .map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]
@@ -883,11 +1025,11 @@ mod tests {
         assert_eq!(cfg.poll_interval_secs, 120);
         assert_eq!(
             cfg.wake_up,
-            vec![
+            WeeklyWakes::every_day(vec![
                 NaiveTime::from_hms_opt(6, 0, 0).unwrap(),
                 NaiveTime::from_hms_opt(7, 30, 0).unwrap(),
                 NaiveTime::from_hms_opt(23, 15, 0).unwrap(),
-            ]
+            ])
         );
     }
 
@@ -896,7 +1038,7 @@ mod tests {
         let cfg: Config = toml::from_str(r#"wake_up = ["08:30"]"#).unwrap();
         assert_eq!(
             cfg.wake_up,
-            vec![NaiveTime::from_hms_opt(8, 30, 0).unwrap()]
+            WeeklyWakes::every_day(vec![NaiveTime::from_hms_opt(8, 30, 0).unwrap()])
         );
     }
 
@@ -1055,7 +1197,7 @@ rotate = []
         assert_eq!(cfg.pictures.wake_up, None);
         let (interval, wakes) = cfg.schedule(FrameMode::Picture);
         assert_eq!(interval, 180);
-        assert_eq!(wakes, cfg.wake_up.as_slice());
+        assert_eq!(wakes, &cfg.wake_up);
     }
 
     #[test]
@@ -1075,7 +1217,7 @@ rotate = []
         let (dash_i, dash_w) = cfg.schedule(FrameMode::Dashboard);
         let (pic_i, pic_w) = cfg.schedule(FrameMode::Picture);
         assert_eq!(dash_i, 3600);
-        assert_eq!(dash_w.len(), 1);
+        assert_eq!(dash_w.shared_times().map(|t| t.len()), Some(1));
         assert_eq!(pic_i, 120);
         assert!(pic_w.is_empty());
         let now = Utc::now();
@@ -1104,6 +1246,7 @@ rotate = ["photo-1"]
             mode: Some("picture".into()),
             poll_interval_secs: Some(90),
             wake_up: Some(vec![]),
+            wake_up_by_day: None,
             schedule_for: Some("picture".into()),
             rotate: None,
             schedule_kind: None,
@@ -1112,9 +1255,9 @@ rotate = ["photo-1"]
         assert_eq!(cfg.pictures.schedule_kind, Some(ScheduleKind::Interval));
         assert_eq!(cfg.mode, FrameMode::Picture);
         assert_eq!(cfg.poll_interval_secs, 3600);
-        assert_eq!(cfg.wake_up.len(), 1);
+        assert_eq!(cfg.wake_up.shared_times().map(|t| t.len()), Some(1));
         assert_eq!(cfg.pictures.poll_interval_secs, Some(90));
-        assert_eq!(cfg.pictures.wake_up.as_deref(), Some(&[][..]));
+        assert_eq!(cfg.pictures.wake_up.as_ref(), Some(&WeeklyWakes::EMPTY));
         let reloaded = Config::load(&path).unwrap();
         assert_eq!(reloaded.poll_interval_secs, 3600);
         assert_eq!(reloaded.pictures.poll_interval_secs, Some(90));
@@ -1180,12 +1323,12 @@ wake-up = ["07:00", "18:30"]
         })
         .unwrap();
         assert_eq!(cfg.poll_interval_secs, 120);
-        assert_eq!(cfg.wake_up.len(), 2);
+        assert_eq!(cfg.wake_up.shared_times().map(|t| t.len()), Some(2));
         assert_eq!(cfg.schedule_kind, Some(ScheduleKind::Interval));
         assert_eq!(cfg.pico_sleep_secs(Utc::now()), 120);
         let reloaded = Config::load(&path).unwrap();
         assert_eq!(reloaded.poll_interval_secs, 120);
-        assert_eq!(reloaded.wake_up.len(), 2);
+        assert_eq!(reloaded.wake_up.shared_times().map(|t| t.len()), Some(2));
         assert_eq!(reloaded.schedule_kind, Some(ScheduleKind::Interval));
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("07:00"));
@@ -1217,7 +1360,7 @@ wake-up = ["08:00"]
         assert_eq!(cfg.schedule_kind, Some(ScheduleKind::Times));
         let reloaded = Config::load(&path).unwrap();
         assert_eq!(reloaded.poll_interval_secs, 900);
-        assert_eq!(reloaded.wake_up.len(), 1);
+        assert_eq!(reloaded.wake_up.shared_times().map(|t| t.len()), Some(1));
         assert_eq!(reloaded.schedule_kind, Some(ScheduleKind::Times));
     }
 
@@ -1274,5 +1417,148 @@ poll_interval_secs = 3600
         let reloaded = Config::load(&path).unwrap();
         assert_eq!(reloaded.pico_drift, 0.03);
         assert!(!cfg.record_pico_drift(0.03).unwrap());
+    }
+
+    fn hhmm(s: &str) -> NaiveTime {
+        let (h, m) = s.split_once(':').unwrap();
+        NaiveTime::from_hms_opt(h.parse().unwrap(), m.parse().unwrap(), 0).unwrap()
+    }
+
+    #[test]
+    fn wake_up_table_parses_per_day() {
+        let cfg: Config = toml::from_str(
+            r#"
+            [wake-up]
+            monday = ["06:30", "15:30"]
+            tue = ["06:30"]
+            sat = "08:00"
+            sunday = ["09:00"]
+            "#,
+        )
+        .unwrap();
+        assert!(!cfg.wake_up.is_uniform());
+        assert_eq!(
+            cfg.wake_up.get_index(0),
+            &[hhmm("06:30"), hhmm("15:30")][..]
+        );
+        assert_eq!(cfg.wake_up.get_index(1), &[hhmm("06:30")][..]);
+        assert!(cfg.wake_up.get_index(2).is_empty());
+        assert_eq!(cfg.wake_up.get_index(5), &[hhmm("08:00")][..]);
+        assert_eq!(cfg.wake_up.get_index(6), &[hhmm("09:00")][..]);
+        let public = cfg.public_settings(Utc::now());
+        assert_eq!(public.wake_up_by_day.sat, vec!["08:00"]);
+        assert_eq!(public.wake_up, vec!["06:30", "08:00", "09:00", "15:30"]);
+    }
+
+    #[test]
+    fn wake_up_table_rejects_unknown_day() {
+        assert!(toml::from_str::<Config>(
+            r#"
+            [wake-up]
+            fun = ["08:00"]
+            "#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn patch_wake_up_by_day_persists_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+family_name = "Family"
+poll_interval_secs = 3600
+wake-up = ["07:00"]
+"#,
+        )
+        .unwrap();
+        let mut cfg = Config::load(&path).unwrap();
+        cfg.apply_patch(SettingsPatch {
+            wake_up_by_day: Some(PublicWakeDays {
+                mon: vec!["06:30".into()],
+                tue: vec!["06:30".into()],
+                wed: vec!["06:30".into()],
+                thu: vec!["06:30".into()],
+                fri: vec!["06:30".into()],
+                sat: vec!["08:00".into()],
+                sun: vec!["08:30".into()],
+            }),
+            schedule_kind: Some("times".into()),
+            schedule_for: Some("dashboard".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[wake-up]"));
+        assert!(text.contains("08:00"));
+        assert!(text.contains("08:30"));
+        let reloaded = Config::load(&path).unwrap();
+        assert_eq!(reloaded.wake_up.get_index(5), &[hhmm("08:00")][..]);
+        assert_eq!(reloaded.wake_up.get_index(6), &[hhmm("08:30")][..]);
+        assert_eq!(
+            reloaded
+                .public_settings(Utc::now())
+                .dashboard_schedule
+                .wake_up_by_day
+                .mon,
+            vec!["06:30"]
+        );
+    }
+
+    #[test]
+    fn mixed_then_uniform_writes_array_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "wake-up = [\"07:00\"]\n").unwrap();
+        let mut cfg = Config::load(&path).unwrap();
+        cfg.apply_patch(SettingsPatch {
+            wake_up_by_day: Some(PublicWakeDays {
+                mon: vec!["06:30".into()],
+                sat: vec!["08:00".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(std::fs::read_to_string(&path).unwrap().contains("[wake-up]"));
+        cfg.apply_patch(SettingsPatch {
+            wake_up: Some(vec!["07:15".into()]),
+            ..Default::default()
+        })
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("wake-up = ["));
+        assert!(text.contains("07:15"));
+        assert!(!text.contains("[wake-up]"));
+        let reloaded = Config::load(&path).unwrap();
+        assert!(reloaded.wake_up.is_uniform());
+        assert_eq!(reloaded.wake_up.get_index(0), &[hhmm("07:15")][..]);
+    }
+
+    #[test]
+    fn per_day_wakes_change_sleep() {
+        use chrono::TimeZone;
+        let cfg: Config = toml::from_str(
+            r#"
+            timezone = "Europe/London"
+            schedule_kind = "times"
+            [wake-up]
+            mon = ["06:30"]
+            tue = ["06:30"]
+            wed = ["06:30"]
+            thu = ["06:30"]
+            fri = ["06:30", "15:30"]
+            sat = ["08:00"]
+            sun = ["08:30"]
+            "#,
+        )
+        .unwrap();
+        let friday_evening = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 18, 22, 0, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(cfg.pico_sleep_secs(friday_evening), 10 * 3600);
     }
 }

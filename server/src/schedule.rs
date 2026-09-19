@@ -1,7 +1,89 @@
 //! When the Pico should next wake: a fixed interval, or the next `wake-up` clock time.
 
-use chrono::{DateTime, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Utc, Weekday};
 use chrono_tz::Tz;
+
+/// `mon` … `sun`, Monday first (UK week).
+pub const WEEKDAY_KEYS: [&str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+/// Wake times for each weekday. An empty day is skipped when scheduling.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeeklyWakes {
+    days: [Vec<NaiveTime>; 7],
+}
+
+impl Default for WeeklyWakes {
+    fn default() -> Self {
+        Self::EMPTY
+    }
+}
+
+impl WeeklyWakes {
+    pub const EMPTY: Self = Self {
+        days: [
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        ],
+    };
+
+    pub fn from_days(mut days: [Vec<NaiveTime>; 7]) -> Self {
+        for day in &mut days {
+            day.sort();
+            day.dedup();
+        }
+        Self { days }
+    }
+
+    pub fn every_day(times: Vec<NaiveTime>) -> Self {
+        let mut times = times;
+        times.sort();
+        times.dedup();
+        Self {
+            days: std::array::from_fn(|_| times.clone()),
+        }
+    }
+
+    pub fn parse_day_key(key: &str) -> Result<usize, String> {
+        match key.trim().to_ascii_lowercase().trim_end_matches('.') {
+            "mon" | "monday" => Ok(0),
+            "tue" | "tues" | "tuesday" => Ok(1),
+            "wed" | "wednesday" => Ok(2),
+            "thu" | "thur" | "thurs" | "thursday" => Ok(3),
+            "fri" | "friday" => Ok(4),
+            "sat" | "saturday" => Ok(5),
+            "sun" | "sunday" => Ok(6),
+            other => Err(format!(
+                "unknown wake-up day `{other}` (use mon, tue, wed, thu, fri, sat, sun)"
+            )),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.days.iter().all(|d| d.is_empty())
+    }
+
+    pub fn is_uniform(&self) -> bool {
+        self.days.windows(2).all(|w| w[0] == w[1])
+    }
+
+    /// Shared list when every day is the same; otherwise `None`.
+    pub fn shared_times(&self) -> Option<&[NaiveTime]> {
+        self.is_uniform().then_some(self.days[0].as_slice())
+    }
+
+    pub fn get(&self, weekday: Weekday) -> &[NaiveTime] {
+        self.get_index(weekday.num_days_from_monday() as usize)
+    }
+
+    pub fn get_index(&self, idx: usize) -> &[NaiveTime] {
+        &self.days[idx]
+    }
+}
 
 /// Largest stored/applied Pico timer error, as a fraction of the asked sleep.
 /// Bigger gaps usually mean a button wake, USB wait, or a missed poll.
@@ -9,13 +91,14 @@ pub const MAX_PICO_DRIFT: f64 = 0.05;
 
 /// Seconds until the Pico should poll again.
 ///
-/// An empty `wake_ups` list uses `interval_secs`. Otherwise the next clock
-/// time strictly after `now` in `tz` wins, wrapping to tomorrow if needed.
+/// An empty week uses `interval_secs`. Otherwise the next clock time strictly
+/// after `now` in `tz` wins, using that weekday’s list and wrapping to the
+/// next day that has a time (including next week).
 pub fn seconds_until_next_poll(
     now: DateTime<Utc>,
     tz: Tz,
     interval_secs: u64,
-    wake_ups: &[NaiveTime],
+    wake_ups: &WeeklyWakes,
 ) -> u64 {
     let interval = interval_secs.max(1);
     match next_wake_after(now, tz, wake_ups) {
@@ -39,7 +122,7 @@ pub fn seconds_until_next_poll_for_timer(
     now: DateTime<Utc>,
     tz: Tz,
     interval_secs: u64,
-    wake_ups: &[NaiveTime],
+    wake_ups: &WeeklyWakes,
     assigned_wake: Option<DateTime<Utc>>,
 ) -> u64 {
     if let Some(assigned) = assigned_wake {
@@ -87,21 +170,17 @@ pub fn intended_wake_at(
     Some(instant_after(prev_at, wall))
 }
 
-fn next_wake_after(now: DateTime<Utc>, tz: Tz, wake_ups: &[NaiveTime]) -> Option<DateTime<Tz>> {
+fn next_wake_after(now: DateTime<Utc>, tz: Tz, wake_ups: &WeeklyWakes) -> Option<DateTime<Tz>> {
     if wake_ups.is_empty() {
         return None;
     }
 
-    let mut times: Vec<NaiveTime> = wake_ups.to_vec();
-    times.sort();
-    times.dedup();
-
     let now_local = now.with_timezone(&tz);
     let today = now_local.date_naive();
-    // Today, tomorrow, and the day after cover a spring-forward skip.
-    for day_offset in 0..3 {
+    // A full week plus one day covers “only Mondays” and a spring-forward skip.
+    for day_offset in 0..8 {
         let date = today + Duration::days(day_offset);
-        for &time in &times {
+        for &time in wake_ups.get(date.weekday()) {
             let Some(dt) = resolve_local(tz, date, time) else {
                 continue;
             };
@@ -236,6 +315,19 @@ mod tests {
         NaiveTime::from_hms_opt(h.parse().unwrap(), m.parse().unwrap(), 0).unwrap()
     }
 
+    fn daily(times: &[&str]) -> WeeklyWakes {
+        WeeklyWakes::every_day(times.iter().copied().map(t).collect())
+    }
+
+    fn weekly(pairs: &[(&str, &[&str])]) -> WeeklyWakes {
+        let mut days: [Vec<NaiveTime>; 7] = Default::default();
+        for (key, times) in pairs {
+            let idx = WeeklyWakes::parse_day_key(key).unwrap();
+            days[idx] = times.iter().copied().map(t).collect();
+        }
+        WeeklyWakes::from_days(days)
+    }
+
     fn at_london(y: i32, month: u32, d: u32, h: u32, min: u32, s: u32) -> DateTime<Utc> {
         london()
             .with_ymd_and_hms(y, month, d, h, min, s)
@@ -246,14 +338,20 @@ mod tests {
     #[test]
     fn empty_wake_ups_use_interval() {
         let now = at_london(2026, 9, 16, 12, 0, 0);
-        assert_eq!(seconds_until_next_poll(now, london(), 3600, &[]), 3600);
-        assert_eq!(seconds_until_next_poll(now, london(), 0, &[]), 1);
+        assert_eq!(
+            seconds_until_next_poll(now, london(), 3600, &WeeklyWakes::EMPTY),
+            3600
+        );
+        assert_eq!(
+            seconds_until_next_poll(now, london(), 0, &WeeklyWakes::EMPTY),
+            1
+        );
     }
 
     #[test]
     fn next_slot_later_today() {
         let now = at_london(2026, 9, 16, 12, 0, 0);
-        let wakes = [t("06:00"), t("15:00"), t("23:15")];
+        let wakes = daily(&["06:00", "15:00", "23:15"]);
         assert_eq!(
             seconds_until_next_poll(now, london(), 3600, &wakes),
             3 * 3600
@@ -263,7 +361,7 @@ mod tests {
     #[test]
     fn unsorted_times_still_pick_next() {
         let now = at_london(2026, 9, 16, 12, 0, 0);
-        let wakes = [t("23:15"), t("06:00"), t("15:00")];
+        let wakes = daily(&["23:15", "06:00", "15:00"]);
         assert_eq!(
             seconds_until_next_poll(now, london(), 3600, &wakes),
             3 * 3600
@@ -273,7 +371,7 @@ mod tests {
     #[test]
     fn wraps_past_last_slot_to_tomorrow() {
         let now = at_london(2026, 9, 16, 23, 30, 0);
-        let wakes = [t("06:00"), t("23:15")];
+        let wakes = daily(&["06:00", "23:15"]);
         assert_eq!(
             seconds_until_next_poll(now, london(), 3600, &wakes),
             6 * 3600 + 30 * 60
@@ -283,14 +381,14 @@ mod tests {
     #[test]
     fn skips_the_slot_already_in_progress() {
         let now = at_london(2026, 9, 16, 6, 0, 0);
-        let wakes = [t("06:00"), t("07:00")];
+        let wakes = daily(&["06:00", "07:00"]);
         assert_eq!(seconds_until_next_poll(now, london(), 3600, &wakes), 3600);
     }
 
     #[test]
     fn single_daily_time_sleeps_until_tomorrow() {
         let now = at_london(2026, 9, 16, 6, 0, 5);
-        let wakes = [t("06:00")];
+        let wakes = daily(&["06:00"]);
         assert_eq!(
             seconds_until_next_poll(now, london(), 3600, &wakes),
             24 * 3600 - 5
@@ -300,7 +398,7 @@ mod tests {
     #[test]
     fn before_first_slot_same_day() {
         let now = at_london(2026, 9, 16, 5, 0, 0);
-        let wakes = [t("06:00"), t("07:00")];
+        let wakes = daily(&["06:00", "07:00"]);
         assert_eq!(seconds_until_next_poll(now, london(), 3600, &wakes), 3600);
     }
 
@@ -308,7 +406,7 @@ mod tests {
     fn spring_forward_skips_missing_local_time() {
         // 29 Mar 2026: 01:00 GMT → 02:00 BST, so 01:30 does not exist.
         let now = at_london(2026, 3, 29, 0, 30, 0);
-        let wakes = [t("01:30"), t("03:00")];
+        let wakes = daily(&["01:30", "03:00"]);
         assert_eq!(
             seconds_until_next_poll(now, london(), 3600, &wakes),
             90 * 60
@@ -328,7 +426,7 @@ mod tests {
             .earliest()
             .unwrap()
             .with_timezone(&Utc);
-        let wakes = [t("01:30")];
+        let wakes = daily(&["01:30"]);
         let secs = seconds_until_next_poll(now, london(), 3600, &wakes);
         assert_eq!(secs, 90 * 60);
     }
@@ -418,7 +516,7 @@ mod tests {
     fn timer_early_for_assigned_slot_sleeps_until_the_next() {
         let now = at_london(2026, 9, 16, 5, 55, 0);
         let assigned = at_london(2026, 9, 16, 6, 0, 0);
-        let wakes = [t("06:00"), t("07:00")];
+        let wakes = daily(&["06:00", "07:00"]);
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(assigned)),
             65 * 60
@@ -435,7 +533,7 @@ mod tests {
         // Overnight POWMAN can beat a 10-minute guess; the stored slot is the rule.
         let now = at_london(2026, 9, 16, 5, 20, 0);
         let assigned = at_london(2026, 9, 16, 6, 0, 0);
-        let wakes = [t("06:00"), t("07:00")];
+        let wakes = daily(&["06:00", "07:00"]);
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(assigned)),
             100 * 60
@@ -446,7 +544,7 @@ mod tests {
     fn timer_late_for_assigned_slot_still_sleeps_until_the_next() {
         let now = at_london(2026, 9, 16, 6, 5, 0);
         let assigned = at_london(2026, 9, 16, 6, 0, 0);
-        let wakes = [t("06:00"), t("07:00")];
+        let wakes = daily(&["06:00", "07:00"]);
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(assigned)),
             55 * 60
@@ -457,7 +555,7 @@ mod tests {
     fn timer_after_the_following_slot_schedules_from_now() {
         let now = at_london(2026, 9, 16, 7, 5, 0);
         let assigned = at_london(2026, 9, 16, 6, 0, 0);
-        let wakes = [t("06:00"), t("07:00"), t("08:00")];
+        let wakes = daily(&["06:00", "07:00", "08:00"]);
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(assigned)),
             55 * 60
@@ -468,7 +566,7 @@ mod tests {
     fn timer_on_time_does_not_skip_the_following_close_slot() {
         let now = at_london(2026, 9, 16, 8, 50, 0);
         let assigned = now;
-        let wakes = [t("08:50"), t("08:51"), t("08:55")];
+        let wakes = daily(&["08:50", "08:51", "08:55"]);
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(assigned)),
             60
@@ -479,7 +577,7 @@ mod tests {
     fn timer_slightly_late_does_not_skip_the_next_close_slot() {
         let now = at_london(2026, 9, 16, 8, 50, 30);
         let assigned = at_london(2026, 9, 16, 8, 50, 0);
-        let wakes = [t("08:50"), t("08:51"), t("08:55")];
+        let wakes = daily(&["08:50", "08:51", "08:55"]);
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(assigned)),
             30
@@ -490,7 +588,7 @@ mod tests {
     fn timer_early_for_a_close_slot_uses_the_commanded_wake() {
         let now = at_london(2026, 9, 16, 8, 50, 50);
         let assigned = at_london(2026, 9, 16, 8, 51, 0);
-        let wakes = [t("08:50"), t("08:51"), t("08:55")];
+        let wakes = daily(&["08:50", "08:51", "08:55"]);
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(assigned)),
             4 * 60 + 10
@@ -505,7 +603,7 @@ mod tests {
                 at_london(2026, 9, 16, 12, 58, 0),
                 london(),
                 3600,
-                &[],
+                &WeeklyWakes::EMPTY,
                 Some(assigned)
             ),
             3600 + 2 * 60
@@ -515,7 +613,7 @@ mod tests {
                 at_london(2026, 9, 16, 13, 2, 0),
                 london(),
                 3600,
-                &[],
+                &WeeklyWakes::EMPTY,
                 Some(assigned)
             ),
             58 * 60
@@ -531,6 +629,57 @@ mod tests {
         assert_eq!(
             assigned_wake_from_poll(Some(intended), prev, commanded, 0.0),
             Some(intended)
+        );
+    }
+
+    #[test]
+    fn friday_evening_uses_saturday_times() {
+        // 18 Sep 2026 is a Friday.
+        let now = at_london(2026, 9, 18, 22, 0, 0);
+        let wakes = weekly(&[
+            ("mon", &["06:30"]),
+            ("tue", &["06:30"]),
+            ("wed", &["06:30"]),
+            ("thu", &["06:30"]),
+            ("fri", &["06:30", "15:30"]),
+            ("sat", &["08:00"]),
+            ("sun", &["08:30"]),
+        ]);
+        assert_eq!(
+            seconds_until_next_poll(now, london(), 3600, &wakes),
+            10 * 3600
+        );
+    }
+
+    #[test]
+    fn empty_saturday_wraps_to_sunday() {
+        // 19 Sep 2026 is a Saturday.
+        let now = at_london(2026, 9, 19, 10, 0, 0);
+        let wakes = weekly(&[
+            ("mon", &["06:30"]),
+            ("fri", &["06:30"]),
+            ("sun", &["09:00"]),
+        ]);
+        assert_eq!(
+            seconds_until_next_poll(now, london(), 3600, &wakes),
+            23 * 3600
+        );
+    }
+
+    #[test]
+    fn weekday_only_wraps_weekend_to_monday() {
+        // Saturday morning, weekdays at 06:30, weekend empty.
+        let now = at_london(2026, 9, 19, 8, 0, 0);
+        let wakes = weekly(&[
+            ("mon", &["06:30"]),
+            ("tue", &["06:30"]),
+            ("wed", &["06:30"]),
+            ("thu", &["06:30"]),
+            ("fri", &["06:30"]),
+        ]);
+        assert_eq!(
+            seconds_until_next_poll(now, london(), 3600, &wakes),
+            46 * 3600 + 30 * 60
         );
     }
 }

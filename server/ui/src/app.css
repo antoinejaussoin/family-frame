@@ -210,6 +210,192 @@ select {
   border: 1px solid rgba(240, 193, 90, 0.55);
 }
 
+.chip-sm {
+  gap: 0.25rem;
+  padding: 0.28rem 0.5rem 0.28rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.chip-x {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chip-x:hover {
+  background: rgba(138, 90, 18, 0.12);
+}
+
+.wake-week {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.wake-day {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 1rem;
+  border: 1.5px solid transparent;
+  background: rgba(243, 230, 211, 0.45);
+}
+
+.wake-day.weekend {
+  background: rgba(158, 207, 201, 0.28);
+}
+
+.wake-day.on {
+  border-color: var(--color-terracotta);
+  background: #fff8dc;
+}
+
+.wake-day.weekend.on {
+  background: #eef8f4;
+}
+
+.wake-day-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.05rem 0;
+}
+
+.wake-day-name {
+  display: flex;
+  width: 2.75rem;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.12rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.wake-today {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-terracotta-dark);
+}
+
+.wake-day-times {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.wake-day-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.wake-plus,
+.wake-copy {
+  border: 0;
+  cursor: pointer;
+  font-weight: 800;
+  color: var(--color-muted);
+  background: transparent;
+}
+
+.wake-plus {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 999px;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.wake-copy {
+  padding: 0.25rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.wake-plus:hover,
+.wake-copy:hover,
+.wake-copy.on {
+  color: var(--color-ink);
+  background: rgba(255, 253, 248, 0.9);
+}
+
+.wake-copy-panel {
+  grid-column: 1 / -1;
+  padding: 0.55rem 0.5rem 0.45rem;
+  border-radius: 0.75rem;
+  background: var(--color-paper);
+  box-shadow: 0 6px 16px rgba(58, 42, 36, 0.08);
+}
+
+.wake-copy-btn {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+}
+
+.wake-copy-day {
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--color-ink);
+  background: rgba(243, 230, 211, 0.8);
+  cursor: pointer;
+}
+
+.wake-copy-day:hover {
+  background: #ffe7c2;
+}
+
+.wake-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.wake-add .field {
+  width: 8.25rem;
+  flex-shrink: 0;
+}
+
+.wake-add-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.wake-add-actions .btn {
+  white-space: nowrap;
+  padding: 0.55rem 0.85rem;
+}
+
 .board {
   background:
     radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.42), transparent 46%),
@@ -414,6 +600,11 @@ select {
 .btn:focus-visible,
 .heart:focus-visible,
 .chip:focus-visible,
+.chip-x:focus-visible,
+.wake-plus:focus-visible,
+.wake-copy:focus-visible,
+.wake-copy-day:focus-visible,
+.wake-day-main:focus-visible,
 .seg button:focus-visible {
   outline: 2px solid var(--color-terracotta);
   outline-offset: 2px;
