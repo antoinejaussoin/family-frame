@@ -443,9 +443,9 @@ li {
   box-sizing: border-box;
   height: 44px;
   padding: 4px 0;
-  font-family: var(--type-sm-family);
-  font-size: var(--type-sm-size);
-  line-height: 16px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   gap: 10px;
 }
 
@@ -476,7 +476,7 @@ li {
 }
 
 .when {
-  flex: 0 0 150px;
+  flex: 0 0 160px;
   font-weight: 700;
 }
 
@@ -489,10 +489,10 @@ li {
 .what { flex: 1 1 auto; min-width: 0; }
 
 .coming .when {
-  flex-basis: 176px;
-  font-family: var(--type-sm-family);
-  font-size: var(--type-sm-size);
-  line-height: 16px;
+  flex-basis: 186px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -547,9 +547,9 @@ li {
   align-items: center;
   height: 44px;
   padding: 4px 0;
-  font-family: var(--type-sm-family);
-  font-size: var(--type-sm-size);
-  line-height: 16px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   column-gap: 8px;
 }
 .rooms .what {
@@ -564,18 +564,18 @@ li {
   min-width: 0;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  line-height: 16px;
+  font-weight: 400;
+  line-height: 21px;
 }
 .rooms .temp {
   color: var(--red);
-  font-family: var(--type-sm-family);
-  font-size: var(--type-sm-size);
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
 }
 .rooms .humidity {
   color: var(--blue);
-  font-family: var(--type-sm-family);
-  font-size: var(--type-sm-size);
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
 }
 
 .rooms li.offline .what {
@@ -591,11 +591,11 @@ li {
   display: grid;
   grid-template-columns: 1fr 1fr;
   height: 44px;
-  padding: 6px 0;
-  align-items: center;
-  font-family: var(--type-sm-family);
-  font-size: var(--type-sm-size);
-  line-height: 16px;
+  padding: 0;
+  align-items: stretch;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   gap: 0;
 }
 
@@ -604,6 +604,9 @@ li {
   letter-spacing: 0;
   text-align: left;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 0;
 }
 
 .line-name.colour-black { color: var(--black); }
@@ -612,28 +615,33 @@ li {
 .line-name.colour-blue { color: var(--blue); }
 
 .line-status {
-  justify-self: start;
-  text-align: left;
-  font-weight: 700;
-  font-family: var(--type-sm-family);
-  font-size: var(--type-sm-size);
-  line-height: 16px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: stretch;
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  text-align: center;
+  font-weight: 400;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  max-width: 100%;
+  padding: 0 8px;
 }
 
 .severity-good .line-status { color: var(--black); }
 .severity-delay .line-status {
   background: var(--yellow);
   color: var(--black);
-  padding: 2px 8px;
 }
 .severity-severe .line-status {
   background: var(--red);
   color: var(--white);
-  padding: 2px 8px;
 }
 
 .homework h2,
@@ -815,13 +823,19 @@ li {
 .grades .empty,
 .todos .empty,
 .joke .empty,
-.history .empty,
-.tube .empty,
-.rooms .empty,
-.coming .empty {
+.history .empty {
   font-family: var(--type-sm-family);
   font-size: var(--type-sm-size);
   line-height: 16px;
+  margin: 12px 0 0;
+}
+
+.tube .empty,
+.rooms .empty,
+.coming .empty {
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   margin: 12px 0 0;
 }
 
