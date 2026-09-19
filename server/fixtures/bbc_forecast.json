@@ -97,6 +97,46 @@
           }
         ]
       }
+    },
+    {
+      "summary": {
+        "report": {
+          "localDate": "2026-09-14",
+          "weatherType": 1,
+          "weatherTypeText": "Sunny",
+          "minTempC": 12,
+          "maxTempC": 19,
+          "sunrise": "06:37",
+          "sunset": "19:14",
+          "pollenIndexText": "High",
+          "pollenIndexBand": "HIGH"
+        }
+      },
+      "detailed": {
+        "reports": [
+          {
+            "localDate": "2026-09-14",
+            "timeslot": "09:00",
+            "temperatureC": 12,
+            "weatherType": 1,
+            "weatherTypeText": "Sunny"
+          },
+          {
+            "localDate": "2026-09-14",
+            "timeslot": "15:00",
+            "temperatureC": 19,
+            "weatherType": 3,
+            "weatherTypeText": "Sunny Intervals"
+          },
+          {
+            "localDate": "2026-09-14",
+            "timeslot": "21:00",
+            "temperatureC": 11,
+            "weatherType": 0,
+            "weatherTypeText": "Clear Sky"
+          }
+        ]
+      }
     }
   ]
 }

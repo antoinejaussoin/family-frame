@@ -144,11 +144,11 @@
         <h2>
           <span class="section-title">
             <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-today"/></svg>
-            Today
+            {{ today_title }}{% if today_ordinal %} <span class="day-num">{{ today_ordinal }}</span>{% endif %}
           </span>
           {% if weather.days and weather.days|length > 0 %}
           {% set day = weather.days[0] %}
-          <span class="day-meta" aria-label="Today’s weather">
+          <span class="day-meta" aria-label="{{ day.label }} weather">
             <span class="slots">
               {% for slot in day.slots %}
               <span class="slot" aria-label="{{ slot.period }}: {{ slot.summary or slot.temperature }}">
@@ -197,7 +197,7 @@
           {% endfor %}
         </ol>
         {% else %}
-        <p class="empty">Nothing on the family calendar today.</p>
+        <p class="empty">Nothing on the family calendar {% if today_title == "Today" %}today{% else %}tomorrow{% endif %}.</p>
         {% endif %}
       </section>
 
@@ -209,7 +209,7 @@
           </span>
           {% if weather.days and weather.days|length > 1 %}
           {% set day = weather.days[1] %}
-          <span class="day-meta" aria-label="Tomorrow’s weather">
+          <span class="day-meta" aria-label="{{ day.label }} weather">
             <span class="slots">
               {% for slot in day.slots %}
               <span class="slot" aria-label="{{ slot.period }}: {{ slot.summary or slot.temperature }}">

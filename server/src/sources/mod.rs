@@ -229,7 +229,8 @@ pub async fn load_dashboard(cfg: &Config) -> Result<Dashboard> {
         notes.push("demo calendar (no ICS events)".into());
     }
 
-    merge_events(&mut dash, calendar);
+    let now_local = ctx.now.with_timezone(&ctx.tz).naive_local();
+    merge_events(&mut dash, calendar, ctx.today, now_local);
     dash.show_school_sections = cfg.pronote.show_sections;
     dash.fit_to_panel();
     dash.source_note = notes.join(" · ");
@@ -386,7 +387,12 @@ mod tests {
         if calendar.is_empty() {
             calendar.extend(demo_events(today));
         }
-        merge_events(&mut dash, calendar);
+        merge_events(
+            &mut dash,
+            calendar,
+            today,
+            today.and_hms_opt(12, 0, 0).unwrap(),
+        );
         dash.fit_to_panel();
         dash.source_note = [
             "demo to-dos (no Todoist token)",
