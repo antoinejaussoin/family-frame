@@ -15,8 +15,8 @@ use crate::config::TodoistConfig;
 use crate::model::TodoItem;
 use crate::sources::cache::TtlCache;
 
-use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
 use super::{DataSource, DisabledBehaviour};
 
 pub struct TodoistSource;

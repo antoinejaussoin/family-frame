@@ -8,10 +8,6 @@ Rain chance or “take a coat” — you already have icons and temps; a % rain 
 
 Sunset — changes slowly, so it will not burn the panel. Helps with after-school outdoor time and “when do we need lights on”.
 
-Travel / line status — only if you actually use a line or a school bus. Hourly is fine for “Elizabeth line part-suspended”, useless for live bus minutes.
-
-
-Frame battery — the Pico already has battery code; a discreet “frame 62%” in the mast avoids a dead panel surprise.
 
 Humidity / mould warning — you already have humidity. Only highlight rooms over a threshold (yellow/red) instead of adding more numbers.
 
@@ -22,18 +18,4 @@ Packed lunch / PE kit — weekday-only flags pulled from the calendar (“PE: bo
 Quote
 
 Pollen / air quality — only if someone has asthma or hay fever.
-
-Ephemeride
-
-Font size matching the pixels
-
-Battery discharge curve
-
-Calculation on discharge:
-- Energy per refresh
-- Energy loss doing nothing
-
-Different timers for the weekend
-
-Temp and setting from Nest thermostat
 

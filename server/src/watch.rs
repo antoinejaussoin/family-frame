@@ -42,7 +42,12 @@ pub async fn run(config: Option<PathBuf>, bind: Option<String>, fake: bool) -> R
         "watch mode — rebuild and restart on file changes (dev only)"
     );
 
-    let mut child = Some(spawn_server(&root, config.as_deref(), bind.as_deref(), fake)?);
+    let mut child = Some(spawn_server(
+        &root,
+        config.as_deref(),
+        bind.as_deref(),
+        fake,
+    )?);
 
     loop {
         let event = tokio::select! {

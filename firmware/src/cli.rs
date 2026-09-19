@@ -170,10 +170,10 @@ async fn handle_line(
         "show" => {
             let cfg = settings::snapshot().await;
             let (mv, pct) = battery::last();
-            let mut msg = String::<384>::new();
+            let mut msg = String::<512>::new();
             let _ = write!(
                 msg,
-                "ssid: {}\r\npsk:  {}\r\nurl:  {}\r\nsleep: {} s (from server)\r\nchecksum: {}\r\n{}\r\nbattery: {} mV ~{}%\r\nleds: {}\r\nwake: {}\r\n",
+                "ssid: {}\r\npsk:  {}\r\nurl:  {}\r\nsleep: {} s (from server)\r\nslot: {}\r\nchecksum: {}\r\n{}\r\nbattery: {} mV ~{}%\r\nleds: {}\r\nwake: {}\r\n",
                 cfg.ssid,
                 if cfg.psk.is_empty() {
                     "(none)"
@@ -182,6 +182,11 @@ async fn handle_line(
                 },
                 cfg.server,
                 cfg.sleep_s,
+                if cfg.wake_at.is_empty() {
+                    "(none)"
+                } else {
+                    cfg.wake_at.as_str()
+                },
                 if cfg.last_checksum.is_empty() {
                     "(none)"
                 } else {

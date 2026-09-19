@@ -589,8 +589,7 @@ fn ensure_trailing_newline(file: &mut File) -> Result<()> {
     file.seek(SeekFrom::Start(len - 1))
         .context("seek poll log")?;
     let mut last = [0u8; 1];
-    file.read_exact(&mut last)
-        .context("read poll log tail")?;
+    file.read_exact(&mut last).context("read poll log tail")?;
     if last[0] != b'\n' {
         file.write_all(b"\n").context("repair poll log newline")?;
     }

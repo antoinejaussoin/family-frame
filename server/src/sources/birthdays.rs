@@ -3,8 +3,8 @@ use chrono::{Datelike, Duration, NaiveDate};
 use crate::config::Birthday;
 use crate::model::{CalendarEvent, BIRTHDAY_HORIZON_DAYS};
 
-use super::contribute::{Contribution, SourceOutcome};
 use super::context::SourceContext;
+use super::contribute::{Contribution, SourceOutcome};
 use super::ics;
 use super::DataSource;
 
@@ -48,8 +48,8 @@ pub fn demo_birthday_events(today: NaiveDate) -> Vec<CalendarEvent> {
 fn demo_people(today: NaiveDate) -> Vec<Birthday> {
     let person = |name: &str, offset_days: i64, age: i32| {
         let next = today + Duration::days(offset_days);
-        let dob = NaiveDate::from_ymd_opt(next.year() - age, next.month(), next.day())
-            .unwrap_or(next);
+        let dob =
+            NaiveDate::from_ymd_opt(next.year() - age, next.month(), next.day()).unwrap_or(next);
         Birthday {
             name: name.into(),
             dob,

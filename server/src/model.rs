@@ -324,9 +324,14 @@ impl Dashboard {
     }
 
     pub fn set_refresh_window(&mut self, now: DateTime<Utc>, next_secs: u64, tz: Tz) {
+        self.set_refresh_at(now, refresh_until_at(now, next_secs), tz);
+    }
+
+    /// Paint last/next using the real next slot instant (so 18:00 stays 18:00).
+    pub fn set_refresh_at(&mut self, now: DateTime<Utc>, next: DateTime<Utc>, tz: Tz) {
         let local = now.with_timezone(&tz);
         self.last_refresh = local.format("%H:%M").to_string();
-        let next_local = refresh_until_at(now, next_secs).with_timezone(&tz);
+        let next_local = next.with_timezone(&tz);
         self.next_refresh = if next_local.date_naive() == local.date_naive() {
             next_local.format("%H:%M").to_string()
         } else {
@@ -1077,6 +1082,26 @@ mod tests {
         dash.set_refresh_window(now, 20 * 60, tz);
         assert_eq!(dash.last_refresh, "23:50");
         assert_eq!(dash.next_refresh, "Fri 00:10");
+    }
+
+    #[test]
+    fn refresh_window_clock_slot_is_not_floored_to_xx59() {
+        let tz = chrono_tz::Europe::London;
+        let now = tz
+            .with_ymd_and_hms(2026, 9, 16, 16, 0, 3)
+            .unwrap()
+            .with_timezone(&Utc)
+            + chrono::Duration::milliseconds(475);
+        let slot = tz
+            .with_ymd_and_hms(2026, 9, 16, 18, 0, 0)
+            .unwrap()
+            .with_timezone(&Utc);
+        let mut dash = Dashboard::empty("Family", now.date_naive());
+        dash.set_refresh_at(now, slot, tz);
+        assert_eq!(dash.last_refresh, "16:00");
+        assert_eq!(dash.next_refresh, "18:00");
+        dash.set_refresh_window(now, crate::schedule::secs_until(now, slot), tz);
+        assert_eq!(dash.next_refresh, "17:59");
     }
 
     fn event(date: NaiveDate, start: &str, title: &str) -> CalendarEvent {
