@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import FrameMark from '../lib/FrameMark.svelte'
   import PageNav from '../lib/PageNav.svelte'
+  import { formatDuration, intervalToDuration } from 'date-fns'
   import { deleteDebug, getDebug } from '../lib/api.js'
 
   const builtVersion = import.meta.env.APP_VERSION
@@ -109,16 +110,11 @@
 
   function fmtEtaShort(secs) {
     if (!Number.isFinite(secs) || secs <= 0) return '—'
-    if (secs < 50 * 60) {
-      const m = Math.max(1, Math.round(secs / 60))
-      return `${m} min`
-    }
-    if (secs < 36 * 3600) {
-      const h = Math.max(1, Math.round(secs / 3600))
-      return `${h} hour${h === 1 ? '' : 's'}`
-    }
-    const d = Math.max(1, Math.round(secs / 86400))
-    return `${d} day${d === 1 ? '' : 's'}`
+    return (
+      formatDuration(intervalToDuration({ start: 0, end: Math.round(secs) * 1000 }), {
+        format: ['years', 'months', 'days'],
+      }) || '—'
+    )
   }
 
   function lifeLabel(kind, secs) {
