@@ -24,7 +24,7 @@ const LOOKUP_URL: &str = "https://ukbinday.co.uk/api/v1/lookup";
 const COUNCIL: &str = "hacs_wandsworth_gov_uk";
 const FETCH_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 const KEEP: &[&str] = &["Food waste", "Recycling"];
-const MERGED_TITLE: &str = "Food & recycling";
+const MERGED_TITLE: &str = "Bins collection";
 
 static LAST: TtlCache<(String, LookupResponse)> = TtlCache::new();
 
@@ -193,7 +193,7 @@ mod tests {
         let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
         let events = events_from_lookup(&lookup(FIXTURE), today);
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].title, "Food & recycling");
+        assert_eq!(events[0].title, "Bins collection");
         assert_eq!(events[0].date, "2026-09-23");
         assert_eq!(events[0].start, "");
         assert_eq!(events[0].day_label, "Wed 23");
@@ -213,7 +213,7 @@ mod tests {
     fn ignores_rubbish_and_electrical() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
         let event = merge_collections(&lookup(FIXTURE).collections, today).unwrap();
-        assert_eq!(event.title, "Food & recycling");
+        assert_eq!(event.title, "Bins collection");
         assert_eq!(event.date, "2026-09-23");
     }
 
@@ -245,7 +245,7 @@ mod tests {
         ];
         let event = merge_collections(&items, today).unwrap();
         assert_eq!(event.date, "2026-09-23");
-        assert_eq!(event.title, "Food & recycling");
+        assert_eq!(event.title, "Bins collection");
     }
 
     #[test]

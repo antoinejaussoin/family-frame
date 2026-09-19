@@ -279,7 +279,7 @@ mod tests {
         let mut dash = Dashboard::empty("Family", today);
         dash.events_today.push(crate::model::CalendarEvent {
             start: String::new(),
-            title: "Food & recycling".into(),
+            title: "Bins collection".into(),
             all_day: true,
             day_label: "Today".into(),
             date: "2026-09-19".into(),
@@ -290,7 +290,7 @@ mod tests {
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
-            title: "Food & recycling".into(),
+            title: "Bins collection".into(),
             all_day: true,
             day_label: "Wed 23".into(),
             date: "2026-09-23".into(),
@@ -301,7 +301,7 @@ mod tests {
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert_eq!(html.matches("class=\"bin-day\"").count(), 2);
-        assert!(html.contains("Food &amp; recycling"));
+        assert!(html.contains("Bins collection"));
         assert!(html.contains("All day"));
         assert!(html.contains("Wed 23</span>"));
         assert!(!html.contains("09:17"));
