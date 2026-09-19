@@ -18,6 +18,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing::warn;
 
+use crate::battery::{self, BatteryReport, Cell};
+
 pub const MAX_POLLS: usize = 500;
 pub const POLLS_PER_PAGE: usize = 20;
 
@@ -39,19 +41,26 @@ pub struct Poll {
     pub wake_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BatteryEta {
-    NoData,
-    OnUsb,
-    NeedMore,
-    Stable,
-    Remaining(Duration),
+#[derive(Debug, Clone)]
+pub struct DebugExtras {
+    pub cell: Cell,
+    pub wakes_per_day: [f64; 7],
+}
+
+impl Default for DebugExtras {
+    fn default() -> Self {
+        Self {
+            cell: Cell::DEFAULT,
+            wakes_per_day: [24.0; 7],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DebugPage {
     pub version: &'static str,
     pub has_polls: bool,
+    pub battery: BatteryReport,
     pub last_pct: u16,
     pub last_mv: u32,
     pub last_usb: bool,
@@ -186,13 +195,35 @@ pub fn page_from_polls_with_drift(
     dir_bytes: u64,
     has_frame: impl Fn(&str) -> bool,
 ) -> DebugPage {
+    page_from_polls_full(
+        polls,
+        tz,
+        pico_drift,
+        page,
+        dir_bytes,
+        &DebugExtras::default(),
+        has_frame,
+    )
+}
+
+pub fn page_from_polls_full(
+    polls: &[Poll],
+    tz: Tz,
+    pico_drift: f64,
+    page: usize,
+    dir_bytes: u64,
+    extras: &DebugExtras,
+    has_frame: impl Fn(&str) -> bool,
+) -> DebugPage {
     let now = Utc::now();
     let (poll_count, page, page_count) = page_bounds(polls.len(), page);
     let debug_dir_label = format_bytes(dir_bytes);
+    let battery = battery::report(polls, extras.cell, extras.wakes_per_day);
     if polls.is_empty() {
         return DebugPage {
             version: crate::VERSION,
             has_polls: false,
+            battery,
             last_pct: 0,
             last_mv: 0,
             last_usb: false,
@@ -221,15 +252,14 @@ pub fn page_from_polls_with_drift(
     }
 
     let last = polls.last().unwrap();
-    let eta = discharge_eta(polls, now);
-    let (eta_kind, eta_text) = eta_copy(eta, last.usb);
     let (next_refresh, next_refresh_rel) = next_refresh_copy(last, now, tz, pico_drift);
     let skip = (page - 1) * POLLS_PER_PAGE;
+    let empty_mv = extras.cell.empty_mv;
 
     DebugPage {
         version: crate::VERSION,
         has_polls: true,
-        last_pct: last.pct,
+        last_pct: battery.soc_pct,
         last_mv: last.mv,
         last_usb: last.usb,
         last_wake: last.wake.clone(),
@@ -246,16 +276,17 @@ pub fn page_from_polls_with_drift(
         } else {
             "Battery".into()
         },
-        eta_text,
-        eta_kind,
+        eta_text: battery.eta_text.clone(),
+        eta_kind: battery.eta_kind.clone(),
         pico_drift_label: pico_drift_label(pico_drift),
-        graph_svg: graph_svg(polls, eta),
+        graph_svg: graph_svg(polls, extras.cell, battery.eta_seconds),
         debug_dir_bytes: dir_bytes,
         debug_dir_label,
         poll_count,
         page,
         page_size: POLLS_PER_PAGE,
         page_count,
+        battery,
         polls: polls
             .iter()
             .rev()
@@ -265,7 +296,7 @@ pub fn page_from_polls_with_drift(
                 when: format_when(p.t, tz),
                 status: p.status,
                 status_label: status_label(p.status).into(),
-                pct: p.pct,
+                pct: battery::soc_pct(p.mv, empty_mv),
                 mv: p.mv,
                 usb: p.usb,
                 wake: p.wake.clone(),
@@ -286,105 +317,6 @@ fn page_bounds(poll_count: usize, page: usize) -> (usize, usize, usize) {
         page.clamp(1, page_count)
     };
     (poll_count, page, page_count)
-}
-
-pub fn discharge_eta(polls: &[Poll], now: DateTime<Utc>) -> BatteryEta {
-    if polls.is_empty() {
-        return BatteryEta::NoData;
-    }
-    if polls.last().unwrap().usb {
-        return BatteryEta::OnUsb;
-    }
-
-    let pts: Vec<(f64, f64)> = polls
-        .iter()
-        .filter(|p| !p.usb)
-        .map(|p| (p.t.timestamp() as f64, f64::from(p.pct)))
-        .collect();
-    if pts.len() < 3 {
-        return BatteryEta::NeedMore;
-    }
-
-    let first_pct = pts.first().unwrap().1;
-    let last_pct = pts.last().unwrap().1;
-    let span = pts.last().unwrap().0 - pts.first().unwrap().0;
-    let drop = first_pct - last_pct;
-    if span < 30.0 * 60.0 && drop < 5.0 {
-        return BatteryEta::NeedMore;
-    }
-
-    let n = pts.len() as f64;
-    let mut sum_x = 0.0;
-    let mut sum_y = 0.0;
-    let mut sum_xx = 0.0;
-    let mut sum_xy = 0.0;
-    for (x, y) in &pts {
-        sum_x += x;
-        sum_y += y;
-        sum_xx += x * x;
-        sum_xy += x * y;
-    }
-    let denom = n * sum_xx - sum_x * sum_x;
-    if denom.abs() < 1e-9 {
-        return BatteryEta::NeedMore;
-    }
-    let slope = (n * sum_xy - sum_x * sum_y) / denom;
-    if slope >= -1e-12 {
-        return BatteryEta::Stable;
-    }
-    let intercept = (sum_y - slope * sum_x) / n;
-    let t_zero = -intercept / slope;
-    let remaining = t_zero - now.timestamp() as f64;
-    if remaining <= 0.0 {
-        return BatteryEta::Remaining(Duration::zero());
-    }
-    BatteryEta::Remaining(Duration::seconds(remaining as i64))
-}
-
-fn eta_copy(eta: BatteryEta, last_usb: bool) -> (String, String) {
-    if last_usb {
-        return ("usb".into(), "On USB — discharge estimate paused.".into());
-    }
-    match eta {
-        BatteryEta::NoData => ("empty".into(), "No Pico polls yet.".into()),
-        BatteryEta::OnUsb => ("usb".into(), "On USB — discharge estimate paused.".into()),
-        BatteryEta::NeedMore => (
-            "wait".into(),
-            "Not enough discharge samples for an estimate.".into(),
-        ),
-        BatteryEta::Stable => (
-            "stable".into(),
-            "Battery is not draining in recent samples.".into(),
-        ),
-        BatteryEta::Remaining(d) if d.num_seconds() <= 0 => {
-            ("dead".into(), "Battery looks empty.".into())
-        }
-        BatteryEta::Remaining(d) => (
-            "ok".into(),
-            format!("About {} at current drain.", fmt_dur(d)),
-        ),
-    }
-}
-
-fn fmt_dur(d: Duration) -> String {
-    let secs = d.num_seconds().max(0);
-    let days = secs / 86_400;
-    let hours = (secs % 86_400) / 3_600;
-    let mins = (secs % 3_600) / 60;
-    if days > 0 {
-        format!(
-            "{days} day{} {hours} hour{}",
-            if days == 1 { "" } else { "s" },
-            if hours == 1 { "" } else { "s" }
-        )
-    } else if hours > 0 {
-        format!(
-            "{hours} hour{} {mins} min",
-            if hours == 1 { "" } else { "s" }
-        )
-    } else {
-        format!("{mins} min")
-    }
 }
 
 fn status_label(status: u16) -> &'static str {
@@ -475,7 +407,7 @@ fn format_rel(then: DateTime<Utc>, now: DateTime<Utc>) -> String {
     }
 }
 
-fn graph_svg(polls: &[Poll], eta: BatteryEta) -> String {
+fn graph_svg(polls: &[Poll], cell: Cell, eta_seconds: i64) -> String {
     if polls.is_empty() {
         return String::new();
     }
@@ -495,6 +427,7 @@ fn graph_svg(polls: &[Poll], eta: BatteryEta) -> String {
 
     let x_of = |t: f64| PAD_L + (t - t0) / dt * inner_w;
     let y_of = |pct: f64| PAD_T + (1.0 - (pct.clamp(0.0, 100.0) / 100.0)) * inner_h;
+    let pct_of = |p: &Poll| f64::from(battery::soc_pct(p.mv, cell.empty_mv));
 
     let mut points = String::new();
     for p in polls {
@@ -502,7 +435,7 @@ fn graph_svg(polls: &[Poll], eta: BatteryEta) -> String {
             points,
             "{:.1},{:.1} ",
             x_of(p.t.timestamp() as f64),
-            y_of(f64::from(p.pct))
+            y_of(pct_of(p))
         );
     }
 
@@ -514,7 +447,7 @@ fn graph_svg(polls: &[Poll], eta: BatteryEta) -> String {
     let dash = "#b45309";
     for p in polls {
         let cx = x_of(p.t.timestamp() as f64);
-        let cy = y_of(f64::from(p.pct));
+        let cy = y_of(pct_of(p));
         if p.usb {
             let _ = write!(
                 dots,
@@ -529,19 +462,17 @@ fn graph_svg(polls: &[Poll], eta: BatteryEta) -> String {
     }
 
     let mut proj = String::new();
-    if let BatteryEta::Remaining(d) = eta {
-        if d.num_seconds() > 0 {
-            let last = polls.last().unwrap();
-            let x1 = x_of(last.t.timestamp() as f64);
-            let y1 = y_of(f64::from(last.pct));
-            let x2 = W - PAD_R;
-            let y2 = y_of(0.0);
-            if x2 > x1 + 4.0 {
-                let _ = write!(
-                    proj,
-                    r##"<line x1="{x1:.1}" y1="{y1:.1}" x2="{x2:.1}" y2="{y2:.1}" stroke="{dash}" stroke-dasharray="4 3" stroke-width="1.5"/>"##
-                );
-            }
+    if eta_seconds > 0 {
+        let last = polls.last().unwrap();
+        let x1 = x_of(last.t.timestamp() as f64);
+        let y1 = y_of(pct_of(last));
+        let x2 = W - PAD_R;
+        let y2 = y_of(0.0);
+        if x2 > x1 + 4.0 {
+            let _ = write!(
+                proj,
+                r##"<line x1="{x1:.1}" y1="{y1:.1}" x2="{x2:.1}" y2="{y2:.1}" stroke="{dash}" stroke-dasharray="4 3" stroke-width="1.5"/>"##
+            );
         }
     }
 
@@ -743,47 +674,6 @@ mod tests {
     }
 
     #[test]
-    fn eta_from_falling_series() {
-        let now = Utc.with_ymd_and_hms(2026, 9, 15, 18, 0, 0).unwrap();
-        let polls = vec![
-            poll_at(0, 90, false, 200, "aa"),
-            poll_at(60, 80, false, 204, "aa"),
-            poll_at(120, 70, false, 204, "aa"),
-            poll_at(180, 60, false, 204, "aa"),
-        ];
-        match discharge_eta(&polls, now) {
-            BatteryEta::Remaining(d) => {
-                assert!(d.num_hours() >= 2, "got {} hours", d.num_hours());
-                assert!(d.num_hours() <= 8, "got {} hours", d.num_hours());
-            }
-            other => panic!("expected remaining, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn eta_ignores_usb_samples_and_pauses_when_plugged() {
-        let now = Utc.with_ymd_and_hms(2026, 9, 15, 18, 0, 0).unwrap();
-        let mut polls = vec![
-            poll_at(0, 90, false, 200, "aa"),
-            poll_at(60, 80, false, 204, "aa"),
-            poll_at(120, 70, false, 204, "aa"),
-        ];
-        polls.push(poll_at(180, 100, true, 204, "aa"));
-        assert_eq!(discharge_eta(&polls, now), BatteryEta::OnUsb);
-    }
-
-    #[test]
-    fn eta_need_more_when_flat_and_short() {
-        let now = Utc.with_ymd_and_hms(2026, 9, 15, 12, 10, 0).unwrap();
-        let polls = vec![
-            poll_at(0, 80, false, 200, "aa"),
-            poll_at(5, 80, false, 204, "aa"),
-            poll_at(10, 80, false, 204, "aa"),
-        ];
-        assert_eq!(discharge_eta(&polls, now), BatteryEta::NeedMore);
-    }
-
-    #[test]
     fn page_lists_newest_first_with_image() {
         let polls = vec![
             poll_at(0, 80, false, 200, "deadbeef"),
@@ -791,7 +681,9 @@ mod tests {
         ];
         let page = page_from_polls(&polls, chrono_tz::Europe::London, |c| c == "deadbeef");
         assert!(page.has_polls);
-        assert_eq!(page.last_pct, 78);
+        assert_eq!(page.last_pct, battery::soc_pct(polls[1].mv, 3300));
+        assert_eq!(page.battery.linear_pct, 78);
+        assert!(page.battery.soc_pct > page.battery.linear_pct);
         assert_eq!(page.poll_count, 2);
         assert_eq!(page.page, 1);
         assert_eq!(page.page_size, POLLS_PER_PAGE);
@@ -892,14 +784,14 @@ mod tests {
         assert_eq!(page.page, 1);
         assert_eq!(page.page_count, 2);
         assert_eq!(page.polls.len(), POLLS_PER_PAGE);
-        assert_eq!(page.polls[0].pct, 20);
-        assert_eq!(page.polls[19].pct, 1);
+        assert_eq!(page.polls[0].mv, 3300 + 20 * 9);
+        assert_eq!(page.polls[19].mv, 3300 + 1 * 9);
 
         let page2 =
             page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 2, 0, |_| false);
         assert_eq!(page2.page, 2);
         assert_eq!(page2.polls.len(), 1);
-        assert_eq!(page2.polls[0].pct, 0);
+        assert_eq!(page2.polls[0].mv, 3300);
 
         let clamped =
             page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 99, 0, |_| false);

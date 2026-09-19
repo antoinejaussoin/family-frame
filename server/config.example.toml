@@ -33,6 +33,9 @@ poll_interval_secs = 3600
 # Fractional Pico timer error vs wall clock, written automatically from
 # consecutive timer polls (not buttons). Positive = woke late. Capped at ±5%.
 # pico_drift = 0.0
+# 1S LiPo nameplate and the VSYS millivolts treated as 0% usable.
+# battery_mah = 10000
+# battery_empty_mv = 3300
 
 # Optional Chromium / Chrome binary. Leave empty to auto-detect
 # google-chrome / chromium on PATH, or the usual macOS .app paths.

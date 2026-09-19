@@ -16,8 +16,9 @@ use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use crate::assets;
+use crate::battery;
 use crate::config::SettingsPatch;
-use crate::debug::{page_from_polls_with_drift, DebugLog, Poll};
+use crate::debug::{page_from_polls_full, DebugExtras, DebugLog, Poll};
 use crate::frame::{checksum_matches, FrameCache};
 use crate::meross;
 use crate::sources;
@@ -192,12 +193,16 @@ async fn get_debug(
 ) -> impl IntoResponse {
     let polls = state.debug.snapshot().await;
     let cfg = state.cache.snapshot_config().await;
-    Json(page_from_polls_with_drift(
+    Json(page_from_polls_full(
         &polls,
         cfg.tz(),
         cfg.pico_drift,
         q.page.unwrap_or(1),
         state.debug.dir_bytes(),
+        &DebugExtras {
+            cell: cfg.battery_cell(),
+            wakes_per_day: cfg.wakes_per_weekday(),
+        },
         |c| state.debug.has_frame(c),
     ))
 }
@@ -479,7 +484,11 @@ async fn frame_bin_post(
         meross::invalidate_rooms();
         tracing::info!("Pico button wake — reloading dashboard sources");
     }
-    state.cache.note_pico_battery(tel.pct).await;
+    let cfg = state.cache.snapshot_config().await;
+    state
+        .cache
+        .note_pico_battery(battery::soc_pct(tel.mv, cfg.battery_cell().empty_mv))
+        .await;
     let frame_result = if fresh {
         state.cache.current_for_pico_fresh().await
     } else {

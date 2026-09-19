@@ -621,6 +621,13 @@ select {
   fill: var(--color-muted);
 }
 
+.wake-sim {
+  display: block;
+  width: 100%;
+  margin-top: 0.65rem;
+  accent-color: var(--color-terracotta);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .polaroid,
   .choice,
