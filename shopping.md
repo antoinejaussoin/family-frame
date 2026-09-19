@@ -9,15 +9,15 @@ Electronics cost is roughly **£180–220** before the frame.
 Do **not** buy the non-XL [Pico LiPo 2](https://shop.pimoroni.com/products/pimoroni-pico-lipo-2)
 (no Wi-Fi).
 
-| Done | Qty | Item | Cost | Exact product and shop | Purpose |
-|:---:|---:|---|---|---|---|
-| | 1 | Colour e-ink panel | £ 230 | [Pimoroni Inky Impression 13.3″ (2025 Edition, PIM774), The Pi Hut](https://thepihut.com/products/inky-impression-13-3-2025-edition) - [Alternative Supplier](https://shop.pimoroni.com/products/inky-impression?variant=55186435277179) | 1600×1200 Spectra 6 glass. Image stays with the power off. |
-| | 1 | Pimoroni Pico LiPo 2 XL W (PIM776) (Wi-Fi + PSRAM + LiPo charger) | £ 21 |[Pimoroni Pico LiPo 2 XL W (PIM776), The Pi Hut](https://thepihut.com/products/pimoroni-pico-lipo-2-xl-w) | RP2350B, 8 MB PSRAM, 2.4 GHz Wi-Fi, JST-PH. Charges from USB-C. Headers are **not** in the box. [Pimoroni](https://shop.pimoroni.com/products/pimoroni-pico-lipo-2-xl-w?variant=55447911006587) if Pi Hut is sold out. |
-| | 1 | Male headers | £1 | [Male Header Set for Raspberry Pi Pico, The Pi Hut](https://thepihut.com/products/male-headers-for-raspberry-pi-pico) | Two 1×20 male strips (2.54 mm). Solder them on the **USB-end** holes only. |
-| | 1 | Pico-to-Pi adapter | £ 10 | [Hard Stuff Pico to Pi HAT **H** (soldered female headers), The Pi Hut](https://thepihut.com/products/pico-to-pi-hat) | Must be the **H** version, not **X**. Seat the XL W toward the USB end. |
-| | 1 | Flat LiPo | £ 15 | [Any 3.7 V 10,000 mAh pouch, Amazon](https://www.amazon.co.uk/dp/B0F63419NS?ref=ppx_yo2ov_dt_b_fed_asin_title&th=1) | Plugs into the XL W JST-PH. **‼️ Check polarity before you plug it in. This one MUST be swapped ‼️** |
-| | 1 | USB-C data cable | | Any USB-C data cable | Flash **and** charge. Charge-only cables will not flash. |
-| | 1 | Frame | £5 | [IKEA RÖDALM 21 × 30](https://www.ikea.com/gb/en/p/roedalm-frame-black-00548882/) | The one I use. See **Frame** below. |
+Qty | Item | Cost | Exact product and shop | Purpose |
+|---:|---|---|:---:|---|
+| 1 | Colour e-ink panel | £ 230 | [Pimoroni Inky Impression 13.3″ (2025 Edition, PIM774), The Pi Hut](https://thepihut.com/products/inky-impression-13-3-2025-edition) - [Alternative Supplier](https://shop.pimoroni.com/products/inky-impression?variant=55186435277179) | 1600×1200 Spectra 6 glass. Image stays with the power off. |
+| 1 | Pimoroni Pico LiPo 2 XL W (PIM776) (Wi-Fi + PSRAM + LiPo charger) | £ 21 |[Pimoroni Pico LiPo 2 XL W (PIM776), The Pi Hut](https://thepihut.com/products/pimoroni-pico-lipo-2-xl-w) | RP2350B, 8 MB PSRAM, 2.4 GHz Wi-Fi, JST-PH. Charges from USB-C. Headers are **not** in the box. [Pimoroni](https://shop.pimoroni.com/products/pimoroni-pico-lipo-2-xl-w?variant=55447911006587) if Pi Hut is sold out. |
+| 1 | Male headers | £1 | [Male Header Set for Raspberry Pi Pico, The Pi Hut](https://thepihut.com/products/male-headers-for-raspberry-pi-pico) | Two 1×20 male strips (2.54 mm). Solder them on the **USB-end** holes only. |
+| 1 | Pico-to-Pi adapter | £ 10 | [Hard Stuff Pico to Pi HAT **H** (soldered female headers), The Pi Hut](https://thepihut.com/products/pico-to-pi-hat) | Must be the **H** version, not **X**. Seat the XL W toward the USB end. |
+| 1 | Flat LiPo | £ 15 | [Any 3.7 V 10,000 mAh pouch, Amazon](https://www.amazon.co.uk/dp/B0F63419NS?ref=ppx_yo2ov_dt_b_fed_asin_title&th=1) | Plugs into the XL W JST-PH. **‼️ Check polarity before you plug it in. This one MUST be swapped ‼️** |
+| 1 | USB-C data cable | | Any USB-C data cable | Flash **and** charge. Charge-only cables will not flash. |
+| 1 | Frame | £5 | [IKEA RÖDALM 21 × 30](https://www.ikea.com/gb/en/p/roedalm-frame-black-00548882/) | The one I use. See **Frame** below. |
 
 Stack drawings: [`wiring.svg`](wiring.svg), [`connections.svg`](connections.svg).
 
