@@ -15,10 +15,10 @@ use crate::screenshot;
 use crate::sources;
 use crate::template::Templates;
 
-/// Reuse a previously rendered dashboard for this long when switching back
-/// (Chrome raster is slow). Older than this, render a fresh one. A bitmap
-/// is never reused after the poll window it painted in the header.
-pub const DASHBOARD_CACHE_MAX_AGE: chrono::TimeDelta = chrono::TimeDelta::minutes(10);
+/// Reuse a previously rendered dashboard for this long (Chrome raster is
+/// slow). Older than this, render a fresh one. A bitmap is never reused
+/// after the poll window it painted in the header.
+pub const DASHBOARD_CACHE_MAX_AGE: chrono::TimeDelta = chrono::TimeDelta::seconds(10);
 
 #[derive(Clone)]
 pub struct Frame {
@@ -75,8 +75,16 @@ pub fn dashboard_cache_fresh(
     generated_at: chrono::DateTime<Utc>,
     now: chrono::DateTime<Utc>,
 ) -> bool {
+    dashboard_cache_fresh_for(generated_at, now, DASHBOARD_CACHE_MAX_AGE)
+}
+
+pub fn dashboard_cache_fresh_for(
+    generated_at: chrono::DateTime<Utc>,
+    now: chrono::DateTime<Utc>,
+    max_age: chrono::TimeDelta,
+) -> bool {
     let age = now.signed_duration_since(generated_at);
-    age >= chrono::TimeDelta::zero() && age <= DASHBOARD_CACHE_MAX_AGE
+    age >= chrono::TimeDelta::zero() && age <= max_age
 }
 
 /// Whether this bitmap's header times are still the current poll window.
@@ -153,24 +161,32 @@ impl FrameCache {
     }
 
     /// Current frame for GET (no playlist advance). May reuse a dashboard
-    /// rasterised for a recent Pico poll.
+    /// rasterised within [`DASHBOARD_CACHE_MAX_AGE`].
     pub async fn current(&self) -> Result<Frame> {
-        self.current_inner(false, false).await
+        self.current_inner(false, false, DASHBOARD_CACHE_MAX_AGE)
+            .await
     }
 
     /// Pico POST: always reload live sources and re-raster. The web UI GET
     /// path is the one that reuses a cached dashboard.
     pub async fn current_for_pico(&self) -> Result<Frame> {
-        self.current_inner(true, true).await
+        self.current_inner(true, true, DASHBOARD_CACHE_MAX_AGE)
+            .await
     }
 
     /// Button wake: same live rebuild; HTTP also drops the Meross room TTL.
     pub async fn current_for_pico_fresh(&self) -> Result<Frame> {
         *self.inner.lock().await = None;
-        self.current_inner(true, true).await
+        self.current_inner(true, true, DASHBOARD_CACHE_MAX_AGE)
+            .await
     }
 
-    async fn current_inner(&self, advance_after: bool, bypass_cache: bool) -> Result<Frame> {
+    async fn current_inner(
+        &self,
+        advance_after: bool,
+        bypass_cache: bool,
+        max_age: chrono::TimeDelta,
+    ) -> Result<Frame> {
         let cfg = self.cfg.read().await.clone();
         let mode = cfg.effective_mode();
         let mode_key = match mode {
@@ -190,7 +206,7 @@ impl FrameCache {
         match mode {
             FrameMode::Dashboard => {
                 let frame = self
-                    .current_dashboard(&cfg, &mode_key, bypass_cache)
+                    .current_dashboard(&cfg, &mode_key, bypass_cache, max_age)
                     .await?;
                 Ok(frame)
             }
@@ -211,6 +227,7 @@ impl FrameCache {
         cfg: &Config,
         mode_key: &str,
         bypass_cache: bool,
+        max_age: chrono::TimeDelta,
     ) -> Result<Frame> {
         let now = Utc::now();
         if !bypass_cache {
@@ -218,13 +235,14 @@ impl FrameCache {
                 let guard = self.inner.lock().await;
                 if let Some(cached) = guard.as_ref() {
                     if cached.mode_key.starts_with("dashboard:")
-                        && dashboard_cache_fresh(cached.frame.generated_at, now)
+                        && dashboard_cache_fresh_for(cached.frame.generated_at, now, max_age)
                         && dashboard_refresh_current(cached.frame.refresh_until, now)
                     {
                         info!(
                             age_secs = now
                                 .signed_duration_since(cached.frame.generated_at)
                                 .num_seconds(),
+                            max_age_secs = max_age.num_seconds(),
                             checksum = %cached.frame.checksum,
                             "reusing in-memory dashboard frame"
                         );
@@ -233,13 +251,14 @@ impl FrameCache {
                 }
             }
             if let Some(frame) = self.load_dashboard_disk(cfg) {
-                if dashboard_cache_fresh(frame.generated_at, now)
+                if dashboard_cache_fresh_for(frame.generated_at, now, max_age)
                     && dashboard_refresh_current(frame.refresh_until, now)
                 {
                     info!(
                         age_secs = now
                             .signed_duration_since(frame.generated_at)
                             .num_seconds(),
+                        max_age_secs = max_age.num_seconds(),
                         checksum = %frame.checksum,
                         "reusing last dashboard frame"
                     );
@@ -265,6 +284,7 @@ impl FrameCache {
         if !bypass_cache {
             if let Some(frame) = self.load_dashboard_disk(cfg) {
                 if frame.content_hash == content_hash
+                    && dashboard_cache_fresh_for(frame.generated_at, Utc::now(), max_age)
                     && dashboard_refresh_current(frame.refresh_until, Utc::now())
                 {
                     info!(
@@ -281,7 +301,7 @@ impl FrameCache {
                 if frame.content_hash == content_hash {
                     info!(
                         checksum = %frame.checksum,
-                        "dashboard layout unchanged; refresh window elapsed"
+                        "dashboard layout unchanged; refresh window or cache TTL elapsed"
                     );
                 }
             }
@@ -573,19 +593,19 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_cache_ttl_is_ten_minutes() {
+    fn dashboard_cache_ttl_is_ten_seconds() {
         let now = Utc::now();
         assert!(dashboard_cache_fresh(now, now));
         assert!(dashboard_cache_fresh(
-            now - chrono::TimeDelta::minutes(9),
+            now - chrono::TimeDelta::seconds(9),
             now
         ));
         assert!(!dashboard_cache_fresh(
-            now - chrono::TimeDelta::minutes(11),
+            now - chrono::TimeDelta::seconds(11),
             now
         ));
         assert!(!dashboard_cache_fresh(
-            now + chrono::TimeDelta::minutes(1),
+            now + chrono::TimeDelta::seconds(1),
             now
         ));
     }
@@ -606,9 +626,9 @@ mod tests {
     }
 
     #[test]
-    fn ten_minute_ttl_does_not_reuse_past_the_refresh_window() {
+    fn cache_ttl_does_not_reuse_past_the_refresh_window() {
         let now = Utc::now();
-        let generated = now - chrono::TimeDelta::minutes(5);
+        let generated = now - chrono::TimeDelta::seconds(5);
         assert!(dashboard_cache_fresh(generated, now));
         assert!(!dashboard_refresh_current(
             Some(now - chrono::TimeDelta::seconds(1)),

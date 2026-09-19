@@ -5,10 +5,13 @@
    bitmap and omitted from the layout hash; battery percent is hashed so a
    drop can wake the panel.
 
-   Typeface is Atkinson Hyperlegible (Braille Institute, SIL OFL 1.1)
-   bundled in static/fonts/. Headless Chrome on macOS ships Verdana;
-   Debian does not, so a system stack would rasterize two different
-   panels. font-display:block so the screenshot does not catch a fallback. */
+   Two faces, both SIL OFL 1.1, bundled in static/fonts/:
+   - TRMNL12 / 16 / 21 (Heavyweight): pixel-grid cuts for dense small UI.
+     Use only at native height (12 / 16 / 21). Binding family + size in the
+     same rule keeps strokes on panel pixels.
+   - Atkinson Hyperlegible (Braille Institute): mast, saint, Today rows.
+     Outline face reads better large; pack.rs still snaps grey fringes.
+   font-display:block so the screenshot does not catch a fallback. */
 
 @font-face {
   font-family: "Atkinson Hyperlegible";
@@ -28,6 +31,60 @@
     url("/static/fonts/AtkinsonHyperlegible-Bold.ttf") format("truetype");
 }
 
+@font-face {
+  font-family: "TRMNL12";
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: block;
+  src: url("/static/fonts/TRMNL12-Regular.woff2") format("woff2"),
+    url("/static/fonts/TRMNL12-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "TRMNL12";
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: block;
+  src: url("/static/fonts/TRMNL12-Bold.woff2") format("woff2"),
+    url("/static/fonts/TRMNL12-Bold.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "TRMNL16";
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: block;
+  src: url("/static/fonts/TRMNL16-Regular.woff2") format("woff2"),
+    url("/static/fonts/TRMNL16-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "TRMNL16";
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: block;
+  src: url("/static/fonts/TRMNL16-Bold.woff2") format("woff2"),
+    url("/static/fonts/TRMNL16-Bold.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "TRMNL21";
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: block;
+  src: url("/static/fonts/TRMNL21-Regular.woff2") format("woff2"),
+    url("/static/fonts/TRMNL21-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "TRMNL21";
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: block;
+  src: url("/static/fonts/TRMNL21-Bold.woff2") format("woff2"),
+    url("/static/fonts/TRMNL21-Bold.ttf") format("truetype");
+}
+
 :root {
   --black: #000000;
   --white: #ffffff;
@@ -38,6 +95,20 @@
   /* Yellow-on-white type (Circle). Not a Spectra primary — Chrome paints
      gold, then Floyd–Steinberg mixes yellow+red so the word reads darker. */
   --yellow-ink: #ff9900;
+  /* Small UI: TRMNL at native px only. */
+  --type-xs-family: "TRMNL12", sans-serif;
+  --type-xs-size: 12px;
+  --type-sm-family: "TRMNL16", sans-serif;
+  --type-sm-size: 16px;
+  --type-md-family: "TRMNL21", sans-serif;
+  --type-md-size: 21px;
+  /* Large display: Atkinson (stem-friendlier sizes: 33 body, 40 date, 64 mast). */
+  --type-body-family: "Atkinson Hyperlegible", sans-serif;
+  --type-body-size: 33px;
+  --type-date-family: "Atkinson Hyperlegible", sans-serif;
+  --type-date-size: 40px;
+  --type-display-family: "Atkinson Hyperlegible", sans-serif;
+  --type-display-size: 64px;
 }
 
 html,
@@ -49,13 +120,15 @@ body {
   overflow: hidden;
   background: var(--white);
   color: var(--black);
-  font-family: "Atkinson Hyperlegible", sans-serif;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  line-height: 16px;
   font-kerning: none;
   font-synthesis: none;
   font-smooth: never;
   -webkit-font-smoothing: none;
   letter-spacing: 0;
-  word-spacing: 0.08em;
+  word-spacing: 0;
 }
 
 .panel {
@@ -131,8 +204,9 @@ body {
 h1 {
   margin: 0;
   flex: 0 0 auto;
-  font-size: 72px;
-  line-height: 0.95;
+  font-family: var(--type-display-family);
+  font-size: var(--type-display-size);
+  line-height: 64px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -144,10 +218,11 @@ h1 {
 .saint {
   margin: 0 0 0 auto;
   min-width: 0;
-  font-size: 40px;
+  font-family: var(--type-date-family);
+  font-size: var(--type-date-size);
   font-weight: 700;
-  line-height: 1.2;
-  padding-bottom: 0.15em;
+  line-height: 40px;
+  padding-bottom: 0;
   text-align: right;
   white-space: nowrap;
   overflow: hidden;
@@ -173,13 +248,14 @@ h1 {
   align-items: center;
   gap: 5px;
   margin: 0;
-  font-size: 15px;
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
   text-transform: none;
   white-space: nowrap;
-  line-height: 1;
+  line-height: 12px;
 }
 
 .refresh-arrow {
@@ -201,8 +277,10 @@ h2 {
   align-items: center;
   gap: 12px;
   margin: 0;
-  font-size: 26px;
-  letter-spacing: 0.06em;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
+  letter-spacing: 0;
   text-transform: uppercase;
   border-bottom: 4px solid var(--black);
   padding-bottom: 8px;
@@ -275,10 +353,11 @@ h2 {
 }
 
 .slot .degrees {
-  font-size: 24px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
   font-weight: 700;
   color: var(--red);
-  line-height: 1;
+  line-height: 21px;
   min-width: 2.4ch;
 }
 
@@ -292,9 +371,10 @@ h2 {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 20px;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
   font-weight: 700;
-  line-height: 1;
+  line-height: 16px;
 }
 
 .sun-icon {
@@ -308,9 +388,10 @@ h2 {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 18px;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
   font-weight: 700;
-  line-height: 1;
+  line-height: 16px;
   padding: 4px 8px;
   white-space: nowrap;
 }
@@ -345,20 +426,26 @@ li {
   gap: 16px;
   padding: 11px 0;
   border-bottom: 2px dotted var(--black);
-  font-size: 30px;
-  line-height: 1.2;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  line-height: 16px;
 }
 
 .today li {
   box-sizing: border-box;
   height: 60px;
+  font-family: var(--type-body-family);
+  font-size: var(--type-body-size);
+  line-height: 33px;
 }
 
 .coming li {
   box-sizing: border-box;
   height: 44px;
   padding: 4px 0;
-  font-size: 20px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   gap: 10px;
 }
 
@@ -367,8 +454,9 @@ li {
   height: auto;
   min-height: 44px;
   padding: 6px 0;
-  font-size: 20px;
-  line-height: 1.3;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  line-height: 20px;
   gap: 12px;
   align-items: flex-start;
 }
@@ -388,24 +476,32 @@ li {
 }
 
 .when {
-  flex: 0 0 150px;
+  flex: 0 0 160px;
   font-weight: 700;
-  font-size: 24px;
+}
+
+.today .when {
+  font-family: var(--type-body-family);
+  font-size: 26px;
+  line-height: 33px;
 }
 
 .what { flex: 1 1 auto; min-width: 0; }
 
 .coming .when {
-  flex-basis: 176px;
-  font-size: 20px;
+  flex-basis: 186px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   overflow: hidden;
   white-space: nowrap;
 }
 
 .history .when {
   flex: 0 0 92px;
-  font-size: 20px;
-  line-height: 1.3;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  line-height: 20px;
   color: var(--red);
   font-variant-numeric: tabular-nums;
 }
@@ -413,7 +509,7 @@ li {
 .history .what {
   overflow: visible;
   white-space: normal;
-  line-height: 1.3;
+  line-height: 20px;
 }
 
 .coming .present-icon {
@@ -451,7 +547,9 @@ li {
   align-items: center;
   height: 44px;
   padding: 4px 0;
-  font-size: 20px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   column-gap: 8px;
 }
 .rooms .what {
@@ -466,16 +564,18 @@ li {
   min-width: 0;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  line-height: 1;
+  font-weight: 400;
+  line-height: 21px;
 }
 .rooms .temp {
   color: var(--red);
-  font-size: 20px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
 }
 .rooms .humidity {
   color: var(--blue);
-  font-size: 18px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
 }
 
 .rooms li.offline .what {
@@ -491,17 +591,22 @@ li {
   display: grid;
   grid-template-columns: 1fr 1fr;
   height: 44px;
-  padding: 6px 0;
-  align-items: center;
-  font-size: 20px;
+  padding: 0;
+  align-items: stretch;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   gap: 0;
 }
 
 .line-name {
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   text-align: left;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 0;
 }
 
 .line-name.colour-black { color: var(--black); }
@@ -510,26 +615,33 @@ li {
 .line-name.colour-blue { color: var(--blue); }
 
 .line-status {
-  justify-self: center;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: stretch;
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
   text-align: center;
-  font-weight: 700;
-  font-size: 18px;
+  font-weight: 400;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  max-width: 100%;
+  padding: 0 8px;
 }
 
 .severity-good .line-status { color: var(--black); }
 .severity-delay .line-status {
   background: var(--yellow);
   color: var(--black);
-  padding: 2px 8px;
 }
 .severity-severe .line-status {
   background: var(--red);
   color: var(--white);
-  padding: 2px 8px;
 }
 
 .homework h2,
@@ -545,7 +657,9 @@ li {
 .tube h2,
 .rooms h2,
 .coming h2 {
-  font-size: 22px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   gap: 8px;
 }
 
@@ -571,7 +685,9 @@ li {
   text-transform: none;
   letter-spacing: 0;
   font-weight: 700;
-  font-size: 20px;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  line-height: 16px;
 }
 
 .school-avg { color: var(--red); }
@@ -583,7 +699,9 @@ li {
   height: 44px;
   padding: 4px 0;
   align-items: center;
-  font-size: 20px;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  line-height: 16px;
   gap: 8px;
 }
 
@@ -598,8 +716,10 @@ li {
 .homework .when,
 .grades .when {
   flex: none;
-  font-size: 18px;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
   font-weight: 700;
+  line-height: 16px;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -647,9 +767,10 @@ li {
   padding: 5px 12px;
   border: 2px solid var(--black);
   border-radius: 999px;
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1.15;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  font-weight: 700;
+  line-height: 21px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -661,7 +782,8 @@ li {
 .todos-more {
   margin: 8px 0 0;
   height: 28px;
-  font-size: 20px;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
   font-weight: 700;
   line-height: 28px;
 }
@@ -669,9 +791,10 @@ li {
 .joke .setup,
 .joke .punchline {
   margin: 0;
-  font-size: 22px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
   font-weight: 400;
-  line-height: 1.3;
+  line-height: 26px;
 }
 
 .joke .setup {
@@ -684,19 +807,35 @@ li {
 }
 
 .empty {
-  font-size: 28px;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  line-height: 16px;
   margin: 20px 0 0;
+}
+
+.today .empty {
+  font-family: var(--type-body-family);
+  font-size: var(--type-body-size);
+  line-height: 33px;
 }
 
 .homework .empty,
 .grades .empty,
 .todos .empty,
 .joke .empty,
-.history .empty,
+.history .empty {
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  line-height: 16px;
+  margin: 12px 0 0;
+}
+
 .tube .empty,
 .rooms .empty,
 .coming .empty {
-  font-size: 22px;
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  line-height: 21px;
   margin: 12px 0 0;
 }
 

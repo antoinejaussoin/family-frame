@@ -302,7 +302,7 @@ mod tests {
         ));
         assert!(should_trigger_reload(
             root(),
-            Path::new("/proj/static/fonts/AtkinsonHyperlegible-Regular.woff2")
+            Path::new("/proj/static/fonts/TRMNL16-Regular.woff2")
         ));
         assert!(should_trigger_reload(
             root(),
