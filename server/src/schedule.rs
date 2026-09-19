@@ -102,11 +102,6 @@ impl WeeklyWakes {
 /// Bigger gaps usually mean a button wake, USB wait, or a missed poll.
 pub const MAX_PICO_DRIFT: f64 = 0.05;
 
-/// How close a stored/echoed timestamp may be to a `wake-up` before we treat
-/// it as that clock slot. `now + floored seconds` lands about 1s early
-/// (`17:59:59` for an 18:00 slot); a wider window also covers drift undo.
-pub const ASSIGNED_SLOT_SNAP_SECS: i64 = 90;
-
 /// Seconds until the Pico should poll again.
 ///
 /// An empty week uses `interval_secs`. Otherwise the next clock time strictly
@@ -155,6 +150,9 @@ pub fn seconds_until_next_poll_for_timer(
 }
 
 /// Next slot after a timer poll that is serving `assigned_wake`.
+///
+/// `assigned_wake` is the Pico's echoed `X-Wake-At` — the exact instant from
+/// the previous response, or nothing. No snapping or reconstruction.
 pub fn next_poll_at_for_timer(
     now: DateTime<Utc>,
     tz: Tz,
@@ -163,59 +161,12 @@ pub fn next_poll_at_for_timer(
     assigned_wake: Option<DateTime<Utc>>,
 ) -> DateTime<Utc> {
     if let Some(assigned) = assigned_wake {
-        let slot = resolve_assigned_slot(assigned, tz, wake_ups);
-        let next = next_poll_at(slot, tz, interval_secs, wake_ups);
+        let next = next_poll_at(assigned, tz, interval_secs, wake_ups);
         if now < next {
             return next;
         }
     }
     next_poll_at(now, tz, interval_secs, wake_ups)
-}
-
-/// Map a stored or Pico-echoed timestamp onto the `wake-up` it was aiming for.
-///
-/// Interval schedules have no clock face, so `assigned` is left as-is.
-pub fn resolve_assigned_slot(
-    assigned: DateTime<Utc>,
-    tz: Tz,
-    wake_ups: &WeeklyWakes,
-) -> DateTime<Utc> {
-    if wake_ups.is_empty() {
-        return assigned;
-    }
-    let assigned_local = assigned.with_timezone(&tz);
-    let today = assigned_local.date_naive();
-    let snap = Duration::seconds(ASSIGNED_SLOT_SNAP_SECS);
-    let mut best: Option<(Duration, bool, DateTime<Utc>)> = None;
-    for day_offset in -1..=8 {
-        let date = today + Duration::days(day_offset);
-        for &time in wake_ups.get(date.weekday()) {
-            let Some(dt) = resolve_local(tz, date, time) else {
-                continue;
-            };
-            let utc = dt.with_timezone(&Utc);
-            let delta = utc.signed_duration_since(assigned);
-            let abs = if delta < Duration::zero() {
-                -delta
-            } else {
-                delta
-            };
-            if abs > snap {
-                continue;
-            }
-            let at_or_after = utc >= assigned;
-            let better = match best {
-                None => true,
-                Some((best_abs, best_after, _)) => {
-                    abs < best_abs || (abs == best_abs && at_or_after && !best_after)
-                }
-            };
-            if better {
-                best = Some((abs, at_or_after, utc));
-            }
-        }
-    }
-    best.map(|(_, _, dt)| dt).unwrap_or(assigned)
 }
 
 /// Seconds from `now` to `at`, at least 1.
@@ -820,27 +771,10 @@ mod tests {
     }
 
     #[test]
-    fn resolve_assigned_slot_snaps_xx59_onto_the_hour() {
-        let wakes = daily(&["18:00", "21:00"]);
-        assert_eq!(
-            resolve_assigned_slot(at_london(2026, 9, 16, 17, 59, 59), london(), &wakes),
-            at_london(2026, 9, 16, 18, 0, 0)
-        );
-        assert_eq!(
-            resolve_assigned_slot(
-                at_london(2026, 9, 16, 18, 0, 0) + Duration::milliseconds(848),
-                london(),
-                &wakes
-            ),
-            at_london(2026, 9, 16, 18, 0, 0)
-        );
-    }
-
-    #[test]
-    fn timer_early_with_fuzzy_assigned_skips_the_hour_slot() {
-        // Production: wake at 17:59:40 with stored wake_at 17:59:59 for 18:00.
+    fn timer_early_with_echoed_slot_skips_that_hour() {
+        // Pico woke at 17:59:40 and echoed X-Wake-At 18:00 exactly.
         let now = at_london(2026, 9, 16, 17, 59, 40);
-        let assigned = at_london(2026, 9, 16, 17, 59, 59);
+        let assigned = at_london(2026, 9, 16, 18, 0, 0);
         let wakes = daily(&["18:00", "21:00"]);
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, Some(assigned)),
@@ -850,7 +784,7 @@ mod tests {
             next_poll_at_for_timer(now, london(), 3600, &wakes, Some(assigned)),
             at_london(2026, 9, 16, 21, 0, 0)
         );
-        // Without a stored slot the upcoming 18:00 is still the target.
+        // No echo: this contact is not a served slot; wait for 18:00.
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, None),
             20

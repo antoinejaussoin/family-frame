@@ -1747,11 +1747,11 @@ rotate = []
             .with_ymd_and_hms(2026, 9, 16, 17, 59, 40)
             .unwrap()
             .with_timezone(&Utc);
-        let fuzzy = chrono_tz::Europe::London
-            .with_ymd_and_hms(2026, 9, 16, 17, 59, 59)
+        let slot = chrono_tz::Europe::London
+            .with_ymd_and_hms(2026, 9, 16, 18, 0, 0)
             .unwrap()
             .with_timezone(&Utc);
-        let (sleep_s, next) = cfg.pico_sleep_plan(early, Some(fuzzy));
+        let (sleep_s, next) = cfg.pico_sleep_plan(early, Some(slot));
         assert_eq!(
             next,
             chrono_tz::Europe::London

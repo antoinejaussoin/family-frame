@@ -82,15 +82,13 @@ awake) the server compares wall-clock elapsed time to the previous
 the panel still refreshes on the intended wall-clock cadence.
 
 Compensation can overshoot, so a timer poll may arrive early. Each Pico POST
-stores the **wall-clock slot** that `X-Sleep-Seconds` was aiming for (not the
-POWMAN duration) and also returns it as `X-Wake-At`. The next `wake=timer`
-request *is* that slot — preferably the token the Pico echoes, otherwise the
-previous poll’s stored `wake_at` — as long as the following slot has not
-started. Early or late arrival does not matter. If it missed the whole cycle,
-the server schedules from now. Button and cold boots still wait for the
-upcoming time and then store the new slot. A timestamp a few seconds before a
-`wake-up` (`17:59:59` for 18:00) is treated as that clock slot so the panel
-is not sent back for a nap until the hour.
+returns `X-Wake-At`, the **clock slot** that sleep is aiming for. The Pico
+stores that token and sends it back as `wake_at=` on the next POST. That
+echo is the only assigned slot: a `wake=timer` request *is* that instant, as
+long as the following slot has not started. Early or late arrival does not
+matter. If the Pico omitted `wake_at`, or it missed the whole cycle, the
+server schedules from now. Button and cold boots ignore `wake_at` and wait
+for the upcoming time, then receive a new `X-Wake-At`.
 
 ## Endpoints
 

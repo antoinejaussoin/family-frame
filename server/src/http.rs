@@ -44,7 +44,7 @@ struct PicoTelemetry {
     usb: u8,
     #[serde(default)]
     wake: String,
-    /// Last `X-Wake-At` the Pico stored; timer polls treat this as the slot.
+    /// Echo of the last `X-Wake-At`. Timer polls use this as the assigned slot.
     #[serde(default)]
     wake_at: Option<String>,
 }
@@ -622,14 +622,7 @@ async fn pico_sleep_plan_for_wake(
 ) -> (u64, DateTime<Utc>) {
     let cfg = state.cache.snapshot_config().await;
     let assigned = if crate::schedule::is_timer_wake(wake) {
-        if let Some(slot) = reported_slot.and_then(crate::schedule::parse_wake_at_slot) {
-            Some(slot)
-        } else {
-            let polls = state.debug.snapshot().await;
-            polls.last().and_then(|p| {
-                crate::schedule::assigned_wake_from_poll(p.wake_at, p.t, p.sleep_s, cfg.pico_drift)
-            })
-        }
+        reported_slot.and_then(crate::schedule::parse_wake_at_slot)
     } else {
         None
     };
