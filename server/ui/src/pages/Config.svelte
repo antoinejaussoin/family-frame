@@ -481,7 +481,7 @@
           <p>
             This is a <strong>personal</strong> token: it can read your whole Todoist account,
             not only the family project. The frame is trusted-LAN only and has no login, so
-            treat the token like a password. Do not commit <code>config.toml</code>.
+            treat the token like a password.
           </p>
           <p>
             If a token leaks, use <strong>Issue a new API token</strong> on that same Developer
