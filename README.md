@@ -6,9 +6,7 @@ frame, and sleeps. A **Rust server** on the LAN fetches household
 datasources, renders HTML/CSS, screenshots the panel with Chromium, and
 dithers it for the glass.
 
-![The finished 13.3″ frame on the kitchen wall](docs/images/hero-frame.jpg)
-
-*Antoine: replace this file — room, time of day, dashboard vs picture, anything you want a fork to notice (mat, SANNAHED, cable hiding).*
+![The finished 13.3″ frame on the kitchen wall](docs/images/hero-frame.webp)
 
 This is a work in progress. Hardware to buy is in [`shopping.md`](shopping.md).
 
