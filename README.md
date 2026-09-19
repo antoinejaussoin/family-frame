@@ -16,7 +16,6 @@ The 1600×1200 dashboard is a fixed grid, not a widget toolkit.
 
 ![Dashboard panel at 1600×1200](docs/images/dashboard.png)
 
-*Antoine: replace this file — which block is which source; weather lives in the headings.*
 
 | Block | Source | Notes |
 |---|---|---|
@@ -38,13 +37,9 @@ The same device shows the family dashboard or a rotating photo.
 
 ![Picture mode on the glass](docs/images/picture-mode.png)
 
-*Antoine: replace this file — same device, different `mode`.*
-
 Switch from the family UI (trusted LAN — no auth):
 
 ![Family UI home](docs/images/ui-home.png)
-
-*Antoine: replace this file — mode, wake times, photo library. No datasource secrets here.*
 
 - **Dashboard** vs **picture** mode
 - Poll interval or **per-weekday** wake-up times, stored **per mode**
@@ -119,11 +114,7 @@ Open <http://127.0.0.1:5173/>. If the server is not on `:8765`, set
 
 ![Layout simulator at /preview](docs/images/ui-preview.png)
 
-*Antoine: replace this file — how you iterate HTML without flashing the Pico.*
-
 ![Stats battery graph](docs/images/ui-stats.png)
-
-*Antoine: replace this file — Pico polls, 204 vs 200, drift.*
 
 Then <http://127.0.0.1:5173/> (Vite) or <http://127.0.0.1:8765/> (built
 SPA), `/preview`, `/stats`, `/dashboard`.
