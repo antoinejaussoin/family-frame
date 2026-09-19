@@ -13,6 +13,7 @@ const BACKEND_PATHS = [
   '/weather-icons',
   '/health',
   '/debug/frames',
+  '/stats/frames',
 ]
 
 function familyFrameVersion() {

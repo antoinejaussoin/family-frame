@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Form, Multipart, Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, put};
 use axum::{Json, Router};
 
@@ -78,8 +78,10 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         .route("/weather-icons/sheet", get(weather_icons_sheet))
         .route("/weather-icons/dither.png", get(weather_icons_dither))
         .route("/weather-icons/chrome.png", get(weather_icons_chrome))
-        // Old bookmarks; the SPA lives at /debug.
+        .route("/debug", get(legacy_debug_page))
+        // Old bookmarks; frames also live under /api/debug/frames/.
         .route("/debug/frames/{checksum}", get(debug_frame))
+        .route("/stats/frames/{checksum}", get(debug_frame))
         .route("/static/{*path}", get(static_asset))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -92,10 +94,14 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         app = app
             .route("/", get(spa_missing))
             .route("/preview", get(spa_missing))
-            .route("/debug", get(spa_missing));
+            .route("/stats", get(spa_missing));
     }
 
     app
+}
+
+async fn legacy_debug_page() -> Redirect {
+    Redirect::permanent("/stats")
 }
 
 async fn spa_missing() -> impl IntoResponse {
@@ -110,7 +116,7 @@ async fn spa_missing() -> impl IntoResponse {
   (Vite proxies <code>/api</code> here).</p>
   <p>Or run <code>npm ci &amp;&amp; npm run build</code> in <code>server/ui</code>
   and refresh this page.</p>
-  <p><a href="/preview">Layout simulator</a> · <a href="/debug">Debug</a></p>
+  <p><a href="/preview">Layout simulator</a> · <a href="/stats">Stats</a></p>
 </body></html>"#,
     )
 }

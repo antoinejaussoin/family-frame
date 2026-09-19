@@ -6,7 +6,7 @@
   const items = [
     { href: '/', label: 'Family' },
     { href: '/preview', label: 'Layout' },
-    { href: '/debug', label: 'Debug' },
+    { href: '/stats', label: 'Stats' },
   ]
 </script>
 

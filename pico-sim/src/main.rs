@@ -25,7 +25,7 @@ struct Cli {
     /// Pretend the board is on USB (no drain).
     #[arg(long)]
     usb: bool,
-    /// Drop percent by 1 after each poll so /debug can show a slope.
+    /// Drop percent by 1 after each poll so /stats can show a slope.
     #[arg(long)]
     drain: bool,
 }

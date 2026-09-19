@@ -3,21 +3,37 @@ function normalize(path) {
   return path.replace(/\/+$/, '') || '/'
 }
 
+function canonicalize(path) {
+  const n = normalize(path)
+  if (n === '/debug') return '/stats'
+  return n
+}
+
+function syncLocation(path) {
+  if (typeof window === 'undefined') return path
+  if (path !== window.location.pathname) {
+    history.replaceState({}, '', path)
+  }
+  return path
+}
+
 export const route = $state({
-  path: typeof window === 'undefined' ? '/' : normalize(window.location.pathname),
+  path:
+    typeof window === 'undefined' ? '/' : syncLocation(canonicalize(window.location.pathname)),
 })
 
 if (typeof window !== 'undefined') {
   window.addEventListener('popstate', () => {
-    route.path = normalize(window.location.pathname)
+    route.path = syncLocation(canonicalize(window.location.pathname))
   })
 }
 
 export function navigate(href) {
   const url = href.startsWith('/') ? href : `/${href}`
-  if (normalize(url) === route.path && url === window.location.pathname) return
-  history.pushState({}, '', url)
-  route.path = normalize(window.location.pathname)
+  const dest = canonicalize(url)
+  if (dest === route.path && dest === window.location.pathname) return
+  history.pushState({}, '', dest)
+  route.path = dest
 }
 
 /** Svelte action: in-app navigation for same-origin paths. */

@@ -38,7 +38,7 @@ Open the family app on a phone or laptop (trusted LAN — no auth). From there y
 
 Run the API and the Svelte app as two processes. Vite proxies `/api` and
 `/dashboard` to the server so you get HMR without `npm run build`. `/preview`
-and `/debug` are pages in the SPA.
+and `/stats` are pages in the SPA.
 
 ```bash
 # terminal 1 — Rust API
@@ -70,7 +70,7 @@ Then <http://127.0.0.1:8765/> is the family UI.
    Spectra 6, and the Pico POSTs `/api/frame.bin` with battery diagnostics.
 4. Each Pico POST rebuilds the dashboard from live sources. If the new
    bitmap matches the last checksum, the Pico does **not** refresh the glass.
-   Open `/debug` on a phone to see battery history and every Pico poll.
+   Open `/stats` on a phone to see battery history and every Pico poll.
 
 ## Run the server
 
@@ -98,8 +98,8 @@ cargo run -- --watch
 ```
 
 Then open <http://127.0.0.1:5173/> (Vite) or <http://127.0.0.1:8765/> (built
-SPA), the layout simulator at <http://127.0.0.1:8765/preview>, or the debug
-page at <http://127.0.0.1:8765/debug>.
+SPA), the layout simulator at <http://127.0.0.1:8765/preview>, or the stats
+page at <http://127.0.0.1:8765/stats>.
 
 ### Docker
 
@@ -116,7 +116,7 @@ docker compose up -d
 ```
 
 Then <http://<host>:8765/>, <http://<host>:8765/preview>, or
-<http://<host>:8765/debug>. Meross login, BBC weather caches, uploaded
+<http://<host>:8765/stats>. Meross login, BBC weather caches, uploaded
 photos, and Pico poll history stay in `data/` next to the config.
 
 Local one-off: `cd server && make docker-build && make docker-run`. Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from GitHub Actions on `main` (repo secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD`, same as compta). Images are tagged `latest` and with the contents of [`VERSION`](VERSION).
@@ -129,7 +129,7 @@ The version is a single line in [`VERSION`](VERSION). That is the only file to e
 2. Merge to `main`.
 3. CI builds `antoinejaussoin/family-frame-server:0.2.0` and `:latest`, and creates git tag `v0.2.0` if it does not already exist.
 
-Locally, `eink-frame --version`, `GET /health`, and the Debug page all read the same value (`make docker-build` passes it as a Docker build-arg).
+Locally, `eink-frame --version`, `GET /health`, and the Stats page all read the same value (`make docker-build` passes it as a Docker build-arg).
 
 ```bash
 # edit VERSION, then:

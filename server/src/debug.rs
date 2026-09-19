@@ -1,4 +1,4 @@
-//! Pico poll history for the family UI debug page (`GET /api/debug`).
+//! Pico poll history for the family UI stats page (`GET /stats`, `GET /api/debug`).
 //!
 //! POST `/api/frame.bin` appends one JSONL row and, on 200, a dithered PNG keyed
 //! by checksum. GET `/api/frame.bin` from a browser is not recorded.

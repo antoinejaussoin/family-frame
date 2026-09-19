@@ -235,7 +235,7 @@
           class="font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl"
           style="font-variation-settings: 'opsz' 96"
         >
-          Debug
+          Stats
         </h1>
         {#if page?.version || builtVersion}
           <p class="mt-1 text-sm font-semibold text-muted">v{page?.version || builtVersion}</p>
@@ -580,7 +580,7 @@
       {#if page}
         <dl class="mt-4 text-sm">
           <div>
-            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Debug storage</dt>
+            <dt class="text-xs font-extrabold tracking-wide text-muted uppercase">Storage</dt>
             <dd class="mt-0.5 font-semibold">{page.debug_dir_label}</dd>
           </div>
         </dl>

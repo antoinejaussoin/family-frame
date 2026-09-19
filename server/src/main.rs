@@ -83,7 +83,7 @@ async fn serve(config: Option<PathBuf>, bind: Option<String>) -> Result<()> {
         info!("family UI (HMR)   http://127.0.0.1:5173/  — cd ui && npm run dev");
     }
     info!("layout simulator  http://{addr}/preview");
-    info!("debug dashboard   http://{addr}/debug");
+    info!("stats             http://{addr}/stats");
     info!("dashboard only    http://{addr}/dashboard");
     info!("weather icons     http://{addr}/weather-icons");
     info!("Pico endpoint     POST http://{addr}/api/frame.bin");
