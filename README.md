@@ -30,7 +30,7 @@ This is being worked on, not working yet.
 Open the family app on a phone or laptop (trusted LAN — no auth). From there you can:
 
 - Switch between **dashboard** and **picture** mode
-- Edit the poll interval or wake-up times **per mode** (both are kept; the UI stores which one is selected)
+- Edit the poll interval or **per-weekday** wake-up times **per mode** (both are kept; the UI stores which one is selected)
 - Upload landscape photos (stored under `pictures/` next to the config)
 - Choose which photos to rotate each wake, and preview the dithered Spectra 6 look
 

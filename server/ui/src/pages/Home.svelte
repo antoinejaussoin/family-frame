@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import FrameMark from '../lib/FrameMark.svelte'
   import PageNav from '../lib/PageNav.svelte'
+  import WakeWeek from '../lib/WakeWeek.svelte'
   import {
     deletePicture,
     formatSleep,
@@ -21,8 +22,7 @@
   let error = $state('')
   let scheduleMode = $state('interval') // interval | wake
   let intervalMins = $state(60)
-  let wakeTimes = $state([])
-  let newWake = $state('07:00')
+  let wakeWeek = $state(emptyWeek())
   let modal = $state(null) // picture item
   let modalTab = $state('dither')
   let uploading = $state(false)
@@ -38,17 +38,51 @@
     const k = sch?.schedule_kind
     if (k === 'times' || k === 'wake' || k === 'wake-up') return 'wake'
     if (k === 'interval') return 'interval'
-    return (sch?.wake_up || []).length > 0 ? 'wake' : 'interval'
+    return weekHasTimes(sch) ? 'wake' : 'interval'
+  }
+
+  function emptyWeek() {
+    return { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] }
+  }
+
+  function weekHasTimes(sch) {
+    const by = sch?.wake_up_by_day
+    if (by && typeof by === 'object') {
+      return ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].some(
+        (id) => (by[id] || []).length > 0,
+      )
+    }
+    return (sch?.wake_up || []).length > 0
+  }
+
+  function weekFromSchedule(sch) {
+    const week = emptyWeek()
+    const by = sch?.wake_up_by_day
+    if (by && typeof by === 'object') {
+      for (const id of Object.keys(week)) {
+        week[id] = Array.isArray(by[id]) ? [...by[id]] : []
+      }
+      return week
+    }
+    const all = [...(sch?.wake_up || [])]
+    for (const id of Object.keys(week)) week[id] = [...all]
+    return week
   }
 
   function scheduleOf(s, mode) {
     if (!s) {
-      return { poll_interval_secs: 3600, wake_up: [], schedule_kind: 'interval' }
+      return {
+        poll_interval_secs: 3600,
+        wake_up: [],
+        wake_up_by_day: emptyWeek(),
+        schedule_kind: 'interval',
+      }
     }
     const sch = mode === 'picture' ? s.pictures_schedule : s.dashboard_schedule
     return {
       poll_interval_secs: sch?.poll_interval_secs ?? s.poll_interval_secs ?? 3600,
       wake_up: sch?.wake_up ?? s.wake_up ?? [],
+      wake_up_by_day: sch?.wake_up_by_day ?? s.wake_up_by_day,
       schedule_kind: sch?.schedule_kind ?? s.schedule_kind,
     }
   }
@@ -56,7 +90,7 @@
   function applyScheduleFrom(s, mode) {
     const sch = scheduleOf(s, mode)
     intervalMins = Math.max(1, Math.round((sch.poll_interval_secs || 3600) / 60))
-    wakeTimes = [...(sch.wake_up || [])]
+    wakeWeek = weekFromSchedule(sch)
     scheduleMode = scheduleKindOf(sch)
   }
 
@@ -142,7 +176,7 @@
     try {
       applySettings(
         await patchSettings({
-          wake_up: wakeTimes,
+          wake_up_by_day: wakeWeek,
           poll_interval_secs: intervalMins * 60,
           schedule_kind: scheduleMode === 'wake' ? 'times' : 'interval',
           schedule_for: view,
@@ -153,27 +187,6 @@
     } finally {
       busy = false
     }
-  }
-
-  function addWake() {
-    if (!/^\d{1,2}:\d{2}$/.test(newWake)) {
-      error = 'Wake time must look like HH:MM'
-      return
-    }
-    const [h, m] = newWake.split(':').map(Number)
-    if (h > 23 || m > 59) {
-      error = 'Invalid wake time'
-      return
-    }
-    const norm = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-    if (!wakeTimes.includes(norm)) {
-      wakeTimes = [...wakeTimes, norm].sort()
-    }
-    scheduleMode = 'wake'
-  }
-
-  function removeWake(t) {
-    wakeTimes = wakeTimes.filter((x) => x !== t)
   }
 
   function toggleRotate(id) {
@@ -437,27 +450,7 @@
               <span class="text-muted">minutes</span>
             </label>
           {:else}
-            <div class="mt-4 flex flex-wrap gap-2">
-              {#each wakeTimes as t}
-                <button
-                  type="button"
-                  class="chip"
-                  onclick={() => removeWake(t)}
-                  title="Remove {t}"
-                >
-                  {t}
-                  <span aria-hidden="true" class="text-base leading-none">×</span>
-                </button>
-              {:else}
-                <p class="text-sm font-semibold text-muted">No wake times yet.</p>
-              {/each}
-            </div>
-            <div class="mt-3 flex flex-wrap items-center gap-2">
-              <input type="time" class="field" bind:value={newWake} />
-              <button type="button" class="btn btn-ink" onclick={addWake}>
-                Add time
-              </button>
-            </div>
+            <WakeWeek bind:week={wakeWeek} timezone={settings?.timezone} />
           {/if}
 
           <button
