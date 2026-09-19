@@ -79,7 +79,11 @@
   }
 
   const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  // XL W white power LED on 3V3 (hardwired). Floor is POWMAN + regulator leftover.
+  const POWER_LED_MA = 1.05
+  const IDLE_WITHOUT_LED_FLOOR_MA = 0.35
   let simWakes = $state(null)
+  let simLed = $state(true)
 
   const bat = $derived(page?.battery)
   const scheduleWakes = $derived(bat?.wakes_per_day_avg ?? 12)
@@ -88,7 +92,9 @@
   const weekPeak = $derived(Math.max(1, ...(bat?.wakes_by_day ?? [1])))
   const soc = $derived(page?.last_pct ?? bat?.soc_pct ?? 0)
   const socLow = $derived(soc < 25)
-  const simDailyMah = $derived(bat ? simDaily(bat, sliderWakes) : 0)
+  const simLedShare = $derived(bat ? ledShareMa(bat.idle_ma) : 0)
+  const simIdleMa = $derived(bat ? idleForSim(bat.idle_ma, simLed) : 0)
+  const simDailyMah = $derived(bat ? simIdleMa * 24 + sliderWakes * bat.cycle_mah : 0)
 
   function fmtInt(n) {
     if (n == null || Number.isNaN(n)) return '—'
@@ -132,8 +138,13 @@
     return fallback
   }
 
-  function simDaily(battery, wakesPerDay) {
-    return battery.idle_ma * 24 + wakesPerDay * battery.cycle_mah
+  function ledShareMa(idleMa) {
+    if (!Number.isFinite(idleMa)) return 0
+    return Math.min(POWER_LED_MA, Math.max(0, idleMa - IDLE_WITHOUT_LED_FLOOR_MA))
+  }
+
+  function idleForSim(idleMa, ledOn) {
+    return ledOn ? idleMa : idleMa - ledShareMa(idleMa)
   }
 
   function simLifeSecs(mah, daily) {
@@ -375,7 +386,35 @@
             simWakes = Number(e.currentTarget.value)
           }}
         />
-        <div class="debug-stats mt-4">
+        <p class="mt-5 text-xs font-extrabold tracking-wide text-muted uppercase">Power LED</p>
+        <div class="seg mt-2" role="group" aria-label="Power LED">
+          <button
+            type="button"
+            class={simLed ? 'on' : ''}
+            aria-pressed={simLed}
+            onclick={() => (simLed = true)}
+          >
+            On
+          </button>
+          <button
+            type="button"
+            class={!simLed ? 'on' : ''}
+            aria-pressed={!simLed}
+            onclick={() => (simLed = false)}
+          >
+            Off
+          </button>
+        </div>
+        <p class="mt-2 text-sm font-semibold text-muted">
+          {#if simLed}
+            As fitted — {simIdleMa.toFixed(2)} mA idle includes the white LED
+          {:else if simLedShare > 0.02}
+            Cut-trace estimate — {simIdleMa.toFixed(2)} mA idle (−{simLedShare.toFixed(2)} mA)
+          {:else}
+            Idle is already at the no-LED floor
+          {/if}
+        </p>
+        <div class="debug-stats debug-stats-3 mt-4">
           <div class="debug-stat">
             <p class="debug-stat-label">From now</p>
             <p class="debug-stat-value">{fmtEtaShort(simLifeSecs(bat.remaining_mah, simDailyMah))}</p>
@@ -385,6 +424,11 @@
             <p class="debug-stat-label">From a full charge</p>
             <p class="debug-stat-value">{fmtEtaShort(simLifeSecs(bat.capacity_mah, simDailyMah))}</p>
             <p class="debug-stat-hint">{fmtMah(simDailyMah)} mAh/day in this simulation</p>
+          </div>
+          <div class="debug-stat">
+            <p class="debug-stat-label">Idle</p>
+            <p class="debug-stat-value">{simIdleMa.toFixed(2)} mA</p>
+            <p class="debug-stat-hint">{simLed ? 'LED still wired' : 'LED trace cut'}</p>
           </div>
         </div>
       </section>
