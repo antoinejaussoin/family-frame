@@ -285,7 +285,7 @@ pub struct Dashboard {
 
 impl Dashboard {
     pub fn empty(family_name: &str, date: NaiveDate) -> Self {
-        let saint = crate::saints::of_date(date);
+        let saint = crate::sources::saints::of_date(date);
         Self {
             family_name: family_name.to_string(),
             weekday: date.format("%A").to_string(),

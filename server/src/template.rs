@@ -36,7 +36,7 @@ impl Templates {
             .env
             .get_template("weather-icons.html")
             .context("templates/weather-icons.html")?;
-        Ok(tmpl.render(minijinja::context! { icons => crate::weather::ICONS })?)
+        Ok(tmpl.render(minijinja::context! { icons => crate::sources::weather::ICONS })?)
     }
 }
 
@@ -45,13 +45,13 @@ mod tests {
     use chrono::NaiveDate;
 
     use super::*;
-    use crate::weather;
+    use crate::sources::weather;
 
     #[test]
     fn dashboard_includes_weather_slots() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 12).unwrap());
         dash.weather = weather::demo_weather();
-        dash.tube = crate::tfl::demo_tube();
+        dash.tube = crate::sources::tfl::demo_tube();
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("wx-sun"));
         assert!(html.contains("18°"));
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn dashboard_keeps_school_markup_hidden() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
-        dash.school = crate::pronote::demo_school(NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        dash.school = crate::sources::pronote::demo_school(NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("icon-school"));
         assert!(html.contains("icon-grades"));
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn dashboard_shows_on_this_day_facts() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
-        dash.history = crate::history::demo_history();
+        dash.history = crate::sources::history::demo_history();
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"history\""));
         assert!(html.contains("On this day"));
@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn dashboard_shows_joke_of_the_day() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
-        dash.joke = Some(crate::jokes::demo_joke());
+        dash.joke = Some(crate::sources::jokes::demo_joke());
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"joke\""));
         assert!(html.contains("Joke of the day"));
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn weather_icons_sheet_lists_every_symbol() {
         let html = Templates::load().unwrap().render_weather_icons().unwrap();
-        for icon in crate::weather::ICONS {
+        for icon in crate::sources::weather::ICONS {
             assert!(
                 html.contains(&format!("href=\"#wx-{}\"", icon.id)),
                 "{}",
@@ -337,7 +337,7 @@ mod tests {
         }
         assert_eq!(
             html.matches("class=\"at-80\"").count(),
-            crate::weather::ICONS.len()
+            crate::sources::weather::ICONS.len()
         );
         assert!(html.contains("class=\"at-40\""));
         assert!(html.contains("/static/dashboard.css"));

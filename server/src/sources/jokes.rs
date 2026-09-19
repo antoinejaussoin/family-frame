@@ -15,6 +15,43 @@ use tracing::{info, warn};
 
 use crate::model::{joke_fits_panel, Joke};
 
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::DataSource;
+
+pub struct JokesSource;
+
+#[async_trait::async_trait]
+impl DataSource for JokesSource {
+    fn id(&self) -> &'static str {
+        "jokes"
+    }
+
+    fn enabled(&self, _cfg: &crate::config::Config) -> bool {
+        true
+    }
+
+    async fn load(&self, _ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        match load_joke().await {
+            Ok(joke) => Ok(SourceOutcome::live(
+                "icanhazdadjoke",
+                Contribution::Joke(joke),
+            )),
+            Err(err) => {
+                warn!(%err, "Joke of the day failed; using a classic");
+                Ok(SourceOutcome::unavailable(
+                    "demo joke",
+                    Contribution::Joke(fallback_joke()),
+                ))
+            }
+        }
+    }
+
+    fn demo(&self, _ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Joke(fallback_joke()))
+    }
+}
+
 const SEARCH_URL: &str = "https://icanhazdadjoke.com/search";
 const RANDOM_URL: &str = "https://icanhazdadjoke.com/";
 const SEARCH_PAGES: u32 = 24;

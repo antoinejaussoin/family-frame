@@ -12,6 +12,43 @@ use tracing::info;
 
 use crate::model::{HistoryFact, HISTORY_POOL};
 
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::DataSource;
+
+pub struct HistorySource;
+
+#[async_trait::async_trait]
+impl DataSource for HistorySource {
+    fn id(&self) -> &'static str {
+        "history"
+    }
+
+    fn enabled(&self, _cfg: &crate::config::Config) -> bool {
+        true
+    }
+
+    async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        match load_facts(ctx.today).await {
+            Ok(facts) if !facts.is_empty() => Ok(SourceOutcome::live(
+                "Wikipedia on this day",
+                Contribution::History(facts),
+            )),
+            Ok(_) => Ok(SourceOutcome::live(
+                "On this day empty",
+                Contribution::History(Vec::new()),
+            )),
+            Err(err) => {
+                tracing::warn!(%err, "On this day failed");
+                Ok(SourceOutcome::unavailable(
+                    "On this day unavailable",
+                    Contribution::None,
+                ))
+            }
+        }
+    }
+}
+
 const SELECTED_URL: &str = "https://en.wikipedia.org/api/rest_v1/feed/onthisday/selected";
 const EVENTS_URL: &str = "https://en.wikipedia.org/api/rest_v1/feed/onthisday/events";
 

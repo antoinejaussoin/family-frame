@@ -20,8 +20,8 @@ use crate::battery;
 use crate::config::SettingsPatch;
 use crate::debug::{page_from_polls_full, DebugExtras, DebugLog, Poll};
 use crate::frame::{checksum_matches, FrameCache};
-use crate::meross;
 use crate::sources;
+use crate::sources::meross;
 
 #[derive(Clone)]
 pub struct AppState {

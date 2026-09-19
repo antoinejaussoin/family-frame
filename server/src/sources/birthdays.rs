@@ -1,8 +1,32 @@
 use chrono::{Datelike, Duration, NaiveDate};
 
 use crate::config::Birthday;
-use crate::ics;
 use crate::model::{CalendarEvent, BIRTHDAY_HORIZON_DAYS};
+
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::ics;
+use super::DataSource;
+
+pub struct BirthdaysSource;
+
+#[async_trait::async_trait]
+impl DataSource for BirthdaysSource {
+    fn id(&self) -> &'static str {
+        "birthdays"
+    }
+
+    fn enabled(&self, _cfg: &crate::config::Config) -> bool {
+        true
+    }
+
+    async fn load(&self, ctx: &SourceContext<'_>) -> anyhow::Result<SourceOutcome> {
+        Ok(SourceOutcome::live(
+            String::new(),
+            Contribution::Calendar(upcoming_events(&ctx.cfg.birthdays, ctx.today)),
+        ))
+    }
+}
 
 /// Birthdays whose next occurrence is today or within two weeks.
 pub fn upcoming_events(birthdays: &[Birthday], today: NaiveDate) -> Vec<CalendarEvent> {

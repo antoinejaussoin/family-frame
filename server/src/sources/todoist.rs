@@ -15,6 +15,51 @@ use tracing::info;
 use crate::config::TodoistConfig;
 use crate::model::TodoItem;
 
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::{DataSource, DisabledBehaviour};
+
+pub struct TodoistSource;
+
+#[async_trait::async_trait]
+impl DataSource for TodoistSource {
+    fn id(&self) -> &'static str {
+        "todoist"
+    }
+
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.todoist_enabled()
+    }
+
+    fn when_disabled(&self) -> DisabledBehaviour {
+        DisabledBehaviour::Demo
+    }
+
+    fn disabled_note(&self) -> String {
+        "demo to-dos (no Todoist token)".into()
+    }
+
+    async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        match load_todos(&ctx.cfg.todoist).await {
+            Ok(todos) => Ok(SourceOutcome::live(
+                format!("Todoist “{}”", ctx.cfg.todoist.project),
+                Contribution::Todos(todos),
+            )),
+            Err(err) => {
+                tracing::warn!(%err, "Todoist failed; using demo to-dos");
+                Ok(SourceOutcome::unavailable(
+                    "Todoist unavailable",
+                    Contribution::Todos(demo_todos()),
+                ))
+            }
+        }
+    }
+
+    fn demo(&self, _ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Todos(demo_todos()))
+    }
+}
+
 const API: &str = "https://api.todoist.com/api/v1";
 const FETCH_TTL: Duration = Duration::from_secs(60);
 const PAGE_LIMIT: &str = "200";

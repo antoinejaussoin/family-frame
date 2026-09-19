@@ -12,6 +12,49 @@ use tracing::{info, warn};
 
 use crate::model::TubeLine;
 
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::DataSource;
+
+pub struct TflSource;
+
+#[async_trait::async_trait]
+impl DataSource for TflSource {
+    fn id(&self) -> &'static str {
+        "tfl"
+    }
+
+    fn enabled(&self, _cfg: &crate::config::Config) -> bool {
+        true
+    }
+
+    async fn load(&self, _ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        match load_tube().await {
+            Ok(lines) if !lines.is_empty() => {
+                Ok(SourceOutcome::live("TfL tube", Contribution::Transit(lines)))
+            }
+            Ok(_) => {
+                warn!("TfL returned no lines");
+                Ok(SourceOutcome::unavailable(
+                    "TfL empty — demo tube",
+                    Contribution::Transit(demo_tube()),
+                ))
+            }
+            Err(err) => {
+                warn!(%err, "TfL failed; using demo tube");
+                Ok(SourceOutcome::unavailable(
+                    "TfL unavailable",
+                    Contribution::Transit(demo_tube()),
+                ))
+            }
+        }
+    }
+
+    fn demo(&self, _ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Transit(demo_tube()))
+    }
+}
+
 const STATUS_URL: &str = "https://api.tfl.gov.uk/Line/northern,circle,district,victoria/Status";
 const FETCH_TTL: Duration = Duration::from_secs(15 * 60);
 

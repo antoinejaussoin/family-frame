@@ -24,6 +24,54 @@ use uuid::Uuid;
 use crate::config::MerossConfig;
 use crate::model::RoomClimate;
 
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::{DataSource, DisabledBehaviour};
+
+pub struct MerossSource;
+
+#[async_trait::async_trait]
+impl DataSource for MerossSource {
+    fn id(&self) -> &'static str {
+        "meross"
+    }
+
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.meross_enabled()
+    }
+
+    fn when_disabled(&self) -> DisabledBehaviour {
+        DisabledBehaviour::Skip
+    }
+
+    async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        match load_rooms(&ctx.cfg.meross, &ctx.cfg.meross_creds_path()).await {
+            Ok(rooms) if !rooms.is_empty() => Ok(SourceOutcome::live(
+                "Meross sensors",
+                Contribution::Rooms(rooms),
+            )),
+            Ok(_) => {
+                tracing::warn!("Meross login worked but no thermometer readings came back");
+                Ok(SourceOutcome::live(
+                    "Meross: no sensor readings",
+                    Contribution::Rooms(Vec::new()),
+                ))
+            }
+            Err(err) => {
+                tracing::warn!(%err, "Meross failed; keeping empty rooms");
+                Ok(SourceOutcome::unavailable(
+                    "Meross unavailable",
+                    Contribution::Rooms(Vec::new()),
+                ))
+            }
+        }
+    }
+
+    fn demo(&self, _ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Rooms(demo_rooms()))
+    }
+}
+
 const CLOUD_SECRET: &str = "23x17ahWarFH6w29";
 const MQTT_PORT: u16 = 443;
 const MQTT_TIMEOUT: Duration = Duration::from_secs(15);

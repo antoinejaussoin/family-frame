@@ -22,8 +22,62 @@ use sha2::Sha256;
 use tracing::info;
 
 use crate::config::PronoteConfig;
-use crate::ics;
 use crate::model::{CalendarEvent, School, SchoolDay, SchoolItem};
+
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::ics;
+use super::{DataSource, DisabledBehaviour};
+
+pub struct PronoteSource;
+
+#[async_trait::async_trait]
+impl DataSource for PronoteSource {
+    fn id(&self) -> &'static str {
+        "pronote"
+    }
+
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.pronote_enabled()
+    }
+
+    fn when_disabled(&self) -> DisabledBehaviour {
+        DisabledBehaviour::Demo
+    }
+
+    fn disabled_note(&self) -> String {
+        "demo school (no Pronote credentials)".into()
+    }
+
+    async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        match load_school(&ctx.cfg.pronote, ctx.today).await {
+            Ok(mut school) => {
+                school.student = display_student(&ctx.cfg.pronote, &school.student);
+                let note = if school.student.is_empty() {
+                    "Pronote".into()
+                } else {
+                    format!("Pronote “{}”", school.student)
+                };
+                Ok(SourceOutcome::live(note, Contribution::School(school)))
+            }
+            Err(err) => {
+                tracing::warn!(%err, "Pronote failed; using demo school");
+                let mut school = demo_school(ctx.today);
+                school.student = display_student(&ctx.cfg.pronote, &school.student);
+                Ok(SourceOutcome::unavailable(
+                    "Pronote unavailable",
+                    Contribution::School(school),
+                ))
+            }
+        }
+    }
+
+    fn demo(&self, ctx: &SourceContext<'_>) -> Option<Contribution> {
+        let mut school = demo_school(ctx.today);
+        school.student = display_student(&ctx.cfg.pronote, &school.student);
+        Some(Contribution::School(school))
+    }
+}
 
 const FETCH_TTL: Duration = Duration::from_secs(15 * 60);
 const USER_AGENT: &str =

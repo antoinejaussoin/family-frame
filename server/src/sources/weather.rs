@@ -17,6 +17,58 @@ use tracing::{info, warn};
 use crate::config::WeatherConfig;
 use crate::model::{Weather, WeatherDay, WeatherSlot};
 
+use super::contribute::{Contribution, SourceOutcome};
+use super::context::SourceContext;
+use super::{DataSource, DisabledBehaviour};
+
+pub struct WeatherSource;
+
+#[async_trait::async_trait]
+impl DataSource for WeatherSource {
+    fn id(&self) -> &'static str {
+        "weather"
+    }
+
+    fn enabled(&self, cfg: &crate::config::Config) -> bool {
+        cfg.weather_enabled()
+    }
+
+    fn when_disabled(&self) -> DisabledBehaviour {
+        DisabledBehaviour::Demo
+    }
+
+    fn disabled_note(&self) -> String {
+        "demo weather (no BBC location)".into()
+    }
+
+    async fn load(&self, ctx: &SourceContext<'_>) -> Result<SourceOutcome> {
+        match load_forecast(&ctx.cfg.weather, &ctx.cfg.weather_cache_path(), ctx.today).await {
+            Ok(forecast) if !forecast.days.is_empty() => Ok(SourceOutcome::live(
+                format!("BBC weather “{}”", forecast.location),
+                Contribution::Weather(forecast),
+            )),
+            Ok(_) => {
+                tracing::warn!("BBC weather returned no days");
+                Ok(SourceOutcome::unavailable(
+                    "BBC weather empty — demo forecast",
+                    Contribution::Weather(demo_weather()),
+                ))
+            }
+            Err(err) => {
+                tracing::warn!(%err, "BBC weather failed; using demo forecast");
+                Ok(SourceOutcome::unavailable(
+                    "BBC weather unavailable",
+                    Contribution::Weather(demo_weather()),
+                ))
+            }
+        }
+    }
+
+    fn demo(&self, _ctx: &SourceContext<'_>) -> Option<Contribution> {
+        Some(Contribution::Weather(demo_weather()))
+    }
+}
+
 const FORECAST_URL: &str = "https://weather-broker-cdn.api.bbci.co.uk/en/forecast/aggregated";
 const FETCH_TTL: Duration = Duration::from_secs(15 * 60);
 
