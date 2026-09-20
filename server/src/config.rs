@@ -1022,8 +1022,17 @@ impl Config {
 
     /// Next schedule instant (clock `HH:MM` in `timezone`, or `now + interval`).
     pub fn next_poll_at(&self, now: DateTime<Utc>) -> DateTime<Utc> {
+        self.refresh_window(now, None).1
+    }
+
+    /// Last/next instants painted on the dashboard (slot-linked for a timer poll).
+    pub fn refresh_window(
+        &self,
+        now: DateTime<Utc>,
+        assigned_wake: Option<DateTime<Utc>>,
+    ) -> (DateTime<Utc>, DateTime<Utc>) {
         let (interval, wakes) = self.schedule(self.effective_mode());
-        crate::schedule::next_poll_at(now, self.tz(), interval, wakes)
+        crate::schedule::refresh_window(now, self.tz(), interval, wakes, assigned_wake)
     }
 
     /// Seconds the Pico should POWMAN-sleep after this poll, shortened if its
@@ -1788,6 +1797,8 @@ rotate = []
                 .unwrap()
                 .with_timezone(&Utc)
         );
+        assert_eq!(cfg.refresh_window(now, Some(intended)), (intended, wake_at));
+        assert_eq!(cfg.refresh_window(now, None), (now, intended));
     }
 
     #[test]

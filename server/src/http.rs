@@ -474,10 +474,11 @@ async fn frame_bin_post(
         .cache
         .note_pico_battery(battery::soc_pct(tel.mv, cfg.battery_cell().empty_mv))
         .await;
+    let assigned = assigned_wake_from_telemetry(&tel.wake, tel.wake_at.as_deref());
     let frame_result = if fresh {
         state.cache.current_for_pico_fresh().await
     } else {
-        state.cache.current_for_pico().await
+        state.cache.current_for_pico(assigned).await
     };
     match frame_result {
         Ok(frame) => {
@@ -614,6 +615,14 @@ async fn pico_sleep_secs(state: &AppState) -> u64 {
         .pico_sleep_secs(Utc::now())
 }
 
+fn assigned_wake_from_telemetry(wake: &str, reported_slot: Option<&str>) -> Option<DateTime<Utc>> {
+    if crate::schedule::is_timer_wake(wake) {
+        reported_slot.and_then(crate::schedule::parse_wake_at_slot)
+    } else {
+        None
+    }
+}
+
 async fn pico_sleep_plan_for_wake(
     state: &AppState,
     wake: &str,
@@ -621,12 +630,7 @@ async fn pico_sleep_plan_for_wake(
     now: DateTime<Utc>,
 ) -> (u64, DateTime<Utc>) {
     let cfg = state.cache.snapshot_config().await;
-    let assigned = if crate::schedule::is_timer_wake(wake) {
-        reported_slot.and_then(crate::schedule::parse_wake_at_slot)
-    } else {
-        None
-    };
-    cfg.pico_sleep_plan(now, assigned)
+    cfg.pico_sleep_plan(now, assigned_wake_from_telemetry(wake, reported_slot))
 }
 
 async fn update_pico_drift(state: &AppState, tel: &PicoTelemetry) {

@@ -160,13 +160,29 @@ pub fn next_poll_at_for_timer(
     wake_ups: &WeeklyWakes,
     assigned_wake: Option<DateTime<Utc>>,
 ) -> DateTime<Utc> {
+    refresh_window(now, tz, interval_secs, wake_ups, assigned_wake).1
+}
+
+/// Last/next instants painted on the dashboard for this contact.
+///
+/// A timer poll serving `assigned_wake` uses that clock slot as last (not the
+/// slightly early or late arrival) and the following slot as next — the same
+/// rule as [`next_poll_at_for_timer`]. Button, cold, and unlinked contacts
+/// paint `now` → the upcoming slot.
+pub fn refresh_window(
+    now: DateTime<Utc>,
+    tz: Tz,
+    interval_secs: u64,
+    wake_ups: &WeeklyWakes,
+    assigned_wake: Option<DateTime<Utc>>,
+) -> (DateTime<Utc>, DateTime<Utc>) {
     if let Some(assigned) = assigned_wake {
-        let next = next_poll_at(assigned, tz, interval_secs, wake_ups);
-        if now < next {
-            return next;
+        let following = next_poll_at(assigned, tz, interval_secs, wake_ups);
+        if now < following {
+            return (assigned, following);
         }
     }
-    next_poll_at(now, tz, interval_secs, wake_ups)
+    (now, next_poll_at(now, tz, interval_secs, wake_ups))
 }
 
 /// Seconds from `now` to `at`, at least 1.
@@ -788,6 +804,44 @@ mod tests {
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, None),
             20
+        );
+    }
+
+    #[test]
+    fn refresh_window_early_timer_paints_the_assigned_slot() {
+        // 06:57 serving 07:00 must read "07:00 → 10:00", not "06:57 → 07:00".
+        let now = at_london(2026, 9, 20, 6, 57, 0);
+        let assigned = at_london(2026, 9, 20, 7, 0, 0);
+        let wakes = daily(&["07:00", "10:00"]);
+        assert_eq!(
+            refresh_window(now, london(), 3600, &wakes, Some(assigned)),
+            (assigned, at_london(2026, 9, 20, 10, 0, 0))
+        );
+        assert_eq!(
+            refresh_window(now, london(), 3600, &wakes, None),
+            (now, assigned)
+        );
+    }
+
+    #[test]
+    fn refresh_window_late_timer_still_paints_the_assigned_slot() {
+        let now = at_london(2026, 9, 20, 7, 5, 0);
+        let assigned = at_london(2026, 9, 20, 7, 0, 0);
+        let wakes = daily(&["07:00", "10:00"]);
+        assert_eq!(
+            refresh_window(now, london(), 3600, &wakes, Some(assigned)),
+            (assigned, at_london(2026, 9, 20, 10, 0, 0))
+        );
+    }
+
+    #[test]
+    fn refresh_window_missed_cycle_paints_arrival_time() {
+        let now = at_london(2026, 9, 20, 10, 5, 0);
+        let assigned = at_london(2026, 9, 20, 7, 0, 0);
+        let wakes = daily(&["07:00", "10:00", "13:00"]);
+        assert_eq!(
+            refresh_window(now, london(), 3600, &wakes, Some(assigned)),
+            (now, at_london(2026, 9, 20, 13, 0, 0))
         );
     }
 
