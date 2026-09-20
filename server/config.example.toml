@@ -122,10 +122,8 @@ lines = [
 enabled = true
 
 [sources.history]
-# Off: the school week uses this sidebar slot. The fetch/filter code stays
-# compiled — set true to restore Wikipedia “On this day” when the
-# timetable is empty.
-enabled = false
+# Wikipedia “On this day”, packed above the school week.
+enabled = true
 
 [sources.saints]
 enabled = true

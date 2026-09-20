@@ -76,8 +76,10 @@ pub const MAX_HOMEWORK_ROWS: usize = 8;
 pub const MAX_GRADE_ROWS: usize = 8;
 /// Compact “+ N other todos” line under the pills (margin + height).
 pub const TODOS_MORE_PX: i32 = 36;
-/// To-do pills span both quarter columns (362 + 24 + 362).
-pub const TODO_PILL_MAX_PX: i32 = 748;
+/// One quarter of the 1600px panel (sidebar half of a 2×2).
+pub const SIDEBAR_QUARTER_PX: i32 = 362;
+/// Full sidebar inner width (two quarters + the 24px pair gap).
+pub const SIDEBAR_INNER_PX: i32 = SIDEBAR_QUARTER_PX * 2 + 24;
 pub const TODO_PILL_PAD_X: i32 = 24;
 pub const TODO_PILL_BORDER_X: i32 = 4;
 /// Conservative 21px TRMNL21 bold (~0.65em).
@@ -85,14 +87,14 @@ pub const TODO_PILL_CHAR_PX: i32 = 15;
 pub const TODO_PILL_ROW_PX: i32 = 37;
 pub const TODO_PILL_GAP_PX: i32 = 8;
 pub const TODO_PILL_TOP_PX: i32 = 10;
-pub const HISTORY_TEXT_MAX_PX: i32 = TODO_PILL_MAX_PX - HISTORY_YEAR_PX - HISTORY_TEXT_GAP_PX;
+pub const HISTORY_TEXT_MAX_PX: i32 = SIDEBAR_INNER_PX - HISTORY_YEAR_PX - HISTORY_TEXT_GAP_PX;
 /// 21px TRMNL21 at `line-height: 26px`. Prefer skipping a joke to clipping.
 pub const JOKE_LINE_PX: i32 = 26;
 pub const JOKE_PAD_TOP_PX: i32 = 10;
 pub const JOKE_PUNCH_GAP_PX: i32 = 4;
-pub const JOKE_MAX_LINES: usize = 4;
+pub const JOKE_MAX_LINES: usize = 6;
 pub const JOKE_CHAR_PX: i32 = TODO_PILL_CHAR_PX;
-pub const JOKE_TEXT_MAX_PX: i32 = TODO_PILL_MAX_PX;
+pub const JOKE_TEXT_MAX_PX: i32 = SIDEBAR_QUARTER_PX;
 /// Pronote week grid (`.week-grid` margin-top, day label, one row per time band).
 pub const WEEK_GRID_TOP_PX: i32 = 8;
 pub const WEEK_DAY_LABEL_PX: i32 = 22;
@@ -461,10 +463,9 @@ impl Dashboard {
         self.events_coming.truncate(cap);
     }
 
-    /// Keep Tube and House in full on the bottom row. To do sizes to its
-    /// pills, with slots reserved for Joke of the day and the school week.
-    /// When there is no week grid, leftover height is On this day — facts
-    /// are added only while they still fit, up to three wrapped lines each.
+    /// Keep Tube and House in full on the bottom row. To do and Joke share
+    /// a quarter-column row. On this day sits above the school week; leftover
+    /// height is packed with facts (up to three wrapped lines each).
     pub fn fit_sidebar_to_panel(&mut self) {
         self.fit_sidebar(self.show_school_sections && self.school.is_visible());
     }
@@ -472,7 +473,6 @@ impl Dashboard {
     fn fit_sidebar(&mut self, school_on: bool) {
         let footer_px = sidebar_block_px(self.tube.len(), TUBE_ROW_PX)
             .max(sidebar_block_px(self.rooms.len(), ROOM_ROW_PX));
-        let gaps_rest = if school_on { 2 } else { 1 };
         if self
             .joke
             .as_ref()
@@ -480,32 +480,38 @@ impl Dashboard {
         {
             self.joke = None;
         }
-        let joke_reserve = if self.joke.is_some() {
-            SIDEBAR_GAP_PX + joke_block_px(&self.joke)
-        } else {
-            0
-        };
         let week_on = !self.school.week.days.is_empty();
-        let week_reserve = if week_on {
-            SIDEBAR_GAP_PX + week_block_px(&self.school.week)
+        let week_px = if week_on {
+            week_block_px(&self.school.week)
         } else {
             0
         };
-        let todos_reserve = SECTION_HEAD_PX
+        let history_floor = if self.history.is_empty() {
+            0
+        } else {
+            SECTION_HEAD_PX + HISTORY_ITEM_PAD_Y + HISTORY_LINE_PX + HISTORY_ITEM_BORDER_PX
+        };
+        let gaps = |history_on: bool| {
+            2 + i32::from(school_on) + i32::from(week_on) + i32::from(history_on) - 1
+        };
+
+        let mut joke_px = joke_block_px(&self.joke);
+        let pair_min = SECTION_HEAD_PX
             + if self.todos.is_empty() {
                 EMPTY_SECTION_BODY_PX
             } else {
                 TODO_PILL_TOP_PX + TODO_PILL_ROW_PX
             };
+        let pair_reserve = pair_min.max(joke_px);
 
         if school_on {
             let school_budget = (SIDEBAR_PX
                 - footer_px
-                - todos_reserve
-                - joke_reserve
-                - week_reserve
-                - SIDEBAR_GAP_PX * gaps_rest)
-                .max(0);
+                - pair_reserve
+                - week_px
+                - history_floor
+                - SIDEBAR_GAP_PX * gaps(history_floor > 0))
+            .max(0);
             let cap = max_rows_in(school_budget, SCHOOL_ROW_PX);
             self.school.homework.truncate(cap.min(MAX_HOMEWORK_ROWS));
             self.school.grades.truncate(cap.min(MAX_GRADE_ROWS));
@@ -517,41 +523,50 @@ impl Dashboard {
         } else {
             0
         };
-        let todo_budget = SIDEBAR_PX
+        let pair_budget = (SIDEBAR_PX
             - school_row
             - footer_px
-            - joke_reserve
-            - week_reserve
-            - SIDEBAR_GAP_PX * gaps_rest;
+            - week_px
+            - history_floor
+            - SIDEBAR_GAP_PX * gaps(history_floor > 0))
+        .max(0);
+        if joke_px > pair_budget {
+            self.joke = None;
+            joke_px = 0;
+        }
+        let wrap_px = if self.joke.is_some() {
+            SIDEBAR_QUARTER_PX
+        } else {
+            SIDEBAR_INNER_PX
+        };
+
         let total = self.todos.len();
         if total == 0 {
             self.todos_more = 0;
         } else {
-            let body = todo_budget - SECTION_HEAD_PX;
-            if todos_fitting_in(&self.todos, body) == total {
+            let body = pair_budget - SECTION_HEAD_PX;
+            if todos_fitting_in(&self.todos, body, wrap_px) == total {
                 self.todos_more = 0;
             } else {
-                let shown = todos_fitting_in(&self.todos, body - TODOS_MORE_PX)
+                let shown = todos_fitting_in(&self.todos, body - TODOS_MORE_PX, wrap_px)
                     .min(total.saturating_sub(1));
                 self.todos_more = total - shown;
                 self.todos.truncate(shown);
             }
         }
 
-        if week_on {
-            self.history.clear();
+        let pair_px = todos_block_px(&self.todos, self.todos_more, wrap_px).max(joke_px);
+        let history_budget = SIDEBAR_PX
+            - school_row
+            - pair_px
+            - week_px
+            - footer_px
+            - SIDEBAR_GAP_PX * gaps(history_floor > 0);
+        self.history = if history_floor > 0 {
+            pack_history(&self.history, history_budget)
         } else {
-            let todos_px = todos_block_px(&self.todos, self.todos_more);
-            let joke_px = joke_block_px(&self.joke);
-            let joke_gap = if joke_px > 0 { 1 } else { 0 };
-            let history_budget = SIDEBAR_PX
-                - school_row
-                - todos_px
-                - joke_px
-                - footer_px
-                - SIDEBAR_GAP_PX * (gaps_rest + 1 + joke_gap);
-            self.history = pack_history(&self.history, history_budget);
-        }
+            Vec::new()
+        };
     }
 
     pub fn fit_to_panel(&mut self) {
@@ -592,13 +607,13 @@ pub fn battery_level(pct: u16) -> &'static str {
     }
 }
 
-fn todo_pill_width(title: &str) -> i32 {
+fn todo_pill_width(title: &str, wrap_px: i32) -> i32 {
     let text = (title.chars().count() as i32).saturating_mul(TODO_PILL_CHAR_PX);
-    (TODO_PILL_PAD_X + TODO_PILL_BORDER_X + text).clamp(1, TODO_PILL_MAX_PX)
+    (TODO_PILL_PAD_X + TODO_PILL_BORDER_X + text).clamp(1, wrap_px)
 }
 
 /// How many leading to-dos wrap into `body_px` below the section heading.
-fn todos_fitting_in(todos: &[TodoItem], body_px: i32) -> usize {
+fn todos_fitting_in(todos: &[TodoItem], body_px: i32, wrap_px: i32) -> usize {
     if body_px < TODO_PILL_TOP_PX + TODO_PILL_ROW_PX {
         return 0;
     }
@@ -606,8 +621,8 @@ fn todos_fitting_in(todos: &[TodoItem], body_px: i32) -> usize {
     let mut x = 0i32;
     let mut shown = 0usize;
     for todo in todos {
-        let w = todo_pill_width(&todo.title);
-        let new_row = rows == 0 || x + TODO_PILL_GAP_PX + w > TODO_PILL_MAX_PX;
+        let w = todo_pill_width(&todo.title, wrap_px);
+        let new_row = rows == 0 || x + TODO_PILL_GAP_PX + w > wrap_px;
         if new_row {
             let next_rows = rows + 1;
             let height = TODO_PILL_TOP_PX + next_rows * TODO_PILL_ROW_PX + rows * TODO_PILL_GAP_PX;
@@ -624,19 +639,19 @@ fn todos_fitting_in(todos: &[TodoItem], body_px: i32) -> usize {
     shown
 }
 
-fn todos_block_px(todos: &[TodoItem], more: usize) -> i32 {
-    SECTION_HEAD_PX + todos_body_px(todos) + if more > 0 { TODOS_MORE_PX } else { 0 }
+fn todos_block_px(todos: &[TodoItem], more: usize, wrap_px: i32) -> i32 {
+    SECTION_HEAD_PX + todos_body_px(todos, wrap_px) + if more > 0 { TODOS_MORE_PX } else { 0 }
 }
 
-fn todos_body_px(todos: &[TodoItem]) -> i32 {
+fn todos_body_px(todos: &[TodoItem], wrap_px: i32) -> i32 {
     if todos.is_empty() {
         return EMPTY_SECTION_BODY_PX;
     }
     let mut rows = 0i32;
     let mut x = 0i32;
     for todo in todos {
-        let w = todo_pill_width(&todo.title);
-        let new_row = rows == 0 || x + TODO_PILL_GAP_PX + w > TODO_PILL_MAX_PX;
+        let w = todo_pill_width(&todo.title, wrap_px);
+        let new_row = rows == 0 || x + TODO_PILL_GAP_PX + w > wrap_px;
         if new_row {
             rows += 1;
             x = w;
@@ -1025,12 +1040,16 @@ mod tests {
     }
 
     #[test]
-    fn sidebar_drops_history_when_school_week_is_shown() {
+    fn sidebar_keeps_history_above_school_week() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
         let mut dash = Dashboard::empty("Family", today);
         dash.tube = tube_lines(4);
         dash.rooms = ["Kitchen"].into_iter().map(room).collect();
         dash.todos = vec![todo("Milk")];
+        dash.joke = Some(Joke {
+            setup: "Why don't scientists trust atoms?".into(),
+            punchline: "Because they make up everything.".into(),
+        });
         dash.history = vec![history_fact("1851", "The New York Times is founded.")];
         dash.school.week = SchoolWeek {
             title: "This week".into(),
@@ -1061,13 +1080,15 @@ mod tests {
             bands: 1,
         };
         dash.fit_sidebar_to_panel();
-        assert!(dash.history.is_empty());
+        assert_eq!(dash.history.len(), 1);
+        assert_eq!(dash.history[0].year, "1851");
         assert_eq!(dash.school.week.title, "This week");
+        assert!(dash.joke.is_some());
         assert_eq!(dash.todos.len(), 1);
     }
 
     #[test]
-    fn sidebar_omits_history_when_todos_fill_the_column() {
+    fn sidebar_keeps_history_when_todos_overflow() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
         let mut dash = Dashboard::empty("Family", today);
         dash.tube = tube_lines(4);
@@ -1076,7 +1097,7 @@ mod tests {
         dash.history = vec![history_fact("1851", "The New York Times is founded.")];
         dash.fit_sidebar_to_panel();
         assert!(dash.todos_more > 0);
-        assert!(dash.history.is_empty());
+        assert_eq!(dash.history.len(), 1);
     }
 
     #[test]
@@ -1111,11 +1132,11 @@ mod tests {
         dash.fit_sidebar_to_panel();
         assert!(dash.joke.is_some());
         assert!(dash.todos_more > 0);
-        assert!(dash.history.is_empty());
+        assert_eq!(dash.history.len(), 1);
     }
 
     #[test]
-    fn sidebar_drops_a_joke_that_needs_five_lines() {
+    fn sidebar_drops_a_joke_that_needs_too_many_lines() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
         let mut dash = Dashboard::empty("Family", today);
         dash.tube = tube_lines(4);

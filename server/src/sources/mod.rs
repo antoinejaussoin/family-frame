@@ -304,7 +304,7 @@ mod tests {
             .filter(|s| s.uses_live_fetch(&cfg))
             .map(|s| s.id())
             .collect();
-        assert_eq!(live, ["weather", "tfl", "jokes", "saints"]);
+        assert_eq!(live, ["weather", "tfl", "jokes", "history", "saints"]);
         assert!(all_sources()
             .iter()
             .all(|s| !s.private() || !s.uses_live_fetch(&cfg)));
@@ -335,7 +335,7 @@ mod tests {
             .filter(|s| s.enabled(&cfg))
             .map(|s| s.id())
             .collect();
-        assert_eq!(enabled, ["tfl", "jokes", "birthdays", "saints"]);
+        assert_eq!(enabled, ["tfl", "jokes", "history", "birthdays", "saints"]);
     }
 
     fn offline_demo_dashboard(today: NaiveDate) -> Dashboard {
@@ -375,6 +375,12 @@ mod tests {
         apply(
             &mut dash,
             &mut calendar,
+            Contribution::History(history::demo_history()),
+            today,
+        );
+        apply(
+            &mut dash,
+            &mut calendar,
             Contribution::School(pronote::demo_school(today)),
             today,
         );
@@ -400,6 +406,7 @@ mod tests {
             "demo weather (no BBC location)",
             "TfL tube",
             "icanhazdadjoke",
+            "Wikipedia on this day",
             "demo school (no Pronote credentials)",
         ]
         .join(" · ");

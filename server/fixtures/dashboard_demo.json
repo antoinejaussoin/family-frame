@@ -30,7 +30,20 @@
   ],
   "family_name": "Family",
   "has_battery": false,
-  "history": [],
+  "history": [
+    {
+      "text": "The New York Times is founded.",
+      "year": "1851"
+    },
+    {
+      "text": "Blackpool Illuminations are switched on for the first time.",
+      "year": "1879"
+    },
+    {
+      "text": "King Constantine II of Greece marries Princess Anne-Marie.",
+      "year": "1964"
+    }
+  ],
   "joke": {
     "punchline": "Because they make up everything.",
     "setup": "Why don't scientists trust atoms?"
@@ -170,7 +183,7 @@
       ]
     }
   },
-  "source_note": "demo to-dos (no Todoist token) · demo rooms (no Meross credentials) · demo weather (no BBC location) · TfL tube · icanhazdadjoke · demo school (no Pronote credentials)",
+  "source_note": "demo to-dos (no Todoist token) · demo rooms (no Meross credentials) · demo weather (no BBC location) · TfL tube · icanhazdadjoke · Wikipedia on this day · demo school (no Pronote credentials)",
   "todos": [
     {
       "done": false,

@@ -3,9 +3,8 @@
 //! Uses the public REST feed, keeps a day’s facts in memory, and drops grim
 //! items (crashes, murders) so the kitchen board stays family-friendly.
 //!
-//! The source stays compiled; `sources.history.enabled` defaults to off so
-//! the school week can use that sidebar slot. Re-enable to restore the
-//! section when the timetable is empty.
+//! On by default. Facts sit above the school week; `fit_sidebar`
+//! keeps only as many as leftover height allows.
 
 use anyhow::{Context, Result};
 use chrono::{Datelike, NaiveDate};

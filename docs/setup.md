@@ -16,8 +16,8 @@ The 1600×1200 dashboard is a fixed grid, not a widget toolkit.
 |---|---|---|
 | Mast (weekday, day, month, saint) | `saints` | French civil calendar |
 | Today / Next events | `calendar` (ICS) + `bins` + `birthdays` + Pronote hours | Weather icons sit in the headings |
-| Sidebar to-dos | `todoist` | Demo list if no token |
-| Joke / school week | `jokes` / `pronote` | Week grid Mon–Fri; next week on Sat/Sun. Wikipedia “On this day” stays compiled (`history.enabled = true`) |
+| To do / joke | `todoist` / `jokes` | Same row; each a quarter of the 1600px panel |
+| On this day / school week | `history` / `pronote` | Wikipedia facts above the Mon–Fri week grid (next week on Sat/Sun) |
 | Transit | `tfl` | Default: Northern, Circle, District, Victoria |
 | House | `meross` | Demo rooms if no credentials |
 | Battery / next wake | Pico POST | Hidden until the Pico has reported |
@@ -210,13 +210,12 @@ config; the default is Northern / Circle / District / Victoria.
 
 ### Jokes / history / saints
 
-Jokes and saints stay on by default. Wikipedia “On this day” is compiled
-but off — the school week uses that sidebar slot.
+Jokes, Wikipedia “On this day”, and saints stay on by default. Facts sit
+above the school week; leftover height decides how many fit.
 
-**To remove a joke / saint:** `sources.jokes.enabled = false` (same for
-`saints`). **To restore On this day:** `sources.history.enabled = true`
-(shown only when the school week is empty). An empty slot collapses the
-same way `no-joke` / `no-history` already do.
+**To remove a joke / history / saint:** `sources.jokes.enabled = false`
+(same for `history` and `saints`). An empty slot collapses the same way
+`no-joke` / `no-history` already do.
 
 ### School (Pronote)
 

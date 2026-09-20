@@ -387,6 +387,32 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_pairs_todos_with_joke_above_history_and_week() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.todos = vec![crate::model::TodoItem {
+            title: "Buy milk".into(),
+            done: false,
+        }];
+        dash.joke = Some(crate::sources::jokes::demo_joke());
+        dash.history = crate::sources::history::demo_history();
+        dash.school = crate::sources::pronote::demo_school(today);
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        let pair = html.find("sidebar-pair").unwrap();
+        let todos = html.find("class=\"todos\"").unwrap();
+        let joke = html.find("class=\"joke\"").unwrap();
+        let history = html.find("class=\"history\"").unwrap();
+        let week = html.find("class=\"school-week\"").unwrap();
+        assert!(pair < todos);
+        assert!(todos < joke);
+        assert!(joke < history);
+        assert!(history < week);
+        assert!(html.contains("On this day"));
+        assert!(html.contains("Joke of the day"));
+        assert!(html.contains("This week"));
+    }
+
+    #[test]
     fn dashboard_shows_joke_of_the_day() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
         dash.joke = Some(crate::sources::jokes::demo_joke());
