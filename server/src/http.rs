@@ -32,6 +32,9 @@ pub struct AppState {
 #[derive(Debug, Deserialize, Default)]
 pub struct FrameQuery {
     pub checksum: Option<String>,
+    /// Layout simulator: skip the dashboard cache and re-run Chrome.
+    #[serde(default)]
+    pub fresh: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -556,16 +559,32 @@ async fn frame_png(
     }
 }
 
-async fn frame_dither(State(state): State<AppState>) -> impl IntoResponse {
-    match state.cache.current().await {
-        Ok(frame) => binary(
-            frame.preview_png,
-            "image/png",
-            &frame.checksum,
-            "frame-dither.png",
-            None,
-            None,
-        ),
+async fn frame_dither(
+    State(state): State<AppState>,
+    Query(q): Query<FrameQuery>,
+) -> impl IntoResponse {
+    let result = if query_flag(q.fresh.as_deref()) {
+        state.cache.current_dashboard_reraster().await
+    } else {
+        state.cache.current().await
+    };
+    match result {
+        Ok(frame) => {
+            let mut response = binary(
+                frame.preview_png,
+                "image/png",
+                &frame.checksum,
+                "frame-dither.png",
+                None,
+                None,
+            );
+            if query_flag(q.fresh.as_deref()) {
+                response
+                    .headers_mut()
+                    .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+            }
+            response
+        }
         Err(err) => error_response(err),
     }
 }
@@ -589,6 +608,16 @@ fn no_store_html(html: String) -> Response {
     let mut headers = HeaderMap::new();
     headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
     (headers, Html(html)).into_response()
+}
+
+fn query_flag(value: Option<&str>) -> bool {
+    matches!(
+        value
+            .map(str::trim)
+            .map(|s| s.to_ascii_lowercase())
+            .as_deref(),
+        Some("") | Some("1") | Some("true") | Some("yes") | Some("on")
+    )
 }
 
 fn offered_checksum<'a>(headers: &'a HeaderMap, q: &'a FrameQuery) -> Option<&'a str> {
@@ -798,4 +827,19 @@ pub fn ui_dir() -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::query_flag;
+
+    #[test]
+    fn fresh_query_accepts_common_truthy_flags() {
+        assert!(query_flag(Some("1")));
+        assert!(query_flag(Some("true")));
+        assert!(query_flag(Some("YES")));
+        assert!(query_flag(Some("")));
+        assert!(!query_flag(Some("0")));
+        assert!(!query_flag(None));
+    }
 }
