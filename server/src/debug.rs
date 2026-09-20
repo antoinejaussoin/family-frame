@@ -78,6 +78,8 @@ pub struct DebugPage {
     pub eta_kind: String,
     pub pico_drift: f64,
     pub pico_drift_label: String,
+    pub pico_overhead_secs: f64,
+    pub pico_overhead_label: String,
     pub graph_svg: String,
     pub debug_dir_bytes: u64,
     pub debug_dir_label: String,
@@ -185,13 +187,14 @@ pub fn is_hex_checksum(s: &str) -> bool {
 }
 
 pub fn page_from_polls(polls: &[Poll], tz: Tz, has_frame: impl Fn(&str) -> bool) -> DebugPage {
-    page_from_polls_with_drift(polls, tz, 0.0, 1, 0, has_frame)
+    page_from_polls_with_drift(polls, tz, 0.0, 0.0, 1, 0, has_frame)
 }
 
 pub fn page_from_polls_with_drift(
     polls: &[Poll],
     tz: Tz,
     pico_drift: f64,
+    pico_overhead_secs: f64,
     page: usize,
     dir_bytes: u64,
     has_frame: impl Fn(&str) -> bool,
@@ -200,6 +203,7 @@ pub fn page_from_polls_with_drift(
         polls,
         tz,
         pico_drift,
+        pico_overhead_secs,
         page,
         dir_bytes,
         &DebugExtras::default(),
@@ -211,6 +215,7 @@ pub fn page_from_polls_full(
     polls: &[Poll],
     tz: Tz,
     pico_drift: f64,
+    pico_overhead_secs: f64,
     page: usize,
     dir_bytes: u64,
     extras: &DebugExtras,
@@ -242,6 +247,8 @@ pub fn page_from_polls_full(
             eta_kind: "empty".into(),
             pico_drift: 0.0,
             pico_drift_label: String::new(),
+            pico_overhead_secs: 0.0,
+            pico_overhead_label: String::new(),
             graph_svg: String::new(),
             debug_dir_bytes: dir_bytes,
             debug_dir_label,
@@ -254,7 +261,8 @@ pub fn page_from_polls_full(
     }
 
     let last = polls.last().unwrap();
-    let (next_refresh, next_refresh_rel) = next_refresh_copy(last, now, tz, pico_drift);
+    let (next_refresh, next_refresh_rel) =
+        next_refresh_copy(last, now, tz, pico_drift, pico_overhead_secs);
     let skip = (page - 1) * POLLS_PER_PAGE;
     let empty_mv = extras.cell.empty_mv;
 
@@ -282,6 +290,8 @@ pub fn page_from_polls_full(
         eta_kind: battery.eta_kind.clone(),
         pico_drift,
         pico_drift_label: pico_drift_label(pico_drift),
+        pico_overhead_secs,
+        pico_overhead_label: pico_overhead_label(pico_overhead_secs),
         graph_svg: graph_svg(polls, extras.cell, battery.eta_seconds),
         debug_dir_bytes: dir_bytes,
         debug_dir_label,
@@ -339,14 +349,21 @@ fn format_when(t: DateTime<Utc>, tz: Tz) -> String {
     t.with_timezone(&tz).format("%a %-d %b, %H:%M").to_string()
 }
 
-fn next_refresh_copy(last: &Poll, now: DateTime<Utc>, tz: Tz, pico_drift: f64) -> (String, String) {
+fn next_refresh_copy(
+    last: &Poll,
+    now: DateTime<Utc>,
+    tz: Tz,
+    pico_drift: f64,
+    pico_overhead_secs: f64,
+) -> (String, String) {
     let at = if let Some(wake_at) = last.wake_at {
         wake_at
     } else {
         if last.sleep_s == 0 {
             return (String::new(), String::new());
         }
-        let wall = crate::schedule::wall_secs_from_commanded(last.sleep_s, pico_drift);
+        let wall =
+            crate::schedule::wall_secs_from_commanded(last.sleep_s, pico_drift, pico_overhead_secs);
         last.t + Duration::seconds(i64::try_from(wall).unwrap_or(i64::MAX))
     };
     (format_when(at, tz), format_until(at, now))
@@ -361,6 +378,14 @@ fn pico_drift_label(drift: f64) -> String {
         format!("{pct:.1}% slow")
     } else {
         format!("{:.1}% fast", -pct)
+    }
+}
+
+fn pico_overhead_label(secs: f64) -> String {
+    if secs < 0.5 {
+        String::new()
+    } else {
+        format!("{:.0}s wake", secs.round())
     }
 }
 
@@ -851,7 +876,9 @@ mod tests {
         let mut polls = vec![poll_at(60, 78, false, 204, "deadbeef")];
         polls[0].sleep_s = 3495; // 3600 wall-clock seconds at 3% slow
         let page =
-            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.03, 1, 0, |_| true);
+            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.03, 0.0, 1, 0, |_| {
+                true
+            });
         assert!(
             page.next_refresh.contains("15:00"),
             "got {}",
@@ -859,6 +886,8 @@ mod tests {
         );
         assert_eq!(page.pico_drift, 0.03);
         assert_eq!(page.pico_drift_label, "3.0% slow");
+        assert_eq!(page.pico_overhead_secs, 0.0);
+        assert_eq!(page.pico_overhead_label, "");
     }
 
     #[test]
@@ -904,7 +933,9 @@ mod tests {
             .map(|i| poll_at(i as i64, i as u16, false, 200, "aa"))
             .collect();
         let page =
-            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 1, 0, |_| false);
+            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 0.0, 1, 0, |_| {
+                false
+            });
         assert_eq!(page.poll_count, 21);
         assert_eq!(page.page, 1);
         assert_eq!(page.page_count, 2);
@@ -913,13 +944,17 @@ mod tests {
         assert_eq!(page.polls[19].mv, 3300 + 1 * 9);
 
         let page2 =
-            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 2, 0, |_| false);
+            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 0.0, 2, 0, |_| {
+                false
+            });
         assert_eq!(page2.page, 2);
         assert_eq!(page2.polls.len(), 1);
         assert_eq!(page2.polls[0].mv, 3300);
 
         let clamped =
-            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 99, 0, |_| false);
+            page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.0, 0.0, 99, 0, |_| {
+                false
+            });
         assert_eq!(clamped.page, 2);
         assert_eq!(clamped.polls.len(), 1);
     }
@@ -947,6 +982,7 @@ mod tests {
         let page = page_from_polls_with_drift(
             &log.snapshot().await,
             chrono_tz::Europe::London,
+            0.0,
             0.0,
             1,
             n,

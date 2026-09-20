@@ -283,7 +283,8 @@ Buy list: [`shopping.md`](../shopping.md). Firmware:
 [`firmware/README.md`](../firmware/README.md). USB-serial `wifi` / `psk` /
 `server` / `save`, then `POST /api/frame.bin` and paint on 200. Sleep
 length comes back on `X-Sleep-Seconds` from that mode’s
-`poll_interval_secs` or `wake-up` (shortened by measured `pico_drift`).
+`poll_interval_secs` or `wake-up` (shortened by measured `pico_drift` and
+`pico_overhead_secs`).
 `make build` in `firmware/` and drop `family-frame.uf2` on the `RP2350`
 drive.
 

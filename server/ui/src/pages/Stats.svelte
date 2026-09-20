@@ -457,7 +457,10 @@
             <p class="debug-stat-value {driftTone}">
               {Math.abs(drift) < 0.05 ? '0%' : `${Math.abs(drift).toFixed(1)}%`}
             </p>
-            <p class="debug-stat-hint">{driftHint}</p>
+            <p class="debug-stat-hint">
+              {driftHint}{#if (page.pico_overhead_secs ?? 0) >= 1}
+                · {Math.round(page.pico_overhead_secs)}s wake{/if}
+            </p>
           </div>
           <div class="drift-gauge-wrap">
             <svg

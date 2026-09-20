@@ -29,7 +29,10 @@ poll_interval_secs = 3600
 # schedule_kind = "interval"
 # Fractional Pico timer error vs wall clock, written automatically from
 # consecutive timer polls (not buttons). Positive = woke late. Capped at ±5%.
+# A second value, pico_overhead_secs, is the roughly-fixed time to boot, join
+# Wi-Fi, fetch, and paint — fitted together with drift when sleep lengths vary.
 # pico_drift = 0.0
+# pico_overhead_secs = 0
 # 1S LiPo nameplate and the VSYS millivolts treated as 0% usable.
 # battery_mah = 10000
 # battery_empty_mv = 3300
