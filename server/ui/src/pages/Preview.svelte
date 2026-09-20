@@ -65,7 +65,7 @@
   function openRaster() {
     rasterError = ''
     rasterLoading = true
-    rasterSrc = `/api/frame-dither.png?v=${Date.now()}`
+    rasterSrc = `/api/frame-dither.png?fresh=1&v=${Date.now()}`
     rasterOpen = true
   }
 

@@ -1999,10 +1999,19 @@ mod tests {
 
     #[test]
     fn week_darkens_pronote_hex_and_uses_white_ink() {
-        assert_eq!(chip_colours("#8000FF"), ("#40007F".into(), "#ffffff".into()));
+        assert_eq!(
+            chip_colours("#8000FF"),
+            ("#40007F".into(), "#ffffff".into())
+        );
         assert_eq!(chip_colours("AaBbCc"), ("#555D66".into(), "#ffffff".into()));
-        assert_eq!(chip_colours("  #ff8080  "), ("#7F4040".into(), "#ffffff".into()));
-        assert_eq!(chip_colours("#FFFF00"), ("#7F7F00".into(), "#ffffff".into()));
+        assert_eq!(
+            chip_colours("  #ff8080  "),
+            ("#7F4040".into(), "#ffffff".into())
+        );
+        assert_eq!(
+            chip_colours("#FFFF00"),
+            ("#7F7F00".into(), "#ffffff".into())
+        );
         let monday = NaiveDate::from_ymd_opt(2026, 9, 14).unwrap();
         let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
         let week = school_week(

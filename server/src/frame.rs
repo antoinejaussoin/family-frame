@@ -184,6 +184,18 @@ impl FrameCache {
         .await
     }
 
+    /// Layout simulator: always reload sources and re-run Chrome on the
+    /// dashboard, even if the frame is currently showing a picture.
+    pub async fn current_dashboard_reraster(&self) -> Result<Frame> {
+        *self.inner.lock().await = None;
+        let cfg = self.cfg.read().await.clone();
+        let (interval, _) = cfg.schedule(FrameMode::Dashboard);
+        let mode_key = format!("dashboard:{interval}");
+        info!("preview raster — rebuilding dashboard from live sources");
+        self.current_dashboard(&cfg, &mode_key, true, DASHBOARD_CACHE_MAX_AGE)
+            .await
+    }
+
     /// Button wake: same live rebuild; HTTP also drops the Meross room TTL.
     pub async fn current_for_pico_fresh(&self) -> Result<Frame> {
         *self.inner.lock().await = None;
@@ -296,7 +308,7 @@ impl FrameCache {
             }
         }
         if bypass_cache {
-            info!("Pico poll — rebuilding dashboard from live sources");
+            info!("rebuilding dashboard from live sources");
         }
         let mut dash = sources::load_dashboard(cfg).await?;
         let refresh_until = self.stamp_status(cfg, &mut dash).await;
@@ -497,7 +509,12 @@ impl FrameCache {
         content_hash: String,
         refresh_until: chrono::DateTime<Utc>,
     ) -> Result<Frame> {
-        let png = self.capture_panel("/dashboard?raster=1").await?;
+        let png = self
+            .capture_panel(&format!(
+                "/dashboard?raster=1&n={}",
+                Utc::now().timestamp_millis()
+            ))
+            .await?;
         let bin = pack::pack_png_to_spectra6(&png)?;
         let preview_png = pack::unpack_preview_png(&bin)?;
         let checksum = sha256_hex(&bin);
