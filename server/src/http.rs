@@ -181,6 +181,7 @@ async fn get_debug(
         &polls,
         cfg.tz(),
         cfg.pico_drift,
+        cfg.pico_overhead_secs,
         q.page.unwrap_or(1),
         state.debug.dir_bytes(),
         &DebugExtras {
@@ -474,10 +475,11 @@ async fn frame_bin_post(
         .cache
         .note_pico_battery(battery::soc_pct(tel.mv, cfg.battery_cell().empty_mv))
         .await;
+    let assigned = assigned_wake_from_telemetry(&tel.wake, tel.wake_at.as_deref());
     let frame_result = if fresh {
         state.cache.current_for_pico_fresh().await
     } else {
-        state.cache.current_for_pico().await
+        state.cache.current_for_pico(assigned).await
     };
     match frame_result {
         Ok(frame) => {
@@ -601,7 +603,13 @@ async fn public_settings(state: &AppState) -> crate::config::PublicSettings {
     let cfg = state.cache.snapshot_config().await;
     let polls = state.debug.snapshot().await;
     let assigned = polls.last().and_then(|p| {
-        crate::schedule::assigned_wake_from_poll(p.wake_at, p.t, p.sleep_s, cfg.pico_drift)
+        crate::schedule::assigned_wake_from_poll(
+            p.wake_at,
+            p.t,
+            p.sleep_s,
+            cfg.pico_drift,
+            cfg.pico_overhead_secs,
+        )
     });
     cfg.public_settings_for_assigned_wake(Utc::now(), assigned)
 }
@@ -614,6 +622,14 @@ async fn pico_sleep_secs(state: &AppState) -> u64 {
         .pico_sleep_secs(Utc::now())
 }
 
+fn assigned_wake_from_telemetry(wake: &str, reported_slot: Option<&str>) -> Option<DateTime<Utc>> {
+    if crate::schedule::is_timer_wake(wake) {
+        reported_slot.and_then(crate::schedule::parse_wake_at_slot)
+    } else {
+        None
+    }
+}
+
 async fn pico_sleep_plan_for_wake(
     state: &AppState,
     wake: &str,
@@ -621,12 +637,7 @@ async fn pico_sleep_plan_for_wake(
     now: DateTime<Utc>,
 ) -> (u64, DateTime<Utc>) {
     let cfg = state.cache.snapshot_config().await;
-    let assigned = if crate::schedule::is_timer_wake(wake) {
-        reported_slot.and_then(crate::schedule::parse_wake_at_slot)
-    } else {
-        None
-    };
-    cfg.pico_sleep_plan(now, assigned)
+    cfg.pico_sleep_plan(now, assigned_wake_from_telemetry(wake, reported_slot))
 }
 
 async fn update_pico_drift(state: &AppState, tel: &PicoTelemetry) {
@@ -634,41 +645,62 @@ async fn update_pico_drift(state: &AppState, tel: &PicoTelemetry) {
     let Some(prev) = polls.last() else {
         return;
     };
-    match crate::schedule::drift_between_polls(
+    let now = Utc::now();
+    match crate::schedule::timing_between_polls(
         &prev.wake,
         prev.usb,
         prev.sleep_s,
         prev.t,
         &tel.wake,
         tel.usb != 0,
-        Utc::now(),
+        now,
     ) {
-        crate::schedule::DriftSample::Skip => {}
-        crate::schedule::DriftSample::OutOfRange {
-            asked,
-            elapsed,
-            drift,
-        } => {
+        crate::schedule::TimingPair::Skip => {}
+        crate::schedule::TimingPair::OutOfRange { asked, elapsed } => {
             tracing::warn!(
                 asked,
                 elapsed,
-                drift,
-                "pico sleep drift exceeds 5%; leaving pico_drift unchanged"
+                "pico sleep gap exceeds drift+overhead envelope; leaving timing unchanged"
             );
         }
-        crate::schedule::DriftSample::Measured(measured) => {
+        crate::schedule::TimingPair::Sample { asked, elapsed } => {
+            let mut samples = Vec::new();
+            for window in polls.windows(2) {
+                if let crate::schedule::TimingPair::Sample { asked, elapsed } =
+                    crate::schedule::timing_between_polls(
+                        &window[0].wake,
+                        window[0].usb,
+                        window[0].sleep_s,
+                        window[0].t,
+                        &window[1].wake,
+                        window[1].usb,
+                        window[1].t,
+                    )
+                {
+                    samples.push((asked, elapsed));
+                }
+            }
+            samples.push((asked, elapsed));
+            crate::schedule::keep_recent_timing_samples(&mut samples);
             let cfg_lock = state.cache.config();
             let mut cfg = cfg_lock.write().await;
-            match cfg.record_pico_drift(measured) {
+            let Some(measured) = crate::schedule::fit_pico_timing(&samples, cfg.pico_timing())
+            else {
+                return;
+            };
+            match cfg.record_pico_timing(measured) {
                 Ok(true) => {
                     tracing::info!(
-                        measured,
-                        stored = cfg.pico_drift,
-                        "updated pico_drift from timer polls"
+                        samples = samples.len(),
+                        measured_drift = measured.drift,
+                        measured_overhead = measured.overhead_secs,
+                        stored_drift = cfg.pico_drift,
+                        stored_overhead = cfg.pico_overhead_secs,
+                        "updated pico timing from timer polls"
                     );
                 }
                 Ok(false) => {}
-                Err(err) => tracing::warn!(%err, "could not persist pico_drift"),
+                Err(err) => tracing::warn!(%err, "could not persist pico timing"),
             }
         }
     }

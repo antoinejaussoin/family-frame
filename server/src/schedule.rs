@@ -102,6 +102,16 @@ impl WeeklyWakes {
 /// Bigger gaps usually mean a button wake, USB wait, or a missed poll.
 pub const MAX_PICO_DRIFT: f64 = 0.05;
 
+/// Largest stored wake overhead (boot, Wi-Fi, fetch, panel write), seconds.
+/// Independent of how long the Pico slept.
+pub const MAX_PICO_OVERHEAD_SECS: f64 = 180.0;
+
+/// Recent timer-to-timer intervals used to fit drift and overhead together.
+pub const PICO_TIMING_SAMPLE_LIMIT: usize = 24;
+
+/// Sleep lengths must differ by at least this much to separate slope from intercept.
+const MIN_SLEEP_SPREAD_SECS: f64 = 900.0;
+
 /// Seconds until the Pico should poll again.
 ///
 /// An empty week uses `interval_secs`. Otherwise the next clock time strictly
@@ -169,6 +179,24 @@ pub fn next_poll_at_for_timer(
     next_poll_at(now, tz, interval_secs, wake_ups)
 }
 
+/// Last/next instants painted on the dashboard for this contact.
+///
+/// Last is always the arrival time. Next uses the same slot-linking rule as
+/// [`next_poll_at_for_timer`]: a timer poll serving `assigned_wake` skips
+/// that slot, so 06:57 serving 07:00 paints `06:57 → 10:00`.
+pub fn refresh_window(
+    now: DateTime<Utc>,
+    tz: Tz,
+    interval_secs: u64,
+    wake_ups: &WeeklyWakes,
+    assigned_wake: Option<DateTime<Utc>>,
+) -> (DateTime<Utc>, DateTime<Utc>) {
+    (
+        now,
+        next_poll_at_for_timer(now, tz, interval_secs, wake_ups, assigned_wake),
+    )
+}
+
 /// Seconds from `now` to `at`, at least 1.
 pub fn secs_until(now: DateTime<Utc>, at: DateTime<Utc>) -> u64 {
     let secs = at.signed_duration_since(now).num_seconds();
@@ -203,8 +231,9 @@ pub fn assigned_wake_from_poll(
     prev_at: DateTime<Utc>,
     prev_sleep_s: u64,
     drift: f64,
+    overhead_secs: f64,
 ) -> Option<DateTime<Utc>> {
-    wake_at.or_else(|| intended_wake_at(prev_at, prev_sleep_s, drift))
+    wake_at.or_else(|| intended_wake_at(prev_at, prev_sleep_s, drift, overhead_secs))
 }
 
 /// Expected wall-clock wake from a previous `X-Sleep-Seconds` command.
@@ -212,11 +241,12 @@ pub fn intended_wake_at(
     prev_at: DateTime<Utc>,
     prev_sleep_s: u64,
     drift: f64,
+    overhead_secs: f64,
 ) -> Option<DateTime<Utc>> {
     if prev_sleep_s == 0 {
         return None;
     }
-    let wall = wall_secs_from_commanded(prev_sleep_s, drift);
+    let wall = wall_secs_from_commanded(prev_sleep_s, drift, overhead_secs);
     Some(instant_after(prev_at, wall))
 }
 
@@ -265,6 +295,35 @@ pub enum DriftSample {
     },
 }
 
+/// Fitted `elapsed ≈ (1 + drift) * asked + overhead_secs`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PicoTiming {
+    pub drift: f64,
+    pub overhead_secs: f64,
+}
+
+impl PicoTiming {
+    pub const ZERO: Self = Self {
+        drift: 0.0,
+        overhead_secs: 0.0,
+    };
+}
+
+/// Whether a timer-to-timer interval can enter the two-parameter fit.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TimingPair {
+    Skip,
+    Sample {
+        asked: f64,
+        elapsed: f64,
+    },
+    /// Gap too large even after allowing [`MAX_PICO_OVERHEAD_SECS`].
+    OutOfRange {
+        asked: u64,
+        elapsed: i64,
+    },
+}
+
 pub fn is_timer_wake(wake: &str) -> bool {
     wake.eq_ignore_ascii_case("timer")
 }
@@ -291,7 +350,65 @@ pub fn drift_between_polls(
     measure_pico_drift(prev_sleep_s, elapsed)
 }
 
+/// Timer-to-timer interval for the slope/intercept fit.
+///
+/// Unlike [`drift_between_polls`], a few extra seconds of boot/Wi-Fi/fetch
+/// are expected and do not reject the sample.
+pub fn timing_between_polls(
+    prev_wake: &str,
+    prev_usb: bool,
+    prev_sleep_s: u64,
+    prev_at: DateTime<Utc>,
+    wake: &str,
+    usb: bool,
+    now: DateTime<Utc>,
+) -> TimingPair {
+    if !is_timer_wake(wake) || !is_timer_wake(prev_wake) || usb || prev_usb || prev_sleep_s == 0 {
+        return TimingPair::Skip;
+    }
+    let elapsed = now.signed_duration_since(prev_at).num_seconds();
+    if elapsed <= 0 {
+        return TimingPair::Skip;
+    }
+    match timing_sample(prev_sleep_s, elapsed) {
+        Some((asked, elapsed_f)) => TimingPair::Sample {
+            asked,
+            elapsed: elapsed_f,
+        },
+        None => TimingPair::OutOfRange {
+            asked: prev_sleep_s,
+            elapsed,
+        },
+    }
+}
+
+/// Keep the most recent [`PICO_TIMING_SAMPLE_LIMIT`] intervals.
+pub fn keep_recent_timing_samples(samples: &mut Vec<(f64, f64)>) {
+    if samples.len() > PICO_TIMING_SAMPLE_LIMIT {
+        let drop = samples.len() - PICO_TIMING_SAMPLE_LIMIT;
+        samples.drain(..drop);
+    }
+}
+
+/// An `(asked, elapsed)` point inside the physical envelope of drift + overhead.
+pub fn timing_sample(asked_secs: u64, elapsed_secs: i64) -> Option<(f64, f64)> {
+    if asked_secs == 0 || elapsed_secs <= 0 {
+        return None;
+    }
+    let x = asked_secs as f64;
+    let y = elapsed_secs as f64;
+    let min_y = x * (1.0 - MAX_PICO_DRIFT);
+    let max_y = x * (1.0 + MAX_PICO_DRIFT) + MAX_PICO_OVERHEAD_SECS;
+    if y < min_y || y > max_y {
+        return None;
+    }
+    Some((x, y))
+}
+
 /// Fractional error of a completed sleep: `(elapsed - asked) / asked`.
+///
+/// Live updates use [`fit_pico_timing`] instead, so a fixed wake overhead is
+/// not mistaken for oscillator error.
 pub fn measure_pico_drift(asked_secs: u64, elapsed_secs: i64) -> DriftSample {
     if asked_secs == 0 || elapsed_secs <= 0 {
         return DriftSample::Skip;
@@ -310,6 +427,75 @@ pub fn measure_pico_drift(asked_secs: u64, elapsed_secs: i64) -> DriftSample {
     DriftSample::Measured(drift)
 }
 
+/// Ordinary least squares: `elapsed = (1 + drift) * asked + overhead`.
+///
+/// Needs two sleep lengths at least [`MIN_SLEEP_SPREAD_SECS`] apart. Otherwise
+/// only drift is updated, using `prior.overhead_secs` as the intercept.
+pub fn fit_pico_timing(samples: &[(f64, f64)], prior: PicoTiming) -> Option<PicoTiming> {
+    if samples.is_empty() {
+        return None;
+    }
+    let min_x = samples.iter().map(|s| s.0).fold(f64::INFINITY, f64::min);
+    let max_x = samples.iter().map(|s| s.0).fold(0.0_f64, f64::max);
+    if samples.len() >= 2 && (max_x - min_x) >= MIN_SLEEP_SPREAD_SECS {
+        if let Some(fit) = fit_slope_intercept(samples) {
+            return Some(round_pico_timing(fit));
+        }
+    }
+    let b = clamp_pico_overhead(prior.overhead_secs);
+    let mut sum = 0.0;
+    let mut n = 0.0;
+    for &(x, y) in samples {
+        let d = (y - b) / x - 1.0;
+        if d.is_finite() && d.abs() <= MAX_PICO_DRIFT {
+            sum += d;
+            n += 1.0;
+        }
+    }
+    if n < 1.0 {
+        return None;
+    }
+    Some(round_pico_timing(PicoTiming {
+        drift: sum / n,
+        overhead_secs: b,
+    }))
+}
+
+fn fit_slope_intercept(samples: &[(f64, f64)]) -> Option<PicoTiming> {
+    let n = samples.len() as f64;
+    let sum_x: f64 = samples.iter().map(|s| s.0).sum();
+    let sum_y: f64 = samples.iter().map(|s| s.1).sum();
+    let sum_xx: f64 = samples.iter().map(|s| s.0 * s.0).sum();
+    let sum_xy: f64 = samples.iter().map(|s| s.0 * s.1).sum();
+    let denom = n * sum_xx - sum_x * sum_x;
+    if denom.abs() < 1e-6 {
+        return None;
+    }
+    let a = (n * sum_xy - sum_x * sum_y) / denom;
+    let b = (sum_y - a * sum_x) / n;
+    if !a.is_finite() || !b.is_finite() {
+        return None;
+    }
+    let b = clamp_pico_overhead(b);
+    let mut sum_x_yb = 0.0;
+    let mut sum_xx = 0.0;
+    for &(x, y) in samples {
+        sum_x_yb += x * (y - b);
+        sum_xx += x * x;
+    }
+    if sum_xx < 1e-6 {
+        return None;
+    }
+    let drift = sum_x_yb / sum_xx - 1.0;
+    if !drift.is_finite() || drift.abs() > MAX_PICO_DRIFT {
+        return None;
+    }
+    Some(PicoTiming {
+        drift: clamp_pico_drift(drift),
+        overhead_secs: b,
+    })
+}
+
 pub fn clamp_pico_drift(drift: f64) -> f64 {
     if !drift.is_finite() {
         0.0
@@ -318,9 +504,29 @@ pub fn clamp_pico_drift(drift: f64) -> f64 {
     }
 }
 
+pub fn clamp_pico_overhead(secs: f64) -> f64 {
+    if !secs.is_finite() {
+        0.0
+    } else {
+        secs.clamp(0.0, MAX_PICO_OVERHEAD_SECS)
+    }
+}
+
 /// Round to 0.01 percentage points so config.toml stays stable.
 pub fn round_pico_drift(drift: f64) -> f64 {
     (clamp_pico_drift(drift) * 10_000.0).round() / 10_000.0
+}
+
+/// Round to whole seconds; POWMAN sleep is 1 s resolution.
+pub fn round_pico_overhead(secs: f64) -> f64 {
+    clamp_pico_overhead(secs).round()
+}
+
+pub fn round_pico_timing(timing: PicoTiming) -> PicoTiming {
+    PicoTiming {
+        drift: round_pico_drift(timing.drift),
+        overhead_secs: round_pico_overhead(timing.overhead_secs),
+    }
 }
 
 /// First sample replaces zero; later samples are averaged so one slow Wi-Fi
@@ -334,21 +540,42 @@ pub fn blend_pico_drift(stored: f64, measured: f64) -> f64 {
     round_pico_drift(0.5 * stored + 0.5 * measured)
 }
 
+pub fn blend_pico_overhead(stored: f64, measured: f64) -> f64 {
+    let measured = clamp_pico_overhead(measured);
+    let stored = clamp_pico_overhead(stored);
+    if stored < 0.5 {
+        return round_pico_overhead(measured);
+    }
+    round_pico_overhead(0.5 * stored + 0.5 * measured)
+}
+
+pub fn blend_pico_timing(stored: PicoTiming, measured: PicoTiming) -> PicoTiming {
+    PicoTiming {
+        drift: blend_pico_drift(stored.drift, measured.drift),
+        overhead_secs: blend_pico_overhead(stored.overhead_secs, measured.overhead_secs),
+    }
+}
+
 /// Shorten (or lengthen) the POWMAN sleep so wall-clock arrival matches `target_secs`.
-pub fn compensate_sleep_secs(target_secs: u64, drift: f64) -> u64 {
-    let target = target_secs.max(1) as f64;
+///
+/// `overhead_secs` is subtracted first (boot / Wi-Fi / fetch / panel write),
+/// then the remainder is scaled by the oscillator error.
+pub fn compensate_sleep_secs(target_secs: u64, drift: f64, overhead_secs: f64) -> u64 {
+    let overhead = clamp_pico_overhead(overhead_secs);
+    let target = (target_secs.max(1) as f64 - overhead).max(1.0);
     let factor = 1.0 + clamp_pico_drift(drift);
     if factor <= 0.5 {
-        return target_secs.max(1);
+        return target.round().max(1.0) as u64;
     }
     (target / factor).round().max(1.0) as u64
 }
 
 /// Expand a commanded POWMAN sleep back to expected wall-clock seconds.
-pub fn wall_secs_from_commanded(commanded_secs: u64, drift: f64) -> u64 {
+pub fn wall_secs_from_commanded(commanded_secs: u64, drift: f64, overhead_secs: f64) -> u64 {
     let commanded = commanded_secs.max(1) as f64;
     let factor = 1.0 + clamp_pico_drift(drift);
-    (commanded * factor).round().max(1.0) as u64
+    let overhead = clamp_pico_overhead(overhead_secs);
+    (commanded * factor + overhead).round().max(1.0) as u64
 }
 
 #[cfg(test)]
@@ -506,9 +733,9 @@ mod tests {
             measure_pico_drift(3600, 3720),
             DriftSample::Measured(120.0 / 3600.0)
         );
-        assert_eq!(compensate_sleep_secs(3600, 120.0 / 3600.0), 3484);
+        assert_eq!(compensate_sleep_secs(3600, 120.0 / 3600.0, 0.0), 3484);
         assert_eq!(
-            wall_secs_from_commanded(compensate_sleep_secs(3600, 0.03), 0.03),
+            wall_secs_from_commanded(compensate_sleep_secs(3600, 0.03, 0.0), 0.03, 0.0),
             3600
         );
     }
@@ -537,21 +764,77 @@ mod tests {
 
     #[test]
     fn compensate_clamps_and_never_returns_zero() {
-        assert_eq!(compensate_sleep_secs(3600, 0.0), 3600);
+        assert_eq!(compensate_sleep_secs(3600, 0.0, 0.0), 3600);
         assert_eq!(
-            compensate_sleep_secs(3600, 0.2),
-            compensate_sleep_secs(3600, 0.05)
+            compensate_sleep_secs(3600, 0.2, 0.0),
+            compensate_sleep_secs(3600, 0.05, 0.0)
         );
-        assert_eq!(compensate_sleep_secs(3600, f64::NAN), 3600);
-        assert_eq!(compensate_sleep_secs(0, 0.03), 1);
+        assert_eq!(compensate_sleep_secs(3600, f64::NAN, 0.0), 3600);
+        assert_eq!(compensate_sleep_secs(0, 0.03, 0.0), 1);
         // Clock runs fast: ask for a longer POWMAN nap.
-        assert_eq!(compensate_sleep_secs(3600, -0.05), 3789);
+        assert_eq!(compensate_sleep_secs(3600, -0.05, 0.0), 3789);
     }
 
     #[test]
     fn blend_uses_first_sample_then_averages() {
         assert_eq!(blend_pico_drift(0.0, 0.0333), 0.0333);
         assert_eq!(blend_pico_drift(0.02, 0.04), 0.03);
+        assert_eq!(blend_pico_overhead(0.0, 22.4), 22.0);
+        assert_eq!(blend_pico_overhead(20.0, 30.0), 25.0);
+    }
+
+    #[test]
+    fn fit_separates_drift_from_fixed_wake_overhead() {
+        // elapsed = 1.03 * asked + 20
+        let samples = [
+            (180.0, 1.03 * 180.0 + 20.0),
+            (10_800.0, 1.03 * 10_800.0 + 20.0),
+        ];
+        let fit = fit_pico_timing(&samples, PicoTiming::ZERO).unwrap();
+        assert!((fit.drift - 0.03).abs() < 0.001, "drift {}", fit.drift);
+        assert!(
+            (fit.overhead_secs - 20.0).abs() < 1.0,
+            "overhead {}",
+            fit.overhead_secs
+        );
+    }
+
+    #[test]
+    fn fit_keeps_overhead_when_sleeps_are_the_same_length() {
+        let samples = [(3600.0, 3720.0), (3600.0, 3710.0)];
+        let fit = fit_pico_timing(&samples, PicoTiming::ZERO).unwrap();
+        assert_eq!(fit.overhead_secs, 0.0);
+        assert!((fit.drift - (115.0 / 3600.0)).abs() < 0.001);
+        let prior = PicoTiming {
+            drift: 0.03,
+            overhead_secs: 20.0,
+        };
+        let fit = fit_pico_timing(&samples, prior).unwrap();
+        assert_eq!(fit.overhead_secs, 20.0);
+        // (3720-20)/3600 - 1 and (3710-20)/3600 - 1
+        let mean = ((3700.0 / 3600.0 - 1.0) + (3690.0 / 3600.0 - 1.0)) / 2.0;
+        assert_eq!(fit.drift, round_pico_drift(mean));
+    }
+
+    #[test]
+    fn short_sleep_with_overhead_is_a_valid_timing_sample() {
+        // Old 1-parameter model treated 20s extra on a 3-minute nap as 11% drift.
+        assert!(matches!(
+            measure_pico_drift(180, 200),
+            DriftSample::OutOfRange { .. }
+        ));
+        assert_eq!(timing_sample(180, 200), Some((180.0, 200.0)));
+        assert_eq!(timing_sample(3600, 1800), None);
+        assert!(timing_sample(3600, 3961).is_none());
+        assert!(timing_sample(3600, 3700).is_some());
+    }
+
+    #[test]
+    fn compensate_subtracts_wake_overhead_then_scales_drift() {
+        assert_eq!(compensate_sleep_secs(3600, 0.0, 20.0), 3580);
+        let commanded = compensate_sleep_secs(3600, 0.03, 20.0);
+        assert_eq!(wall_secs_from_commanded(commanded, 0.03, 20.0), 3600);
+        assert_eq!(compensate_sleep_secs(15, 0.0, 40.0), 1);
     }
 
     #[test]
@@ -691,11 +974,11 @@ mod tests {
     #[test]
     fn intended_wake_undoes_compensated_sleep() {
         let prev = at_london(2026, 9, 16, 12, 0, 0);
-        let commanded = compensate_sleep_secs(3600, 0.03);
-        let intended = intended_wake_at(prev, commanded, 0.03).unwrap();
+        let commanded = compensate_sleep_secs(3600, 0.03, 0.0);
+        let intended = intended_wake_at(prev, commanded, 0.03, 0.0).unwrap();
         assert_eq!(intended, at_london(2026, 9, 16, 13, 0, 0));
         assert_eq!(
-            assigned_wake_from_poll(Some(intended), prev, commanded, 0.0),
+            assigned_wake_from_poll(Some(intended), prev, commanded, 0.0, 0.0),
             Some(intended)
         );
     }
@@ -788,6 +1071,44 @@ mod tests {
         assert_eq!(
             seconds_until_next_poll_for_timer(now, london(), 3600, &wakes, None),
             20
+        );
+    }
+
+    #[test]
+    fn refresh_window_early_timer_skips_the_assigned_slot() {
+        // 06:57 serving 07:00 must read "06:57 → 10:00", not "06:57 → 07:00".
+        let now = at_london(2026, 9, 20, 6, 57, 0);
+        let assigned = at_london(2026, 9, 20, 7, 0, 0);
+        let wakes = daily(&["07:00", "10:00"]);
+        assert_eq!(
+            refresh_window(now, london(), 3600, &wakes, Some(assigned)),
+            (now, at_london(2026, 9, 20, 10, 0, 0))
+        );
+        assert_eq!(
+            refresh_window(now, london(), 3600, &wakes, None),
+            (now, assigned)
+        );
+    }
+
+    #[test]
+    fn refresh_window_late_timer_still_skips_the_assigned_slot() {
+        let now = at_london(2026, 9, 20, 7, 5, 0);
+        let assigned = at_london(2026, 9, 20, 7, 0, 0);
+        let wakes = daily(&["07:00", "10:00"]);
+        assert_eq!(
+            refresh_window(now, london(), 3600, &wakes, Some(assigned)),
+            (now, at_london(2026, 9, 20, 10, 0, 0))
+        );
+    }
+
+    #[test]
+    fn refresh_window_missed_cycle_paints_arrival_time() {
+        let now = at_london(2026, 9, 20, 10, 5, 0);
+        let assigned = at_london(2026, 9, 20, 7, 0, 0);
+        let wakes = daily(&["07:00", "10:00", "13:00"]);
+        assert_eq!(
+            refresh_window(now, london(), 3600, &wakes, Some(assigned)),
+            (now, at_london(2026, 9, 20, 13, 0, 0))
         );
     }
 

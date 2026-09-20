@@ -116,10 +116,14 @@ pub struct Config {
     /// Which stored schedule is active. Omitted: `times` if `wake-up` is non-empty.
     #[serde(default, alias = "schedule-kind")]
     pub schedule_kind: Option<ScheduleKind>,
-    /// Fractional Pico timer error vs wall clock (`(elapsed - asked) / asked`).
+    /// Fractional Pico timer error vs wall clock (`elapsed ≈ (1+drift)*asked + overhead`).
     /// Positive = woke late. Written automatically from timer polls; capped at ±5%.
     #[serde(default)]
     pub pico_drift: f64,
+    /// Fixed seconds added to every wake (boot, Wi-Fi, fetch, panel write).
+    /// Independent of sleep length. Written with [`Self::pico_drift`].
+    #[serde(default)]
+    pub pico_overhead_secs: f64,
     /// Nameplate of the 1S LiPo pouch (mAh). Used for remaining-energy math.
     #[serde(default = "default_battery_mah")]
     pub battery_mah: u32,
@@ -303,6 +307,7 @@ impl Default for Config {
             wake_up: WeeklyWakes::EMPTY,
             schedule_kind: None,
             pico_drift: 0.0,
+            pico_overhead_secs: 0.0,
             battery_mah: DEFAULT_CAPACITY_MAH,
             battery_empty_mv: DEFAULT_EMPTY_MV,
             chrome_path: String::new(),
@@ -533,6 +538,8 @@ pub struct PublicSettings {
     pub next_sleep_secs: Option<u64>,
     /// Auto-measured Pico timer error (fraction). See [`Config::pico_drift`].
     pub pico_drift: f64,
+    /// Auto-measured fixed wake overhead in seconds. See [`Config::pico_overhead_secs`].
+    pub pico_overhead_secs: f64,
     pub rotate: Vec<String>,
 }
 
@@ -611,6 +618,7 @@ impl Config {
             .to_path_buf();
         cfg.config_path = Some(path.to_path_buf());
         cfg.pico_drift = crate::schedule::clamp_pico_drift(cfg.pico_drift);
+        cfg.pico_overhead_secs = crate::schedule::clamp_pico_overhead(cfg.pico_overhead_secs);
         cfg.battery_mah = cfg.battery_mah.max(1);
         cfg.battery_empty_mv = cfg.battery_empty_mv.clamp(2500, 4000);
         cfg.materialize_pictures_schedule();
@@ -781,6 +789,7 @@ impl Config {
                 u64::try_from(at.signed_duration_since(now).num_seconds().max(0)).unwrap_or(0)
             }),
             pico_drift: self.pico_drift,
+            pico_overhead_secs: self.pico_overhead_secs,
             rotate: self.pictures.rotate.clone(),
         }
     }
@@ -957,7 +966,7 @@ impl Config {
         doc["poll_interval_secs"] = Item::Value(Value::from(dash.interval_secs as i64));
         write_wake_key(doc.as_table_mut(), "wake-up", dash.wake_up);
         doc["schedule_kind"] = Item::Value(Value::from(dash.kind.as_str()));
-        write_pico_drift(&mut doc, self.pico_drift);
+        write_pico_timing(&mut doc, self.pico_drift, self.pico_overhead_secs);
         persist_household_sources(&mut doc, self);
 
         if !doc.as_table().contains_key("pictures") {
@@ -1022,14 +1031,27 @@ impl Config {
 
     /// Next schedule instant (clock `HH:MM` in `timezone`, or `now + interval`).
     pub fn next_poll_at(&self, now: DateTime<Utc>) -> DateTime<Utc> {
+        self.refresh_window(now, None).1
+    }
+
+    /// Last/next instants painted on the dashboard (slot-linked for a timer poll).
+    pub fn refresh_window(
+        &self,
+        now: DateTime<Utc>,
+        assigned_wake: Option<DateTime<Utc>>,
+    ) -> (DateTime<Utc>, DateTime<Utc>) {
         let (interval, wakes) = self.schedule(self.effective_mode());
-        crate::schedule::next_poll_at(now, self.tz(), interval, wakes)
+        crate::schedule::refresh_window(now, self.tz(), interval, wakes, assigned_wake)
     }
 
     /// Seconds the Pico should POWMAN-sleep after this poll, shortened if its
     /// low-power oscillator runs slow.
     pub fn pico_sleep_secs(&self, now: DateTime<Utc>) -> u64 {
-        crate::schedule::compensate_sleep_secs(self.next_poll_secs(now), self.pico_drift)
+        crate::schedule::compensate_sleep_secs(
+            self.next_poll_secs(now),
+            self.pico_drift,
+            self.pico_overhead_secs,
+        )
     }
 
     /// POWMAN sleep and wall-clock slot for a Pico POST.
@@ -1045,7 +1067,8 @@ impl Config {
         let wake_at =
             crate::schedule::next_poll_at_for_timer(now, self.tz(), interval, wakes, assigned_wake);
         let wall = crate::schedule::secs_until(now, wake_at);
-        let sleep_s = crate::schedule::compensate_sleep_secs(wall, self.pico_drift);
+        let sleep_s =
+            crate::schedule::compensate_sleep_secs(wall, self.pico_drift, self.pico_overhead_secs);
         (sleep_s, wake_at)
     }
 
@@ -1058,19 +1081,38 @@ impl Config {
         self.pico_sleep_plan(now, assigned_wake).0
     }
 
-    /// Blend a timer-poll measurement into [`Self::pico_drift`] and persist it.
-    /// Returns whether the stored value changed.
-    pub fn record_pico_drift(&mut self, measured: f64) -> Result<bool> {
-        let next = crate::schedule::blend_pico_drift(self.pico_drift, measured);
-        if (self.pico_drift - next).abs() < 5e-5 {
+    /// Blend a timer-poll fit into stored drift and overhead and persist them.
+    /// Returns whether the stored values changed.
+    pub fn record_pico_timing(&mut self, measured: crate::schedule::PicoTiming) -> Result<bool> {
+        let next = crate::schedule::blend_pico_timing(self.pico_timing(), measured);
+        let drift_same = (self.pico_drift - next.drift).abs() < 5e-5;
+        let overhead_same = (self.pico_overhead_secs - next.overhead_secs).abs() < 0.5;
+        if drift_same && overhead_same {
             return Ok(false);
         }
-        self.pico_drift = next;
-        self.persist_pico_drift()?;
+        self.pico_drift = next.drift;
+        self.pico_overhead_secs = next.overhead_secs;
+        self.persist_pico_timing()?;
         Ok(true)
     }
 
-    fn persist_pico_drift(&self) -> Result<()> {
+    pub fn pico_timing(&self) -> crate::schedule::PicoTiming {
+        crate::schedule::PicoTiming {
+            drift: self.pico_drift,
+            overhead_secs: self.pico_overhead_secs,
+        }
+    }
+
+    /// Blend a timer-poll drift sample into [`Self::pico_drift`] and persist it.
+    /// Returns whether the stored value changed.
+    pub fn record_pico_drift(&mut self, measured: f64) -> Result<bool> {
+        self.record_pico_timing(crate::schedule::PicoTiming {
+            drift: measured,
+            overhead_secs: self.pico_overhead_secs,
+        })
+    }
+
+    fn persist_pico_timing(&self) -> Result<()> {
         let Some(path) = self.config_path.as_ref() else {
             return Ok(());
         };
@@ -1079,7 +1121,7 @@ impl Config {
         let mut doc: DocumentMut = text
             .parse()
             .with_context(|| format!("parsing {} for edit", path.display()))?;
-        write_pico_drift(&mut doc, self.pico_drift);
+        write_pico_timing(&mut doc, self.pico_drift, self.pico_overhead_secs);
         std::fs::write(path, doc.to_string())
             .with_context(|| format!("writing {}", path.display()))?;
         Ok(())
@@ -1143,8 +1185,11 @@ fn weekly_from_public_days(days: &PublicWakeDays) -> Result<WeeklyWakes> {
     ]))
 }
 
-fn write_pico_drift(doc: &mut DocumentMut, drift: f64) {
+fn write_pico_timing(doc: &mut DocumentMut, drift: f64, overhead_secs: f64) {
     doc["pico_drift"] = Item::Value(Value::from(crate::schedule::round_pico_drift(drift)));
+    doc["pico_overhead_secs"] = Item::Value(Value::from(crate::schedule::round_pico_overhead(
+        overhead_secs,
+    )));
 }
 
 fn persist_household_sources(doc: &mut DocumentMut, cfg: &Config) {
@@ -1788,6 +1833,8 @@ rotate = []
                 .unwrap()
                 .with_timezone(&Utc)
         );
+        assert_eq!(cfg.refresh_window(now, Some(intended)), (now, wake_at));
+        assert_eq!(cfg.refresh_window(now, None), (now, intended));
     }
 
     #[test]
@@ -1946,6 +1993,7 @@ rotate = ["photo-1"]
         assert_eq!(public.dashboard_schedule.poll_interval_secs, 1800);
         assert_eq!(public.dashboard_schedule.schedule_kind, "interval");
         assert_eq!(public.pico_drift, 0.0);
+        assert_eq!(public.pico_overhead_secs, 0.0);
     }
 
     #[test]
@@ -2034,6 +2082,7 @@ wake-up = ["08:00"]
         let public = cfg.public_settings(now);
         assert_eq!(public.next_sleep_secs, None);
         assert_eq!(public.pico_drift, 0.03);
+        assert_eq!(public.pico_overhead_secs, 0.0);
         let assigned = now + chrono::Duration::seconds(3600);
         let public = cfg.public_settings_for_assigned_wake(now, Some(assigned));
         assert_eq!(public.next_sleep_secs, Some(3600));
@@ -2070,6 +2119,15 @@ wake-up = ["08:00"]
         std::fs::write(&path, "pico_drift = 0.2\n").unwrap();
         let cfg = Config::load(&path).unwrap();
         assert_eq!(cfg.pico_drift, 0.05);
+    }
+
+    #[test]
+    fn pico_overhead_over_max_is_clamped_on_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "pico_overhead_secs = 500\n").unwrap();
+        let cfg = Config::load(&path).unwrap();
+        assert_eq!(cfg.pico_overhead_secs, 180.0);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{Mutex, RwLock};
@@ -54,6 +54,9 @@ pub struct FrameCache {
     chrome: Mutex<Option<std::path::PathBuf>>,
     inner: Mutex<Option<Cached>>,
     pico_pct: Mutex<Option<u16>>,
+    /// Slot the in-flight Pico POST is serving, so `/dashboard` raster uses
+    /// the same last/next times as the sleep plan.
+    pending_assigned_wake: Mutex<Option<DateTime<Utc>>>,
 }
 
 struct Cached {
@@ -112,6 +115,7 @@ impl FrameCache {
             chrome: Mutex::new(chrome),
             inner: Mutex::new(None),
             pico_pct: Mutex::new(None),
+            pending_assigned_wake: Mutex::new(None),
         }))
     }
 
@@ -121,12 +125,13 @@ impl FrameCache {
 
     pub async fn stamp_status(&self, cfg: &Config, dash: &mut Dashboard) -> chrono::DateTime<Utc> {
         let now = Utc::now();
-        let next_at = cfg.next_poll_at(now);
-        dash.set_refresh_at(now, next_at, cfg.tz());
+        let assigned = *self.pending_assigned_wake.lock().await;
+        let (last, next) = cfg.refresh_window(now, assigned);
+        dash.set_refresh_at(last, next, cfg.tz());
         if let Some(pct) = *self.pico_pct.lock().await {
             dash.set_battery(pct);
         }
-        next_at
+        next
     }
 
     pub fn templates(&self) -> &Templates {
@@ -167,16 +172,37 @@ impl FrameCache {
 
     /// Pico POST: always reload live sources and re-raster. The web UI GET
     /// path is the one that reuses a cached dashboard.
-    pub async fn current_for_pico(&self) -> Result<Frame> {
-        self.current_inner(true, true, DASHBOARD_CACHE_MAX_AGE)
-            .await
+    ///
+    /// `assigned_wake` is the echoed `X-Wake-At` for a timer poll, so the
+    /// painted next time skips that slot (06:57 serving 07:00 → 10:00).
+    /// Button and cold boots pass `None`.
+    pub async fn current_for_pico(&self, assigned_wake: Option<DateTime<Utc>>) -> Result<Frame> {
+        self.with_assigned_wake(assigned_wake, async {
+            self.current_inner(true, true, DASHBOARD_CACHE_MAX_AGE)
+                .await
+        })
+        .await
     }
 
     /// Button wake: same live rebuild; HTTP also drops the Meross room TTL.
     pub async fn current_for_pico_fresh(&self) -> Result<Frame> {
         *self.inner.lock().await = None;
-        self.current_inner(true, true, DASHBOARD_CACHE_MAX_AGE)
-            .await
+        self.with_assigned_wake(None, async {
+            self.current_inner(true, true, DASHBOARD_CACHE_MAX_AGE)
+                .await
+        })
+        .await
+    }
+
+    async fn with_assigned_wake<T>(
+        &self,
+        assigned_wake: Option<DateTime<Utc>>,
+        fut: impl std::future::Future<Output = T>,
+    ) -> T {
+        *self.pending_assigned_wake.lock().await = assigned_wake;
+        let result = fut.await;
+        *self.pending_assigned_wake.lock().await = None;
+        result
     }
 
     async fn current_inner(
