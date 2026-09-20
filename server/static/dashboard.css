@@ -943,32 +943,6 @@ li {
   text-overflow: ellipsis;
 }
 
-.school-week .lesson.colour-maths { background: #5a1fc7; color: #ffffff; }
-.school-week .lesson.colour-francais { background: #ff8ca8; color: #000000; }
-.school-week .lesson.colour-anglais { background: #ffd000; color: #000000; }
-.school-week .lesson.colour-espagnol { background: #ff5a00; color: #000000; }
-.school-week .lesson.colour-histgeo { background: #1e4dff; color: #ffffff; }
-.school-week .lesson.colour-physchim { background: #1b1b1b; color: #ffffff; }
-.school-week .lesson.colour-physique { background: #00b8d4; color: #000000; }
-.school-week .lesson.colour-svt { background: #1db954; color: #000000; }
-.school-week .lesson.colour-eps { background: #e01020; color: #ffffff; }
-.school-week .lesson.colour-arts { background: #ff2d8a; color: #ffffff; }
-.school-week .lesson.colour-techno { background: #c48a3a; color: #000000; }
-.school-week .lesson.colour-musique { background: #00a39a; color: #000000; }
-.school-week .lesson.colour-emc { background: #8b9aab; color: #000000; }
-.school-week .lesson.colour-allemand { background: #ffb020; color: #000000; }
-.school-week .lesson.colour-italien { background: #007a54; color: #ffffff; }
-.school-week .lesson.colour-ses { background: #7eb6ff; color: #000000; }
-.school-week .lesson.colour-latin { background: #c6b05a; color: #000000; }
-.school-week .lesson.colour-x0 { background: #c026d3; color: #ffffff; }
-.school-week .lesson.colour-x1 { background: #84cc16; color: #000000; }
-.school-week .lesson.colour-x2 { background: #4338ca; color: #ffffff; }
-.school-week .lesson.colour-x3 { background: #f97316; color: #000000; }
-.school-week .lesson.colour-x4 { background: #0f766e; color: #ffffff; }
-.school-week .lesson.colour-x5 { background: #be185d; color: #ffffff; }
-.school-week .lesson.colour-x6 { background: #78716c; color: #ffffff; }
-.school-week .lesson.colour-x7 { background: #fde047; color: #000000; }
-
 .homework .empty,
 .grades .empty,
 .todos .empty,

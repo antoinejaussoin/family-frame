@@ -267,9 +267,12 @@ pub struct SchoolWeekDay {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SchoolLesson {
     pub subject: String,
-    /// CSS class on `.school-week .lesson.colour-*` (one slug per subject).
+    /// Pronote `CouleurFond` hex, used as the chip background.
     #[serde(default)]
     pub colour: String,
+    /// `#000000` or `#ffffff` so the subject stays readable on `colour`.
+    #[serde(default)]
+    pub ink: String,
     /// Inclusive CSS `grid-row` start (day headers occupy row 1).
     #[serde(default)]
     pub row_start: i32,
@@ -1037,7 +1040,8 @@ mod tests {
                 col: 2,
                 lessons: vec![SchoolLesson {
                     subject: "Maths".into(),
-                    colour: "purple".into(),
+                    colour: "#8000FF".into(),
+                    ink: "#ffffff".into(),
                     row_start: 2,
                     row_end: 3,
                 }],

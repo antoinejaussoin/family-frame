@@ -116,8 +116,7 @@ struct TimetableLesson {
     start: NaiveTime,
     end: NaiveTime,
     subject: String,
-    /// Pronote `CouleurFond`. Week chips use a per-subject colour instead.
-    #[allow(dead_code)]
+    /// Pronote `CouleurFond`, passed through as the week-chip background.
     colour: String,
     num: i64,
 }
@@ -891,6 +890,7 @@ fn school_week(lessons: &[TimetableLesson], today: NaiveDate) -> SchoolWeek {
     struct Placed {
         subject: String,
         colour: String,
+        ink: String,
         start: NaiveTime,
         end: NaiveTime,
     }
@@ -923,8 +923,10 @@ fn school_week(lessons: &[TimetableLesson], today: NaiveDate) -> SchoolWeek {
                     continue;
                 }
             }
+            let (colour, ink) = chip_colours(&lesson.colour);
             merged.push(Placed {
-                colour: map_lesson_colour(&subject),
+                colour,
+                ink,
                 subject,
                 start,
                 end,
@@ -968,6 +970,7 @@ fn school_week(lessons: &[TimetableLesson], today: NaiveDate) -> SchoolWeek {
                     (end > start).then_some(SchoolLesson {
                         subject: placed.subject,
                         colour: placed.colour,
+                        ink: placed.ink,
                         row_start: 2 + start as i32,
                         row_end: 2 + end as i32,
                     })
@@ -1041,41 +1044,51 @@ fn prefer_shown_lessons(mut lessons: Vec<TimetableLesson>) -> Vec<TimetableLesso
     lessons
 }
 
-fn map_lesson_colour(subject: &str) -> String {
-    let short = shorten_subject(subject);
-    if let Some(slug) = known_subject_colour(&short) {
-        return slug.into();
+/// Background is Pronote's hex as sent. Ink is only for label contrast.
+fn chip_colours(hex: &str) -> (String, String) {
+    let colour = normalize_pronote_hex(hex).unwrap_or_else(|| "#c8c8c8".into());
+    let ink = parse_hex_rgb(&colour)
+        .map(ink_for_rgb)
+        .unwrap_or("#000000")
+        .into();
+    (colour, ink)
+}
+
+fn normalize_pronote_hex(raw: &str) -> Option<String> {
+    let s = raw.trim().strip_prefix('#').unwrap_or(raw.trim());
+    if s.len() == 6 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Some(format!("#{s}"));
     }
-    let hash = short
-        .bytes()
-        .fold(0u32, |acc, b| acc.wrapping_mul(33).wrapping_add(b as u32));
-    FALLBACK_COLOURS[hash as usize % FALLBACK_COLOURS.len()].into()
+    if s.len() == 3 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+        let b = s.as_bytes();
+        return Some(format!(
+            "#{0}{0}{1}{1}{2}{2}",
+            b[0] as char, b[1] as char, b[2] as char
+        ));
+    }
+    None
 }
 
-fn known_subject_colour(subject: &str) -> Option<&'static str> {
-    Some(match subject {
-        "Maths" => "maths",
-        "Français" => "francais",
-        "Anglais" => "anglais",
-        "Espagnol" => "espagnol",
-        "Allemand" => "allemand",
-        "Italien" => "italien",
-        "Hist-Géo" => "histgeo",
-        "Phys-Chim" => "physchim",
-        "Physique" => "physique",
-        "SVT" => "svt",
-        "EPS" => "eps",
-        "Arts" => "arts",
-        "Techno" => "techno",
-        "Musique" => "musique",
-        "EMC" => "emc",
-        "SES" => "ses",
-        "Latin" => "latin",
-        _ => return None,
-    })
+fn parse_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
+    let s = s.trim().strip_prefix('#')?;
+    if s.len() != 6 {
+        return None;
+    }
+    Some((
+        u8::from_str_radix(&s[0..2], 16).ok()?,
+        u8::from_str_radix(&s[2..4], 16).ok()?,
+        u8::from_str_radix(&s[4..6], 16).ok()?,
+    ))
 }
 
-const FALLBACK_COLOURS: &[&str] = &["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"];
+fn ink_for_rgb((r, g, b): (u8, u8, u8)) -> &'static str {
+    let y = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
+    if y >= 140.0 {
+        "#000000"
+    } else {
+        "#ffffff"
+    }
+}
 
 fn shorten_subject(raw: &str) -> String {
     let key = normalize_subject_key(raw);
@@ -1985,30 +1998,18 @@ mod tests {
     }
 
     #[test]
-    fn maps_each_subject_to_its_own_colour() {
-        assert_eq!(map_lesson_colour("Maths"), "maths");
-        assert_eq!(map_lesson_colour("MATHÉMATIQUES"), "maths");
-        assert_eq!(map_lesson_colour("EPS"), "eps");
-        assert_eq!(map_lesson_colour("SVT"), "svt");
-        assert_eq!(map_lesson_colour("Anglais"), "anglais");
-        assert_eq!(map_lesson_colour("Physique"), "physique");
-        assert_eq!(map_lesson_colour("PHYSIQUE-CHIMIE"), "physchim");
-        assert_eq!(map_lesson_colour("Histoire"), "histgeo");
-        assert_eq!(map_lesson_colour("Techno"), "techno");
-        let slugs = [
-            "Maths",
-            "Français",
-            "Anglais",
-            "Espagnol",
-            "Hist-Géo",
-            "Phys-Chim",
-            "SVT",
-            "EPS",
-            "Arts",
-        ]
-        .map(map_lesson_colour);
-        let unique = slugs.iter().collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(unique.len(), slugs.len());
+    fn week_uses_pronote_hex_unchanged() {
+        assert_eq!(chip_colours("#8000FF").0, "#8000FF");
+        assert_eq!(chip_colours("AaBbCc").0, "#AaBbCc");
+        assert_eq!(chip_colours("  #ff8080  ").0, "#ff8080");
+        let monday = NaiveDate::from_ymd_opt(2026, 9, 14).unwrap();
+        let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
+        let week = school_week(
+            &[tl(monday, t(8, 15), t(9, 10), "Maths", "#8000FF")],
+            monday,
+        );
+        assert_eq!(week.days[0].lessons[0].colour, "#8000FF");
+        assert_eq!(week.days[0].lessons[0].ink, "#ffffff");
     }
 
     #[test]
@@ -2028,7 +2029,7 @@ mod tests {
         assert_eq!(lesson.subject, "MATHS");
         assert_eq!(lesson.colour, "#8000FF");
         assert_eq!(lesson.num, 2);
-        assert_eq!(map_lesson_colour(&lesson.subject), "maths");
+        assert_eq!(chip_colours(&lesson.colour).0, "#8000FF");
     }
 
     fn events_as_days() -> Vec<SchoolDay> {
