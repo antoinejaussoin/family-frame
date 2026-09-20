@@ -52,8 +52,8 @@ pub const SECTION_GAP_PX: i32 = EVENT_ROW_PX;
 pub const EMPTY_SECTION_BODY_PX: i32 = 54;
 
 /// Right-hand columns (same grid row as events). Keep in sync with
-/// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/joke/history/tube/rooms,
-/// `h2`, `.todos li`, `.joke`, `.school-item`, `.tube-line`, `.rooms li`, `.todos-more`).
+/// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/joke/week/history/tube/rooms,
+/// `h2`, `.todos li`, `.joke`, `.school-item`, `.week-grid`, `.tube-line`, `.rooms li`, `.todos-more`).
 pub const SIDEBAR_PX: i32 = 1008;
 pub const SIDEBAR_GAP_PX: i32 = 28;
 pub const TUBE_ROW_PX: i32 = 44;
@@ -93,6 +93,10 @@ pub const JOKE_PUNCH_GAP_PX: i32 = 4;
 pub const JOKE_MAX_LINES: usize = 4;
 pub const JOKE_CHAR_PX: i32 = TODO_PILL_CHAR_PX;
 pub const JOKE_TEXT_MAX_PX: i32 = TODO_PILL_MAX_PX;
+/// Pronote week grid (`.week-grid` margin-top, day label, one row per time band).
+pub const WEEK_GRID_TOP_PX: i32 = 8;
+pub const WEEK_DAY_LABEL_PX: i32 = 22;
+pub const WEEK_SLOT_PX: i32 = 18;
 
 /// How many Coming next rows fit under Today on the 13.3″ panel.
 pub fn coming_event_capacity(today_count: usize) -> usize {
@@ -200,6 +204,9 @@ pub struct School {
     /// First and last lesson today and on the next school day.
     #[serde(default)]
     pub days: Vec<SchoolDay>,
+    /// Monday–Friday timetable for the sidebar week grid.
+    #[serde(default)]
+    pub week: SchoolWeek,
 }
 
 impl School {
@@ -217,6 +224,58 @@ pub struct SchoolDay {
     pub date: String,
     pub start: String,
     pub end: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct SchoolWeek {
+    /// `This week`, or `Next week` on Saturday and Sunday.
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub days: Vec<SchoolWeekDay>,
+    /// Unique lesson start times for the left-hand axis.
+    #[serde(default)]
+    pub times: Vec<SchoolWeekTime>,
+    /// One row per start time. Keep in sync with CSS
+    /// `repeat(var(--week-bands), 18px)`.
+    #[serde(default)]
+    pub bands: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchoolWeekTime {
+    pub label: String,
+    /// CSS `grid-row` (day headers occupy row 1).
+    pub row: i32,
+    /// Unused: the axis shows start times only.
+    #[serde(default)]
+    pub end: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchoolWeekDay {
+    pub label: String,
+    #[serde(default)]
+    pub today: bool,
+    /// CSS `grid-column` (time axis is column 1).
+    #[serde(default)]
+    pub col: i32,
+    #[serde(default)]
+    pub lessons: Vec<SchoolLesson>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchoolLesson {
+    pub subject: String,
+    /// CSS class on `.school-week .lesson.colour-*` (one slug per subject).
+    #[serde(default)]
+    pub colour: String,
+    /// Inclusive CSS `grid-row` start (day headers occupy row 1).
+    #[serde(default)]
+    pub row_start: i32,
+    /// Exclusive CSS `grid-row` end.
+    #[serde(default)]
+    pub row_end: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -400,9 +459,9 @@ impl Dashboard {
     }
 
     /// Keep Tube and House in full on the bottom row. To do sizes to its
-    /// pills, with a slot reserved for Joke of the day when we have one.
-    /// Leftover height is On this day — facts are added only while
-    /// they still fit, up to three wrapped lines each.
+    /// pills, with slots reserved for Joke of the day and the school week.
+    /// When there is no week grid, leftover height is On this day — facts
+    /// are added only while they still fit, up to three wrapped lines each.
     pub fn fit_sidebar_to_panel(&mut self) {
         self.fit_sidebar(self.show_school_sections && self.school.is_visible());
     }
@@ -423,6 +482,12 @@ impl Dashboard {
         } else {
             0
         };
+        let week_on = !self.school.week.days.is_empty();
+        let week_reserve = if week_on {
+            SIDEBAR_GAP_PX + week_block_px(&self.school.week)
+        } else {
+            0
+        };
         let todos_reserve = SECTION_HEAD_PX
             + if self.todos.is_empty() {
                 EMPTY_SECTION_BODY_PX
@@ -435,6 +500,7 @@ impl Dashboard {
                 - footer_px
                 - todos_reserve
                 - joke_reserve
+                - week_reserve
                 - SIDEBAR_GAP_PX * gaps_rest)
                 .max(0);
             let cap = max_rows_in(school_budget, SCHOOL_ROW_PX);
@@ -448,8 +514,12 @@ impl Dashboard {
         } else {
             0
         };
-        let todo_budget =
-            SIDEBAR_PX - school_row - footer_px - joke_reserve - SIDEBAR_GAP_PX * gaps_rest;
+        let todo_budget = SIDEBAR_PX
+            - school_row
+            - footer_px
+            - joke_reserve
+            - week_reserve
+            - SIDEBAR_GAP_PX * gaps_rest;
         let total = self.todos.len();
         if total == 0 {
             self.todos_more = 0;
@@ -465,16 +535,20 @@ impl Dashboard {
             }
         }
 
-        let todos_px = todos_block_px(&self.todos, self.todos_more);
-        let joke_px = joke_block_px(&self.joke);
-        let joke_gap = if joke_px > 0 { 1 } else { 0 };
-        let history_budget = SIDEBAR_PX
-            - school_row
-            - todos_px
-            - joke_px
-            - footer_px
-            - SIDEBAR_GAP_PX * (gaps_rest + 1 + joke_gap);
-        self.history = pack_history(&self.history, history_budget);
+        if week_on {
+            self.history.clear();
+        } else {
+            let todos_px = todos_block_px(&self.todos, self.todos_more);
+            let joke_px = joke_block_px(&self.joke);
+            let joke_gap = if joke_px > 0 { 1 } else { 0 };
+            let history_budget = SIDEBAR_PX
+                - school_row
+                - todos_px
+                - joke_px
+                - footer_px
+                - SIDEBAR_GAP_PX * (gaps_rest + 1 + joke_gap);
+            self.history = pack_history(&self.history, history_budget);
+        }
     }
 
     pub fn fit_to_panel(&mut self) {
@@ -638,6 +712,18 @@ fn joke_block_px(joke: &Option<Joke>) -> i32 {
         Some(j) => SECTION_HEAD_PX + joke_body_px(j).unwrap_or(0),
         None => 0,
     }
+}
+
+fn week_block_px(week: &SchoolWeek) -> i32 {
+    if week.days.is_empty() {
+        return 0;
+    }
+    let bands = if week.bands > 0 {
+        week.bands
+    } else {
+        week.times.len() as i32
+    };
+    SECTION_HEAD_PX + WEEK_GRID_TOP_PX + WEEK_DAY_LABEL_PX + bands * WEEK_SLOT_PX
 }
 
 fn wrap_line_count(text: &str, max_px: i32, char_px: i32) -> usize {
@@ -847,6 +933,7 @@ mod tests {
             homework: vec![school_hw("Today", "Maths")],
             grades: vec![school_grade("Fri", "French", "15/20", "high")],
             days: Vec::new(),
+            week: SchoolWeek::default(),
         };
         dash.tube = tube_lines(4);
         dash.rooms = ["Kitchen"].into_iter().map(room).collect();
@@ -932,6 +1019,47 @@ mod tests {
         dash.fit_sidebar_to_panel();
         let years: Vec<&str> = dash.history.iter().map(|f| f.year.as_str()).collect();
         assert_eq!(years, ["44 BC", "1851", "1879", "1948", "1964"]);
+    }
+
+    #[test]
+    fn sidebar_drops_history_when_school_week_is_shown() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.tube = tube_lines(4);
+        dash.rooms = ["Kitchen"].into_iter().map(room).collect();
+        dash.todos = vec![todo("Milk")];
+        dash.history = vec![history_fact("1851", "The New York Times is founded.")];
+        dash.school.week = SchoolWeek {
+            title: "This week".into(),
+            days: vec![SchoolWeekDay {
+                label: "Fri 18".into(),
+                today: true,
+                col: 2,
+                lessons: vec![SchoolLesson {
+                    subject: "Maths".into(),
+                    colour: "purple".into(),
+                    row_start: 2,
+                    row_end: 3,
+                }],
+            }],
+            times: vec![
+                SchoolWeekTime {
+                    label: "08:15".into(),
+                    row: 2,
+                    end: false,
+                },
+                SchoolWeekTime {
+                    label: "09:10".into(),
+                    row: 3,
+                    end: false,
+                },
+            ],
+            bands: 1,
+        };
+        dash.fit_sidebar_to_panel();
+        assert!(dash.history.is_empty());
+        assert_eq!(dash.school.week.title, "This week");
+        assert_eq!(dash.todos.len(), 1);
     }
 
     #[test]
@@ -1032,6 +1160,7 @@ mod tests {
             homework: vec![school_hw("Today", "Maths")],
             grades: vec![school_grade("Fri", "French", "15/20", "high")],
             days: Vec::new(),
+            week: SchoolWeek::default(),
         };
         let before = dash.content_bytes();
         dash.school.homework.push(school_hw("Mon", "English"));

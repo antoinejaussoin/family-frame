@@ -17,7 +17,7 @@ The 1600×1200 dashboard is a fixed grid, not a widget toolkit.
 | Mast (weekday, day, month, saint) | `saints` | French civil calendar |
 | Today / Next events | `calendar` (ICS) + `bins` + `birthdays` + Pronote hours | Weather icons sit in the headings |
 | Sidebar to-dos | `todoist` | Demo list if no token |
-| Joke / On this day | `jokes` / `history` | Kid-safe skip lists |
+| Joke / school week | `jokes` / `pronote` | Week grid Mon–Fri; next week on Sat/Sun. Wikipedia “On this day” stays compiled (`history.enabled = true`) |
 | Transit | `tfl` | Default: Northern, Circle, District, Victoria |
 | House | `meross` | Demo rooms if no credentials |
 | Battery / next wake | Pico POST | Hidden until the Pico has reported |
@@ -210,11 +210,13 @@ config; the default is Northern / Circle / District / Victoria.
 
 ### Jokes / history / saints
 
-Always on by default so a fork matches today’s panel.
+Jokes and saints stay on by default. Wikipedia “On this day” is compiled
+but off — the school week uses that sidebar slot.
 
-**To remove:** `sources.jokes.enabled = false` (same for `history` and
-`saints`). An empty slot collapses the same way `no-joke` / `no-history`
-already do.
+**To remove a joke / saint:** `sources.jokes.enabled = false` (same for
+`saints`). **To restore On this day:** `sources.history.enabled = true`
+(shown only when the school week is empty). An empty slot collapses the
+same way `no-joke` / `no-history` already do.
 
 ### School (Pronote)
 
@@ -228,7 +230,9 @@ not supported.
    `account = "parent"` and optionally `child = "Firstname"`.
 3. If Pronote asks for a PIN, set `pin`.
 4. `show_sections = false` keeps homework/grades off the glass; hours
-   still merge when Pronote is live.
+   still merge when Pronote is live. The Monday–Friday subject grid
+   always paints when the timetable is available (next week on
+   Saturday and Sunday).
 
 **To remove this source:** leave `url` empty on a real `config.toml`.
 That does **not** invent Léa’s school day. The in-process default (no

@@ -337,6 +337,41 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_shows_school_week() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.school = crate::sources::pronote::demo_school(today);
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("class=\"school-week\""));
+        assert!(html.contains("This week"));
+        assert!(html.contains("class=\"week-grid\""));
+        assert!(html.contains("week-day is-today"));
+        assert!(html.contains("week-time"));
+        assert!(html.contains("08:15"));
+        assert!(html.contains("15:35"));
+        assert!(html.contains("Mon 14"));
+        assert!(html.contains("Fri 18"));
+        assert!(html.contains("class=\"lesson colour-maths\""));
+        assert!(html.contains("grid-row:"));
+        assert!(html.contains("Maths"));
+        assert!(html.contains("Français"));
+        assert!(!html.contains("Mme "));
+        assert!(!html.contains("On this day"));
+    }
+
+    #[test]
+    fn dashboard_shows_next_week_title_on_saturday() {
+        let saturday = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
+        let mut dash = Dashboard::empty("Family", saturday);
+        dash.school = crate::sources::pronote::demo_school(saturday);
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("Next week"));
+        assert!(html.contains("Mon 21"));
+        assert!(!html.contains("week-day is-today"));
+        assert!(!html.contains("This week"));
+    }
+
+    #[test]
     fn dashboard_shows_on_this_day_facts() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
         dash.history = crate::sources::history::demo_history();

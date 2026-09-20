@@ -10,7 +10,7 @@
   <link rel="preload" href="/static/fonts/TRMNL16-Bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/TRMNL21-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/TRMNL21-Bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/static/dashboard.css?v=when-kind3">
+  <link rel="stylesheet" href="/static/dashboard.css?v=school-week5">
 </head>
 <body>
   <main class="panel{% if show_school_sections %} with-school{% endif %}{% if not history %} no-history{% endif %}{% if not joke %} no-joke{% endif %}">
@@ -345,6 +345,26 @@
       {% if joke.punchline %}
       <p class="punchline">{{ joke.punchline }}</p>
       {% endif %}
+    </section>
+    {% endif %}
+
+    {% if school.week.days %}
+    <section class="school-week">
+      <h2>
+        <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-school"/></svg>
+        {{ school.week.title }}
+      </h2>
+      <div class="week-grid" style="--week-bands: {{ school.week.bands }}">
+        {% for time in school.week.times %}
+        <div class="week-time" style="grid-row: {{ time.row }}">{{ time.label }}</div>
+        {% endfor %}
+        {% for day in school.week.days %}
+        <h3 class="week-day{% if day.today %} is-today{% endif %}" style="grid-column: {{ day.col }}; grid-row: 1">{{ day.label }}</h3>
+        {% for lesson in day.lessons %}
+        <div class="lesson colour-{{ lesson.colour }}" style="grid-column: {{ day.col }}; grid-row: {{ lesson.row_start }} / {{ lesson.row_end }}">{{ lesson.subject }}</div>
+        {% endfor %}
+        {% endfor %}
+      </div>
     </section>
     {% endif %}
 

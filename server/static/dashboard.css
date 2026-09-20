@@ -192,12 +192,14 @@ body {
 }
 .todos,
 .joke,
+.school-week,
 .history { overflow: hidden; }
 .today,
 .homework,
 .grades,
 .todos,
 .joke,
+.school-week,
 .history,
 .tube,
 .rooms { min-width: 0; }
@@ -312,6 +314,7 @@ h2 {
 .rooms h2,
 .todos h2,
 .joke h2,
+.school-week h2,
 .homework h2,
 .grades h2,
 .tube h2 {
@@ -708,6 +711,7 @@ li {
 .grades h2,
 .todos h2,
 .joke h2,
+.school-week h2,
 .history h2,
 .tube h2,
 .rooms h2,
@@ -722,6 +726,7 @@ li {
 .grades .section-icon,
 .todos .section-icon,
 .joke .section-icon,
+.school-week .section-icon,
 .history .section-icon,
 .tube .section-icon,
 .rooms .section-icon,
@@ -874,10 +879,101 @@ li {
   line-height: 33px;
 }
 
+.week-grid {
+  display: grid;
+  grid-template-columns: 40px repeat(5, minmax(0, 1fr));
+  grid-template-rows: 22px repeat(var(--week-bands, 1), 18px);
+  column-gap: 4px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.week-time {
+  grid-column: 1;
+  align-self: start;
+  margin: 0;
+  padding-top: 1px;
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
+  font-weight: 700;
+  line-height: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+}
+
+.week-day {
+  box-sizing: border-box;
+  margin: 0;
+  height: 22px;
+  padding: 0 2px;
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+  text-transform: none;
+  letter-spacing: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.week-day.is-today {
+  background: var(--yellow);
+  color: var(--black);
+}
+
+.school-week .lesson {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: 1px 0;
+  padding: 0 2px;
+  border-bottom: none;
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.school-week .lesson.colour-maths { background: #5a1fc7; color: #ffffff; }
+.school-week .lesson.colour-francais { background: #ff8ca8; color: #000000; }
+.school-week .lesson.colour-anglais { background: #ffd000; color: #000000; }
+.school-week .lesson.colour-espagnol { background: #ff5a00; color: #000000; }
+.school-week .lesson.colour-histgeo { background: #1e4dff; color: #ffffff; }
+.school-week .lesson.colour-physchim { background: #1b1b1b; color: #ffffff; }
+.school-week .lesson.colour-physique { background: #00b8d4; color: #000000; }
+.school-week .lesson.colour-svt { background: #1db954; color: #000000; }
+.school-week .lesson.colour-eps { background: #e01020; color: #ffffff; }
+.school-week .lesson.colour-arts { background: #ff2d8a; color: #ffffff; }
+.school-week .lesson.colour-techno { background: #c48a3a; color: #000000; }
+.school-week .lesson.colour-musique { background: #00a39a; color: #000000; }
+.school-week .lesson.colour-emc { background: #8b9aab; color: #000000; }
+.school-week .lesson.colour-allemand { background: #ffb020; color: #000000; }
+.school-week .lesson.colour-italien { background: #007a54; color: #ffffff; }
+.school-week .lesson.colour-ses { background: #7eb6ff; color: #000000; }
+.school-week .lesson.colour-latin { background: #c6b05a; color: #000000; }
+.school-week .lesson.colour-x0 { background: #c026d3; color: #ffffff; }
+.school-week .lesson.colour-x1 { background: #84cc16; color: #000000; }
+.school-week .lesson.colour-x2 { background: #4338ca; color: #ffffff; }
+.school-week .lesson.colour-x3 { background: #f97316; color: #000000; }
+.school-week .lesson.colour-x4 { background: #0f766e; color: #ffffff; }
+.school-week .lesson.colour-x5 { background: #be185d; color: #ffffff; }
+.school-week .lesson.colour-x6 { background: #78716c; color: #ffffff; }
+.school-week .lesson.colour-x7 { background: #fde047; color: #000000; }
+
 .homework .empty,
 .grades .empty,
 .todos .empty,
 .joke .empty,
+.school-week .empty,
 .history .empty {
   font-family: var(--type-sm-family);
   font-size: var(--type-sm-size);

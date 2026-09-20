@@ -291,6 +291,10 @@ pub struct SourcesConfig {
     pub weather: Option<WeatherConfig>,
     pub tfl: TflConfig,
     pub jokes: ToggleConfig,
+    /// Off by default: the school week uses this sidebar slot. The
+    /// Wikipedia source stays compiled; set `enabled = true` to restore it
+    /// when the timetable is empty.
+    #[serde(default = "history_off")]
     pub history: ToggleConfig,
     pub saints: ToggleConfig,
     pub pronote: Option<PronoteConfig>,
@@ -421,7 +425,7 @@ impl Default for SourcesConfig {
             weather: None,
             tfl: TflConfig::default(),
             jokes: ToggleConfig::default(),
-            history: ToggleConfig::default(),
+            history: history_off(),
             saints: ToggleConfig::default(),
             pronote: None,
         }
@@ -1390,6 +1394,10 @@ fn default_true() -> bool {
     true
 }
 
+fn history_off() -> ToggleConfig {
+    ToggleConfig { enabled: false }
+}
+
 pub fn default_tfl_lines() -> Vec<TflLineConfig> {
     vec![
         TflLineConfig {
@@ -1531,6 +1539,7 @@ mod tests {
         assert!(!cfg.pronote_enabled());
         assert!(!cfg.pronote.show_sections);
         assert!(cfg.sources.tfl.enabled);
+        assert!(!cfg.sources.history.enabled);
         assert_eq!(cfg.sources.tfl.lines.len(), 4);
         assert_eq!(cfg.birthdays.len(), 2);
         assert_eq!(cfg.birthdays[0].name, "Maya");

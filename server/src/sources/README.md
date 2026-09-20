@@ -52,8 +52,8 @@ runs once at the end if the merged list is empty.
 
 Declare the table in `config.rs` (`SourcesConfig`) and document it in
 `config.example.toml`. Credential sources are enabled iff the secrets
-are non-empty. Always-on sources (`tfl`, `jokes`, `history`, `saints`)
-take `enabled = true` by default.
+are non-empty. Always-on sources (`tfl`, `jokes`, `saints`)
+take `enabled = true` by default. `history` stays compiled but defaults off.
 
 Legacy aliases (`[todoist]`, top-level `birthdays`, `[sources].ics_urls`)
 exist for one release. Do not add new top-level keys.
@@ -67,7 +67,8 @@ is already generic status lines) or add a section to
 plugin renderers.
 
 `fit_to_panel()` still owns the pixel budget. Disabling a source must
-go through that function so leftover height refills to-dos and history.
+go through that function so leftover height refills to-dos (and history
+when the school week is empty).
 
 ## What not to do
 

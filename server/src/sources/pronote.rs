@@ -6,13 +6,13 @@
 //! Direct username/password on `eleve.html` / `parent.html` is supported;
 //! ENT / EduConnect portals are not.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::io::{Read, Write};
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine;
-use chrono::{Datelike, NaiveDate, NaiveTime};
+use chrono::{Datelike, NaiveDate, NaiveTime, Timelike, Weekday};
 use md5::{Digest, Md5};
 use num_bigint::BigUint;
 use rand::RngCore;
@@ -21,7 +21,10 @@ use sha2::Sha256;
 use tracing::info;
 
 use crate::config::PronoteConfig;
-use crate::model::{CalendarEvent, School, SchoolDay, SchoolItem};
+use crate::model::{
+    CalendarEvent, School, SchoolDay, SchoolItem, SchoolLesson, SchoolWeek, SchoolWeekDay,
+    SchoolWeekTime,
+};
 use crate::sources::cache::TtlCache;
 
 use super::context::SourceContext;
@@ -103,8 +106,21 @@ const TIMETABLE_TAB: i64 = 16;
 const MAX_HOMEWORK: usize = 12;
 const MAX_GRADES: usize = 12;
 const SUBJECT_MAX: usize = 32;
+const WEEK_SUBJECT_MAX: usize = 16;
 const GRADE_SUBJECT_MAX: usize = 28;
 const DETAIL_MAX: usize = 10;
+
+#[derive(Clone, Debug)]
+struct TimetableLesson {
+    date: NaiveDate,
+    start: NaiveTime,
+    end: NaiveTime,
+    subject: String,
+    /// Pronote `CouleurFond`. Week chips use a per-subject colour instead.
+    #[allow(dead_code)]
+    colour: String,
+    num: i64,
+}
 
 static LAST: TtlCache<(String, School)> = TtlCache::new();
 
@@ -137,9 +153,10 @@ pub async fn load_school(cfg: &PronoteConfig, today: NaiveDate) -> Result<School
         bail!("Pronote url/username/password are empty");
     }
     let cache_key = format!(
-        "{url}\0{username}\0{}\0{}",
+        "{url}\0{username}\0{}\0{}\0{}",
         cfg.child.trim(),
-        cfg.show_sections
+        cfg.show_sections,
+        displayed_week_monday(today)
     );
     if let Some((_, school)) = LAST.get(FETCH_TTL, |(key, _)| key == &cache_key) {
         return Ok(school);
@@ -201,6 +218,7 @@ pub fn demo_school(today: NaiveDate) -> School {
             ),
         ],
         days: demo_school_days(today),
+        week: school_week(&demo_lessons(today), today),
     }
 }
 
@@ -474,17 +492,22 @@ impl Session {
             (String::new(), Vec::new())
         };
 
-        let until = (today + chrono::Duration::days(14)).min(last_day);
-        let days = match self.timetable(today, until, start_day).await {
-            Ok(lessons) => day_spans(lessons),
+        let week_monday = displayed_week_monday(today);
+        let week_friday = week_monday + chrono::Duration::days(4);
+        let until = (today + chrono::Duration::days(14))
+            .max(week_friday)
+            .min(last_day);
+        let from = week_monday.min(today);
+        let (days, week) = match self.timetable(from, until, start_day).await {
+            Ok(lessons) => (day_spans(&lessons), school_week(&lessons, today)),
             Err(err) => {
                 tracing::warn!(%err, "Pronote timetable failed");
-                Vec::new()
+                (Vec::new(), SchoolWeek::default())
             }
         };
 
         Ok(build_school(
-            student, average, homework, grades, days, today,
+            student, average, homework, grades, days, week, today,
         ))
     }
 
@@ -597,7 +620,7 @@ impl Session {
         from: NaiveDate,
         to: NaiveDate,
         start_day: NaiveDate,
-    ) -> Result<Vec<(NaiveDate, NaiveTime, NaiveTime)>> {
+    ) -> Result<Vec<TimetableLesson>> {
         let week_from = pronote_week(from, start_day);
         let week_to = pronote_week(to, start_day).max(week_from);
         let mut lessons = Vec::new();
@@ -626,29 +649,16 @@ impl Session {
                 if json_truthy(item, "estAnnule") {
                     continue;
                 }
-                let Some(raw) = item.get("DateDuCours").and_then(|v| json_str(v, &["V"])) else {
+                let Some(lesson) = parse_lesson(item, &self.general) else {
                     continue;
                 };
-                let Some((date, start)) = parse_pronote_datetime(&raw) else {
-                    continue;
-                };
-                if date < from || date > to {
+                if lesson.date < from || lesson.date > to {
                     continue;
                 }
-                let end = item
-                    .get("DateDuCoursFin")
-                    .and_then(|v| json_str(v, &["V"]))
-                    .and_then(|s| parse_pronote_datetime(&s))
-                    .and_then(|(end_date, time)| (end_date == date).then_some(time))
-                    .or_else(|| lesson_end_from_place(item, &self.general));
-                let Some(end) = end else { continue };
-                if end <= start {
-                    continue;
-                }
-                lessons.push((date, start, end));
+                lessons.push(lesson);
             }
         }
-        Ok(lessons)
+        Ok(prefer_shown_lessons(lessons))
     }
 
     async fn call(
@@ -760,6 +770,7 @@ fn build_school(
     homework: Vec<(NaiveDate, String, bool)>,
     grades: Vec<(NaiveDate, String, String, String)>,
     days: Vec<SchoolDay>,
+    week: SchoolWeek,
     today: NaiveDate,
 ) -> School {
     let mut homework_rows = Vec::new();
@@ -785,6 +796,7 @@ fn build_school(
         homework: homework_rows,
         grades,
         days,
+        week,
     }
 }
 
@@ -857,6 +869,330 @@ fn school_hours_event(
         recurring: false,
         bin: false,
     }
+}
+
+/// Monday of the week shown on the panel: this week on weekdays,
+/// the following week on Saturday and Sunday.
+pub fn displayed_week_monday(today: NaiveDate) -> NaiveDate {
+    match today.weekday() {
+        Weekday::Sat => today + chrono::Duration::days(2),
+        Weekday::Sun => today + chrono::Duration::days(1),
+        weekday => today - chrono::Duration::days(weekday.num_days_from_monday() as i64),
+    }
+}
+
+fn school_week(lessons: &[TimetableLesson], today: NaiveDate) -> SchoolWeek {
+    let monday = displayed_week_monday(today);
+    let title = match today.weekday() {
+        Weekday::Sat | Weekday::Sun => "Next week",
+        _ => "This week",
+    };
+
+    struct Placed {
+        subject: String,
+        colour: String,
+        start: NaiveTime,
+        end: NaiveTime,
+    }
+
+    let mut days_raw = Vec::with_capacity(5);
+    let mut bounds = BTreeSet::new();
+    for offset in 0..5 {
+        let date = monday + chrono::Duration::days(offset);
+        let mut day_lessons: Vec<&TimetableLesson> = lessons
+            .iter()
+            .filter(|lesson| lesson.date == date && !lesson.subject.is_empty())
+            .collect();
+        day_lessons.sort_by_key(|lesson| lesson.start);
+        let mut merged: Vec<Placed> = Vec::new();
+        for lesson in day_lessons {
+            let subject = shorten_subject(&lesson.subject);
+            if subject.is_empty() {
+                continue;
+            }
+            let start = snap_time(lesson.start);
+            let mut end = snap_time(lesson.end);
+            if end <= start {
+                end = start + chrono::Duration::minutes(5);
+            }
+            if let Some(last) = merged.last_mut() {
+                if last.subject == subject && last.end >= start {
+                    if end > last.end {
+                        last.end = end;
+                    }
+                    continue;
+                }
+            }
+            merged.push(Placed {
+                colour: map_lesson_colour(&subject),
+                subject,
+                start,
+                end,
+            });
+        }
+        for placed in &merged {
+            bounds.insert(placed.start);
+        }
+        days_raw.push((date.format("%a %-d").to_string(), date == today, merged));
+    }
+
+    let time_list: Vec<NaiveTime> = bounds.into_iter().collect();
+    let n_bands = time_list.len() as i32;
+    let index: HashMap<NaiveTime, usize> = time_list
+        .iter()
+        .enumerate()
+        .map(|(i, time)| (*time, i))
+        .collect();
+    let times = time_list
+        .iter()
+        .enumerate()
+        .map(|(i, time)| SchoolWeekTime {
+            label: time.format("%H:%M").to_string(),
+            row: 2 + i as i32,
+            end: false,
+        })
+        .collect();
+
+    let days = days_raw
+        .into_iter()
+        .enumerate()
+        .map(|(i, (label, is_today, placed))| {
+            let lessons = placed
+                .into_iter()
+                .filter_map(|placed| {
+                    let start = *index.get(&placed.start)?;
+                    let end = time_list
+                        .iter()
+                        .position(|time| *time >= placed.end)
+                        .unwrap_or(time_list.len());
+                    (end > start).then_some(SchoolLesson {
+                        subject: placed.subject,
+                        colour: placed.colour,
+                        row_start: 2 + start as i32,
+                        row_end: 2 + end as i32,
+                    })
+                })
+                .collect();
+            SchoolWeekDay {
+                label,
+                today: is_today,
+                col: i as i32 + 2,
+                lessons,
+            }
+        })
+        .collect();
+
+    SchoolWeek {
+        title: title.into(),
+        days,
+        times,
+        bands: n_bands,
+    }
+}
+
+fn snap_time(time: NaiveTime) -> NaiveTime {
+    let mins = time.hour() as i32 * 60 + time.minute() as i32;
+    let snapped = ((mins + 2) / 5) * 5;
+    let snapped = snapped.clamp(0, 23 * 60 + 55);
+    NaiveTime::from_hms_opt((snapped / 60) as u32, (snapped % 60) as u32, 0).unwrap_or(time)
+}
+
+fn parse_lesson(item: &Value, general: &Value) -> Option<TimetableLesson> {
+    let raw = item.get("DateDuCours").and_then(|v| json_str(v, &["V"]))?;
+    let (date, start) = parse_pronote_datetime(&raw)?;
+    let end = item
+        .get("DateDuCoursFin")
+        .and_then(|v| json_str(v, &["V"]))
+        .and_then(|s| parse_pronote_datetime(&s))
+        .and_then(|(end_date, time)| (end_date == date).then_some(time))
+        .or_else(|| lesson_end_from_place(item, general))?;
+    if end <= start {
+        return None;
+    }
+    Some(TimetableLesson {
+        date,
+        start,
+        end,
+        subject: lesson_subject(item),
+        colour: json_str(item, &["CouleurFond"]).unwrap_or_default(),
+        num: json_i64(item, "P").unwrap_or(0),
+    })
+}
+
+fn lesson_subject(item: &Value) -> String {
+    for content in list_field(item, "ListeContenus") {
+        if json_i64(content, "G") == Some(16) {
+            if let Some(name) = json_str(content, &["L"]) {
+                return name;
+            }
+        }
+    }
+    String::new()
+}
+
+fn prefer_shown_lessons(mut lessons: Vec<TimetableLesson>) -> Vec<TimetableLesson> {
+    lessons.sort_by(|a, b| {
+        a.date
+            .cmp(&b.date)
+            .then(a.start.cmp(&b.start))
+            .then(b.num.cmp(&a.num))
+    });
+    lessons.dedup_by(|a, b| a.date == b.date && a.start == b.start);
+    lessons
+}
+
+fn map_lesson_colour(subject: &str) -> String {
+    let short = shorten_subject(subject);
+    if let Some(slug) = known_subject_colour(&short) {
+        return slug.into();
+    }
+    let hash = short
+        .bytes()
+        .fold(0u32, |acc, b| acc.wrapping_mul(33).wrapping_add(b as u32));
+    FALLBACK_COLOURS[hash as usize % FALLBACK_COLOURS.len()].into()
+}
+
+fn known_subject_colour(subject: &str) -> Option<&'static str> {
+    Some(match subject {
+        "Maths" => "maths",
+        "Français" => "francais",
+        "Anglais" => "anglais",
+        "Espagnol" => "espagnol",
+        "Allemand" => "allemand",
+        "Italien" => "italien",
+        "Hist-Géo" => "histgeo",
+        "Phys-Chim" => "physchim",
+        "Physique" => "physique",
+        "SVT" => "svt",
+        "EPS" => "eps",
+        "Arts" => "arts",
+        "Techno" => "techno",
+        "Musique" => "musique",
+        "EMC" => "emc",
+        "SES" => "ses",
+        "Latin" => "latin",
+        _ => return None,
+    })
+}
+
+const FALLBACK_COLOURS: &[&str] = &["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"];
+
+fn shorten_subject(raw: &str) -> String {
+    let key = normalize_subject_key(raw);
+    let short = if key.contains("physique") && key.contains("chim") {
+        "Phys-Chim"
+    } else if key.contains("svt")
+        || key.contains("sciences de la vie")
+        || key.contains("sciences vie")
+    {
+        "SVT"
+    } else if key.contains("ed.physique")
+        || key.contains("education physique")
+        || (key.contains("physique") && (key.contains("sport") || key.contains("eps")))
+        || key == "eps"
+    {
+        "EPS"
+    } else if key.contains("math") {
+        "Maths"
+    } else if key.contains("anglais") || key.starts_with("english") {
+        "Anglais"
+    } else if key.contains("espagnol") || key.starts_with("spanish") {
+        "Espagnol"
+    } else if key.contains("allemand") || key.starts_with("german") {
+        "Allemand"
+    } else if key.contains("italien") {
+        "Italien"
+    } else if key.contains("histoire") || key.contains("history") || key.contains("geograph") {
+        "Hist-Géo"
+    } else if key.contains("francais") || key.contains("french") {
+        "Français"
+    } else if key.contains("techno") {
+        "Techno"
+    } else if key.contains("musique") || key.contains("music") {
+        "Musique"
+    } else if key.contains("emc") || key.contains("enseignement moral") {
+        "EMC"
+    } else if key.contains("ses") || key.contains("economique") {
+        "SES"
+    } else if key.contains("art") {
+        "Arts"
+    } else {
+        return clip(raw, WEEK_SUBJECT_MAX);
+    };
+    short.into()
+}
+
+fn normalize_subject_key(s: &str) -> String {
+    s.chars()
+        .flat_map(|c| {
+            let mapped = match c {
+                'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'e',
+                'à' | 'â' | 'ä' | 'À' | 'Â' | 'Ä' => 'a',
+                'î' | 'ï' | 'Î' | 'Ï' => 'i',
+                'ô' | 'ö' | 'Ô' | 'Ö' => 'o',
+                'ù' | 'û' | 'ü' | 'Ù' | 'Û' | 'Ü' => 'u',
+                'ç' | 'Ç' => 'c',
+                other => other,
+            };
+            mapped.to_lowercase()
+        })
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == ' ' || *c == '-')
+        .collect()
+}
+
+fn demo_lessons(today: NaiveDate) -> Vec<TimetableLesson> {
+    let monday = displayed_week_monday(today);
+    let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
+    let slots: &[(i64, u32, u32, u32, u32, &str, &str)] = &[
+        (0, 8, 15, 9, 10, "Maths", "#8000FF"),
+        (0, 9, 10, 10, 5, "Français", "#FF8080"),
+        (0, 10, 20, 11, 15, "Histoire", "#FF8000"),
+        (0, 11, 15, 12, 10, "SVT", "#00C000"),
+        (0, 13, 30, 14, 25, "Anglais", "#FFFF00"),
+        (0, 14, 25, 15, 20, "Techno", "#808080"),
+        (0, 15, 20, 16, 15, "EPS", "#FF0000"),
+        (1, 8, 15, 9, 10, "Français", "#FF8080"),
+        (1, 9, 10, 10, 5, "Maths", "#8000FF"),
+        (1, 10, 20, 11, 15, "Anglais", "#FFFF00"),
+        (1, 11, 15, 12, 10, "Physique", "#00C0FF"),
+        (1, 13, 30, 14, 25, "Histoire", "#FF8000"),
+        (1, 14, 25, 15, 20, "Arts", "#FF00FF"),
+        (1, 15, 20, 16, 15, "SVT", "#00C000"),
+        (2, 8, 15, 9, 10, "Maths", "#8000FF"),
+        (2, 9, 10, 10, 5, "Histoire", "#FF8000"),
+        (2, 10, 20, 11, 15, "Français", "#FF8080"),
+        (2, 11, 15, 12, 10, "Anglais", "#FFFF00"),
+        (2, 13, 30, 14, 25, "EPS", "#FF0000"),
+        (2, 14, 25, 15, 20, "Physique", "#00C0FF"),
+        (2, 15, 20, 16, 15, "Musique", "#800080"),
+        (3, 8, 15, 9, 10, "SVT", "#00C000"),
+        (3, 9, 10, 10, 5, "Maths", "#8000FF"),
+        (3, 10, 20, 11, 15, "Techno", "#808080"),
+        (3, 11, 15, 12, 10, "Français", "#FF8080"),
+        (3, 13, 30, 14, 25, "Histoire", "#FF8000"),
+        (3, 14, 25, 15, 20, "Anglais", "#FFFF00"),
+        (3, 15, 20, 16, 15, "EMC", "#C0C0C0"),
+        (4, 8, 30, 9, 25, "Maths", "#8000FF"),
+        (4, 9, 25, 10, 20, "Français", "#FF8080"),
+        (4, 10, 25, 11, 20, "Histoire", "#FF8000"),
+        (4, 11, 20, 12, 15, "Anglais", "#FFFF00"),
+        (4, 13, 30, 14, 25, "Physique", "#00C0FF"),
+        (4, 14, 25, 15, 20, "SVT", "#00C000"),
+        (4, 15, 35, 16, 30, "EPS", "#FF0000"),
+    ];
+    slots
+        .iter()
+        .map(
+            |&(offset, sh, sm, eh, em, subject, colour)| TimetableLesson {
+                date: monday + chrono::Duration::days(offset),
+                start: t(sh, sm),
+                end: t(eh, em),
+                subject: subject.into(),
+                colour: colour.into(),
+                num: 0,
+            },
+        )
+        .collect()
 }
 
 fn school_homework(when: impl Into<String>, subject: &str) -> SchoolItem {
@@ -991,6 +1327,14 @@ fn json_str(v: &Value, keys: &[&str]) -> Option<String> {
     None
 }
 
+fn json_i64(v: &Value, key: &str) -> Option<i64> {
+    match v.get(key) {
+        Some(Value::Number(n)) => n.as_i64(),
+        Some(Value::String(s)) => s.parse().ok(),
+        _ => None,
+    }
+}
+
 fn json_truthy(v: &Value, key: &str) -> bool {
     match v.get(key) {
         Some(Value::Bool(b)) => *b,
@@ -1109,21 +1453,21 @@ fn lesson_end_from_place(item: &Value, general: &Value) -> Option<NaiveTime> {
     })
 }
 
-fn day_spans(lessons: Vec<(NaiveDate, NaiveTime, NaiveTime)>) -> Vec<SchoolDay> {
+fn day_spans(lessons: &[TimetableLesson]) -> Vec<SchoolDay> {
     use std::collections::BTreeMap;
     let mut by_day: BTreeMap<NaiveDate, (NaiveTime, NaiveTime)> = BTreeMap::new();
-    for (date, start, end) in lessons {
+    for lesson in lessons {
         by_day
-            .entry(date)
+            .entry(lesson.date)
             .and_modify(|(earliest, latest)| {
-                if start < *earliest {
-                    *earliest = start;
+                if lesson.start < *earliest {
+                    *earliest = lesson.start;
                 }
-                if end > *latest {
-                    *latest = end;
+                if lesson.end > *latest {
+                    *latest = lesson.end;
                 }
             })
-            .or_insert((start, end));
+            .or_insert((lesson.start, lesson.end));
     }
     by_day
         .into_iter()
@@ -1412,6 +1756,7 @@ mod tests {
                 "high".into(),
             )],
             Vec::new(),
+            SchoolWeek::default(),
             today,
         );
         assert_eq!(school.student, "Léa");
@@ -1431,17 +1776,31 @@ mod tests {
         assert!(!school.homework.is_empty());
         assert!(!school.grades.is_empty());
         assert_eq!(school.days.len(), 2);
+        assert_eq!(school.week.title, "This week");
+        assert_eq!(school.week.days.len(), 5);
+        assert!(school.week.days.iter().any(|day| day.today));
+        assert!(school
+            .week
+            .days
+            .iter()
+            .any(|day| day.lessons.iter().any(|lesson| lesson.subject == "Maths")));
     }
 
     #[test]
     fn day_spans_take_first_and_last_lesson() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
         let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
-        let days = day_spans(vec![
-            (today, t(10, 0), t(11, 0)),
-            (today, t(8, 30), t(9, 25)),
-            (today, t(16, 0), t(17, 30)),
-            (today + chrono::Duration::days(1), t(9, 0), t(12, 0)),
+        let days = day_spans(&[
+            tl(today, t(10, 0), t(11, 0), "Maths", "#8000FF"),
+            tl(today, t(8, 30), t(9, 25), "Français", "#FF8080"),
+            tl(today, t(16, 0), t(17, 30), "EPS", "#FF0000"),
+            tl(
+                today + chrono::Duration::days(1),
+                t(9, 0),
+                t(12, 0),
+                "Anglais",
+                "#FFFF00",
+            ),
         ]);
         assert_eq!(days[0].start, "08:30");
         assert_eq!(days[0].end, "17:30");
@@ -1504,6 +1863,172 @@ mod tests {
         );
         assert_eq!(events[1].day_label, "Tomorrow");
         assert_eq!(events[1].title, "School: Léa (finishes at 12:00)");
+    }
+
+    fn tl(
+        date: NaiveDate,
+        start: NaiveTime,
+        end: NaiveTime,
+        subject: &str,
+        colour: &str,
+    ) -> TimetableLesson {
+        TimetableLesson {
+            date,
+            start,
+            end,
+            subject: subject.into(),
+            colour: colour.into(),
+            num: 0,
+        }
+    }
+
+    #[test]
+    fn displayed_week_uses_this_week_on_weekdays() {
+        let friday = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        assert_eq!(
+            displayed_week_monday(friday),
+            NaiveDate::from_ymd_opt(2026, 9, 14).unwrap()
+        );
+        let week = school_week(&demo_lessons(friday), friday);
+        assert_eq!(week.title, "This week");
+        assert_eq!(week.days.len(), 5);
+        assert_eq!(week.days[0].label, "Mon 14");
+        assert_eq!(week.days[4].label, "Fri 18");
+        assert!(week.days[4].today);
+        assert!(!week.days[0].today);
+    }
+
+    #[test]
+    fn displayed_week_is_next_week_on_the_weekend() {
+        let saturday = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
+        let sunday = NaiveDate::from_ymd_opt(2026, 9, 20).unwrap();
+        let next_monday = NaiveDate::from_ymd_opt(2026, 9, 21).unwrap();
+        assert_eq!(displayed_week_monday(saturday), next_monday);
+        assert_eq!(displayed_week_monday(sunday), next_monday);
+        let week = school_week(&demo_lessons(saturday), saturday);
+        assert_eq!(week.title, "Next week");
+        assert_eq!(week.days[0].label, "Mon 21");
+        assert!(week.days.iter().all(|day| !day.today));
+    }
+
+    #[test]
+    fn week_merges_consecutive_same_subject() {
+        let monday = NaiveDate::from_ymd_opt(2026, 9, 14).unwrap();
+        let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
+        let week = school_week(
+            &[
+                tl(monday, t(8, 15), t(9, 10), "Maths", "#8000FF"),
+                tl(monday, t(9, 10), t(10, 5), "Maths", "#8000FF"),
+                tl(monday, t(10, 20), t(11, 15), "Français", "#FF8080"),
+            ],
+            monday,
+        );
+        let subjects: Vec<&str> = week.days[0]
+            .lessons
+            .iter()
+            .map(|lesson| lesson.subject.as_str())
+            .collect();
+        assert_eq!(subjects, ["Maths", "Français"]);
+        let maths = &week.days[0].lessons[0];
+        let french = &week.days[0].lessons[1];
+        assert_eq!(maths.row_start, 2);
+        assert_eq!(maths.row_end, 3);
+        assert_eq!(french.row_start, 3);
+        assert_eq!(french.row_end, 4);
+        let labels: Vec<&str> = week.times.iter().map(|t| t.label.as_str()).collect();
+        assert_eq!(labels, ["08:15", "10:20"]);
+        assert!(week.times.iter().all(|time| !time.end));
+    }
+
+    #[test]
+    fn week_aligns_lessons_that_share_a_start_time() {
+        let monday = NaiveDate::from_ymd_opt(2026, 9, 14).unwrap();
+        let tuesday = monday + chrono::Duration::days(1);
+        let friday = monday + chrono::Duration::days(4);
+        let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
+        let week = school_week(
+            &[
+                tl(monday, t(8, 15), t(9, 10), "Maths", "#8000FF"),
+                tl(tuesday, t(8, 15), t(9, 10), "Français", "#FF8080"),
+                tl(friday, t(8, 30), t(9, 25), "Anglais", "#FFFF00"),
+            ],
+            monday,
+        );
+        assert_eq!(week.bands, 2);
+        assert_eq!(
+            week.days[0].lessons[0].row_start,
+            week.days[1].lessons[0].row_start
+        );
+        assert_eq!(week.days[0].lessons[0].row_start, 2);
+        assert!(week.days[4].lessons[0].row_start > week.days[0].lessons[0].row_start);
+        let labels: Vec<&str> = week.times.iter().map(|t| t.label.as_str()).collect();
+        assert_eq!(labels, ["08:15", "08:30"]);
+        assert!(week.times.iter().all(|time| !time.end));
+    }
+
+    #[test]
+    fn shortens_pronote_subject_names() {
+        assert_eq!(shorten_subject("Mathématiques"), "Maths");
+        assert_eq!(shorten_subject("ANGLAIS LV1"), "Anglais");
+        assert_eq!(shorten_subject("HISTOIRE-GEOGRAPHIE"), "Hist-Géo");
+        assert_eq!(shorten_subject("HISTORY GEOGRAPHY"), "Hist-Géo");
+        assert_eq!(
+            shorten_subject("FRANCAIS LANGUE DE SCOLARISATION"),
+            "Français"
+        );
+        assert_eq!(shorten_subject("PHYSIQUE-CHIMIE"), "Phys-Chim");
+        assert_eq!(shorten_subject("SCIENCES DE LA VIE ET DE LA TERRE"), "SVT");
+        assert_eq!(shorten_subject("ED.PHYSIQUE & SPORTIVE"), "EPS");
+        assert_eq!(shorten_subject("ESPAGNOL"), "Espagnol");
+        assert_eq!(shorten_subject("ART"), "Arts");
+        assert_eq!(shorten_subject("Latin"), "Latin");
+    }
+
+    #[test]
+    fn maps_each_subject_to_its_own_colour() {
+        assert_eq!(map_lesson_colour("Maths"), "maths");
+        assert_eq!(map_lesson_colour("MATHÉMATIQUES"), "maths");
+        assert_eq!(map_lesson_colour("EPS"), "eps");
+        assert_eq!(map_lesson_colour("SVT"), "svt");
+        assert_eq!(map_lesson_colour("Anglais"), "anglais");
+        assert_eq!(map_lesson_colour("Physique"), "physique");
+        assert_eq!(map_lesson_colour("PHYSIQUE-CHIMIE"), "physchim");
+        assert_eq!(map_lesson_colour("Histoire"), "histgeo");
+        assert_eq!(map_lesson_colour("Techno"), "techno");
+        let slugs = [
+            "Maths",
+            "Français",
+            "Anglais",
+            "Espagnol",
+            "Hist-Géo",
+            "Phys-Chim",
+            "SVT",
+            "EPS",
+            "Arts",
+        ]
+        .map(map_lesson_colour);
+        let unique = slugs.iter().collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(unique.len(), slugs.len());
+    }
+
+    #[test]
+    fn parse_lesson_keeps_subject_and_skips_teacher_room() {
+        let item = serde_json::json!({
+            "DateDuCours": { "V": "16/09/2026 08:30:00" },
+            "DateDuCoursFin": { "V": "16/09/2026 09:25:00" },
+            "CouleurFond": "#8000FF",
+            "P": 2,
+            "ListeContenus": { "V": [
+                { "G": 16, "L": "MATHS" },
+                { "G": 3, "L": "Mme Dupont" },
+                { "G": 17, "L": "A12" }
+            ]}
+        });
+        let lesson = parse_lesson(&item, &serde_json::json!({})).unwrap();
+        assert_eq!(lesson.subject, "MATHS");
+        assert_eq!(lesson.colour, "#8000FF");
+        assert_eq!(lesson.num, 2);
+        assert_eq!(map_lesson_colour(&lesson.subject), "maths");
     }
 
     fn events_as_days() -> Vec<SchoolDay> {

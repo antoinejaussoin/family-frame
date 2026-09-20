@@ -304,7 +304,7 @@ mod tests {
             .filter(|s| s.uses_live_fetch(&cfg))
             .map(|s| s.id())
             .collect();
-        assert_eq!(live, ["weather", "tfl", "jokes", "history", "saints"]);
+        assert_eq!(live, ["weather", "tfl", "jokes", "saints"]);
         assert!(all_sources()
             .iter()
             .all(|s| !s.private() || !s.uses_live_fetch(&cfg)));
@@ -335,7 +335,7 @@ mod tests {
             .filter(|s| s.enabled(&cfg))
             .map(|s| s.id())
             .collect();
-        assert_eq!(enabled, ["tfl", "jokes", "history", "birthdays", "saints"]);
+        assert_eq!(enabled, ["tfl", "jokes", "birthdays", "saints"]);
     }
 
     fn offline_demo_dashboard(today: NaiveDate) -> Dashboard {
