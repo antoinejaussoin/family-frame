@@ -1833,7 +1833,7 @@ rotate = []
                 .unwrap()
                 .with_timezone(&Utc)
         );
-        assert_eq!(cfg.refresh_window(now, Some(intended)), (intended, wake_at));
+        assert_eq!(cfg.refresh_window(now, Some(intended)), (now, wake_at));
         assert_eq!(cfg.refresh_window(now, None), (now, intended));
     }
 

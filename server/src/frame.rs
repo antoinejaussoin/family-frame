@@ -174,8 +174,8 @@ impl FrameCache {
     /// path is the one that reuses a cached dashboard.
     ///
     /// `assigned_wake` is the echoed `X-Wake-At` for a timer poll, so the
-    /// painted header uses that slot rather than the slightly early/late
-    /// arrival. Button and cold boots pass `None`.
+    /// painted next time skips that slot (06:57 serving 07:00 → 10:00).
+    /// Button and cold boots pass `None`.
     pub async fn current_for_pico(&self, assigned_wake: Option<DateTime<Utc>>) -> Result<Frame> {
         self.with_assigned_wake(assigned_wake, async {
             self.current_inner(true, true, DASHBOARD_CACHE_MAX_AGE)

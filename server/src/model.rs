@@ -344,10 +344,8 @@ impl Dashboard {
         self.set_refresh_at(now, refresh_until_at(now, next_secs), tz);
     }
 
-    /// Paint last/next using the real slot instants (so 18:00 stays 18:00).
-    ///
-    /// `last` is the slot this contact is serving when the poll is linked,
-    /// otherwise the arrival time.
+    /// Paint last/next using the arrival time and the real next slot instant
+    /// (so 18:00 stays 18:00).
     pub fn set_refresh_at(&mut self, last: DateTime<Utc>, next: DateTime<Utc>, tz: Tz) {
         let local = last.with_timezone(&tz);
         self.last_refresh = local.format("%H:%M").to_string();
@@ -1125,10 +1123,10 @@ mod tests {
     }
 
     #[test]
-    fn refresh_window_linked_slot_paints_clock_times() {
+    fn refresh_window_linked_slot_keeps_arrival_time() {
         let tz = chrono_tz::Europe::London;
         let last = tz
-            .with_ymd_and_hms(2026, 9, 20, 7, 0, 0)
+            .with_ymd_and_hms(2026, 9, 20, 6, 57, 0)
             .unwrap()
             .with_timezone(&Utc);
         let next = tz
@@ -1137,7 +1135,7 @@ mod tests {
             .with_timezone(&Utc);
         let mut dash = Dashboard::empty("Family", last.date_naive());
         dash.set_refresh_at(last, next, tz);
-        assert_eq!(dash.last_refresh, "07:00");
+        assert_eq!(dash.last_refresh, "06:57");
         assert_eq!(dash.next_refresh, "10:00");
     }
 
