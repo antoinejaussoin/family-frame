@@ -291,6 +291,9 @@ pub struct SourcesConfig {
     pub weather: Option<WeatherConfig>,
     pub tfl: TflConfig,
     pub jokes: ToggleConfig,
+    /// Wikipedia “On this day”. Sits above the school week; leftover
+    /// height decides how many facts fit.
+    #[serde(default)]
     pub history: ToggleConfig,
     pub saints: ToggleConfig,
     pub pronote: Option<PronoteConfig>,
@@ -1531,6 +1534,7 @@ mod tests {
         assert!(!cfg.pronote_enabled());
         assert!(!cfg.pronote.show_sections);
         assert!(cfg.sources.tfl.enabled);
+        assert!(cfg.sources.history.enabled);
         assert_eq!(cfg.sources.tfl.lines.len(), 4);
         assert_eq!(cfg.birthdays.len(), 2);
         assert_eq!(cfg.birthdays[0].name, "Maya");

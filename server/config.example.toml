@@ -122,6 +122,7 @@ lines = [
 enabled = true
 
 [sources.history]
+# Wikipedia “On this day”, packed above the school week.
 enabled = true
 
 [sources.saints]

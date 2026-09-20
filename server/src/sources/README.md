@@ -67,7 +67,8 @@ is already generic status lines) or add a section to
 plugin renderers.
 
 `fit_to_panel()` still owns the pixel budget. Disabling a source must
-go through that function so leftover height refills to-dos and history.
+go through that function so leftover height refills to-dos and On this
+day facts above the school week.
 
 ## What not to do
 

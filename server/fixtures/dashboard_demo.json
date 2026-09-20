@@ -30,7 +30,20 @@
   ],
   "family_name": "Family",
   "has_battery": false,
-  "history": [],
+  "history": [
+    {
+      "text": "The New York Times is founded.",
+      "year": "1851"
+    },
+    {
+      "text": "Blackpool Illuminations are switched on for the first time.",
+      "year": "1879"
+    },
+    {
+      "text": "King Constantine II of Greece marries Princess Anne-Marie.",
+      "year": "1964"
+    }
+  ],
   "joke": {
     "punchline": "Because they make up everything.",
     "setup": "Why don't scientists trust atoms?"
@@ -78,9 +91,99 @@
     ],
     "grades": [],
     "homework": [],
-    "student": "Léa"
+    "student": "Léa",
+    "week": {
+      "title": "This week",
+      "bands": 12,
+      "times": [
+        { "end": false, "label": "08:15", "row": 2 },
+        { "end": false, "label": "08:30", "row": 3 },
+        { "end": false, "label": "09:10", "row": 4 },
+        { "end": false, "label": "09:25", "row": 5 },
+        { "end": false, "label": "10:20", "row": 6 },
+        { "end": false, "label": "10:25", "row": 7 },
+        { "end": false, "label": "11:15", "row": 8 },
+        { "end": false, "label": "11:20", "row": 9 },
+        { "end": false, "label": "13:30", "row": 10 },
+        { "end": false, "label": "14:25", "row": 11 },
+        { "end": false, "label": "15:20", "row": 12 },
+        { "end": false, "label": "15:35", "row": 13 }
+      ],
+      "days": [
+        {
+          "col": 2,
+          "label": "Mon 14",
+          "today": false,
+          "lessons": [
+            { "colour": "#8000FF", "ink": "#ffffff", "row_end": 4, "row_start": 2, "subject": "Maths" },
+            { "colour": "#FF8080", "ink": "#000000", "row_end": 6, "row_start": 4, "subject": "Français" },
+            { "colour": "#FF8000", "ink": "#000000", "row_end": 8, "row_start": 6, "subject": "Hist-Géo" },
+            { "colour": "#00C000", "ink": "#ffffff", "row_end": 10, "row_start": 8, "subject": "SVT" },
+            { "colour": "#FFFF00", "ink": "#000000", "row_end": 11, "row_start": 10, "subject": "Anglais" },
+            { "colour": "#808080", "ink": "#ffffff", "row_end": 12, "row_start": 11, "subject": "Techno" },
+            { "colour": "#FF0000", "ink": "#ffffff", "row_end": 14, "row_start": 12, "subject": "EPS" }
+          ]
+        },
+        {
+          "col": 3,
+          "label": "Tue 15",
+          "today": false,
+          "lessons": [
+            { "colour": "#FF8080", "ink": "#000000", "row_end": 4, "row_start": 2, "subject": "Français" },
+            { "colour": "#8000FF", "ink": "#ffffff", "row_end": 6, "row_start": 4, "subject": "Maths" },
+            { "colour": "#FFFF00", "ink": "#000000", "row_end": 8, "row_start": 6, "subject": "Anglais" },
+            { "colour": "#00C0FF", "ink": "#000000", "row_end": 10, "row_start": 8, "subject": "Physique" },
+            { "colour": "#FF8000", "ink": "#000000", "row_end": 11, "row_start": 10, "subject": "Hist-Géo" },
+            { "colour": "#FF00FF", "ink": "#ffffff", "row_end": 12, "row_start": 11, "subject": "Arts" },
+            { "colour": "#00C000", "ink": "#ffffff", "row_end": 14, "row_start": 12, "subject": "SVT" }
+          ]
+        },
+        {
+          "col": 4,
+          "label": "Wed 16",
+          "today": false,
+          "lessons": [
+            { "colour": "#8000FF", "ink": "#ffffff", "row_end": 4, "row_start": 2, "subject": "Maths" },
+            { "colour": "#FF8000", "ink": "#000000", "row_end": 6, "row_start": 4, "subject": "Hist-Géo" },
+            { "colour": "#FF8080", "ink": "#000000", "row_end": 8, "row_start": 6, "subject": "Français" },
+            { "colour": "#FFFF00", "ink": "#000000", "row_end": 10, "row_start": 8, "subject": "Anglais" },
+            { "colour": "#FF0000", "ink": "#ffffff", "row_end": 11, "row_start": 10, "subject": "EPS" },
+            { "colour": "#00C0FF", "ink": "#000000", "row_end": 12, "row_start": 11, "subject": "Physique" },
+            { "colour": "#800080", "ink": "#ffffff", "row_end": 14, "row_start": 12, "subject": "Musique" }
+          ]
+        },
+        {
+          "col": 5,
+          "label": "Thu 17",
+          "today": false,
+          "lessons": [
+            { "colour": "#00C000", "ink": "#ffffff", "row_end": 4, "row_start": 2, "subject": "SVT" },
+            { "colour": "#8000FF", "ink": "#ffffff", "row_end": 6, "row_start": 4, "subject": "Maths" },
+            { "colour": "#808080", "ink": "#ffffff", "row_end": 8, "row_start": 6, "subject": "Techno" },
+            { "colour": "#FF8080", "ink": "#000000", "row_end": 10, "row_start": 8, "subject": "Français" },
+            { "colour": "#FF8000", "ink": "#000000", "row_end": 11, "row_start": 10, "subject": "Hist-Géo" },
+            { "colour": "#FFFF00", "ink": "#000000", "row_end": 12, "row_start": 11, "subject": "Anglais" },
+            { "colour": "#C0C0C0", "ink": "#000000", "row_end": 14, "row_start": 12, "subject": "EMC" }
+          ]
+        },
+        {
+          "col": 6,
+          "label": "Fri 18",
+          "today": true,
+          "lessons": [
+            { "colour": "#8000FF", "ink": "#ffffff", "row_end": 5, "row_start": 3, "subject": "Maths" },
+            { "colour": "#FF8080", "ink": "#000000", "row_end": 6, "row_start": 5, "subject": "Français" },
+            { "colour": "#FF8000", "ink": "#000000", "row_end": 9, "row_start": 7, "subject": "Hist-Géo" },
+            { "colour": "#FFFF00", "ink": "#000000", "row_end": 10, "row_start": 9, "subject": "Anglais" },
+            { "colour": "#00C0FF", "ink": "#000000", "row_end": 11, "row_start": 10, "subject": "Physique" },
+            { "colour": "#00C000", "ink": "#ffffff", "row_end": 12, "row_start": 11, "subject": "SVT" },
+            { "colour": "#FF0000", "ink": "#ffffff", "row_end": 14, "row_start": 13, "subject": "EPS" }
+          ]
+        }
+      ]
+    }
   },
-  "source_note": "demo to-dos (no Todoist token) · demo rooms (no Meross credentials) · demo weather (no BBC location) · TfL tube · icanhazdadjoke · demo school (no Pronote credentials)",
+  "source_note": "demo to-dos (no Todoist token) · demo rooms (no Meross credentials) · demo weather (no BBC location) · TfL tube · icanhazdadjoke · Wikipedia on this day · demo school (no Pronote credentials)",
   "todos": [
     {
       "done": false,

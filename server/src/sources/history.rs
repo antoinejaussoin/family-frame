@@ -2,6 +2,9 @@
 //!
 //! Uses the public REST feed, keeps a day’s facts in memory, and drops grim
 //! items (crashes, murders) so the kitchen board stays family-friendly.
+//!
+//! On by default. Facts sit above the school week; `fit_sidebar`
+//! keeps only as many as leftover height allows.
 
 use anyhow::{Context, Result};
 use chrono::{Datelike, NaiveDate};

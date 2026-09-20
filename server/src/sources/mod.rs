@@ -375,6 +375,12 @@ mod tests {
         apply(
             &mut dash,
             &mut calendar,
+            Contribution::History(history::demo_history()),
+            today,
+        );
+        apply(
+            &mut dash,
+            &mut calendar,
             Contribution::School(pronote::demo_school(today)),
             today,
         );
@@ -400,6 +406,7 @@ mod tests {
             "demo weather (no BBC location)",
             "TfL tube",
             "icanhazdadjoke",
+            "Wikipedia on this day",
             "demo school (no Pronote credentials)",
         ]
         .join(" · ");

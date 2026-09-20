@@ -189,15 +189,18 @@ body {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
   min-width: 0;
+  align-items: start;
 }
 .todos,
 .joke,
+.school-week,
 .history { overflow: hidden; }
 .today,
 .homework,
 .grades,
 .todos,
 .joke,
+.school-week,
 .history,
 .tube,
 .rooms { min-width: 0; }
@@ -291,7 +294,7 @@ h2 {
   letter-spacing: 0;
   text-transform: uppercase;
   border-bottom: 4px solid var(--black);
-  padding-bottom: 8px;
+  padding-bottom: 4px;
   min-height: 40px;
 }
 
@@ -312,6 +315,7 @@ h2 {
 .rooms h2,
 .todos h2,
 .joke h2,
+.school-week h2,
 .homework h2,
 .grades h2,
 .tube h2 {
@@ -708,6 +712,7 @@ li {
 .grades h2,
 .todos h2,
 .joke h2,
+.school-week h2,
 .history h2,
 .tube h2,
 .rooms h2,
@@ -722,6 +727,7 @@ li {
 .grades .section-icon,
 .todos .section-icon,
 .joke .section-icon,
+.school-week .section-icon,
 .history .section-icon,
 .tube .section-icon,
 .rooms .section-icon,
@@ -874,10 +880,75 @@ li {
   line-height: 33px;
 }
 
+.week-grid {
+  display: grid;
+  grid-template-columns: 40px repeat(5, minmax(0, 1fr));
+  grid-template-rows: 22px repeat(var(--week-bands, 1), 18px);
+  column-gap: 4px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.week-time {
+  grid-column: 1;
+  align-self: start;
+  margin: 0;
+  padding-top: 1px;
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
+  font-weight: 700;
+  line-height: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+}
+
+.week-day {
+  box-sizing: border-box;
+  margin: 0;
+  height: 22px;
+  padding: 0 2px;
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+  text-transform: none;
+  letter-spacing: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.week-day.is-today {
+  background: var(--yellow);
+  color: var(--black);
+}
+
+.school-week .lesson {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: 1px 0;
+  padding: 0 2px;
+  border-bottom: none;
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .homework .empty,
 .grades .empty,
 .todos .empty,
 .joke .empty,
+.school-week .empty,
 .history .empty {
   font-family: var(--type-sm-family);
   font-size: var(--type-sm-size);

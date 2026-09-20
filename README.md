@@ -18,7 +18,7 @@ The family UI estimates how long this schedule will last from a full pack — id
 
 ## The week, at a glance
 
-Calendars, birthdays, the school run, weather in the headings, to-dos, Tube status, room temperatures, a joke, and what happened on this day. Homework and grades stay off the glass unless you ask for them.
+Calendars, birthdays, the school run, the week’s Pronote subjects, weather in the headings, to-dos, Tube status, room temperatures, and a joke. Homework and grades stay off the glass unless you ask for them.
 
 ![Dashboard panel at 1600×1200](docs/images/dashboard.png)
 
