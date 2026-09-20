@@ -343,7 +343,7 @@ mod tests {
         dash.school = crate::sources::pronote::demo_school(today);
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"school-week\""));
-        assert!(html.contains("This week"));
+        assert!(html.contains("School - This week"));
         assert!(html.contains("class=\"week-grid\""));
         assert!(html.contains("week-day is-today"));
         assert!(html.contains("week-time"));
@@ -351,7 +351,7 @@ mod tests {
         assert!(html.contains("15:35"));
         assert!(html.contains("Mon 14"));
         assert!(html.contains("Fri 18"));
-        assert!(html.contains("#8000FF"));
+        assert!(html.contains("#40007F"));
         assert!(html.contains("grid-row:"));
         assert!(html.contains("Maths"));
         assert!(html.contains("Français"));
@@ -365,10 +365,10 @@ mod tests {
         let mut dash = Dashboard::empty("Family", saturday);
         dash.school = crate::sources::pronote::demo_school(saturday);
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
-        assert!(html.contains("Next week"));
+        assert!(html.contains("School - Next week"));
         assert!(html.contains("Mon 21"));
         assert!(!html.contains("week-day is-today"));
-        assert!(!html.contains("This week"));
+        assert!(!html.contains("School - This week"));
     }
 
     #[test]
@@ -409,7 +409,7 @@ mod tests {
         assert!(history < week);
         assert!(html.contains("On this day"));
         assert!(html.contains("Joke of the day"));
-        assert!(html.contains("This week"));
+        assert!(html.contains("School - This week"));
     }
 
     #[test]

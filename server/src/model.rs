@@ -230,7 +230,7 @@ pub struct SchoolDay {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SchoolWeek {
-    /// `This week`, or `Next week` on Saturday and Sunday.
+    /// `School - This week`, or `School - Next week` on Saturday and Sunday.
     #[serde(default)]
     pub title: String,
     #[serde(default)]
@@ -269,10 +269,10 @@ pub struct SchoolWeekDay {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SchoolLesson {
     pub subject: String,
-    /// Pronote `CouleurFond` hex, used as the chip background.
+    /// Pronote `CouleurFond` hex, darkened for the chip background.
     #[serde(default)]
     pub colour: String,
-    /// `#000000` or `#ffffff` so the subject stays readable on `colour`.
+    /// Always `#ffffff` so the subject stays readable on the darkened chip.
     #[serde(default)]
     pub ink: String,
     /// Inclusive CSS `grid-row` start (day headers occupy row 1).
@@ -1052,7 +1052,7 @@ mod tests {
         });
         dash.history = vec![history_fact("1851", "The New York Times is founded.")];
         dash.school.week = SchoolWeek {
-            title: "This week".into(),
+            title: "School - This week".into(),
             days: vec![SchoolWeekDay {
                 label: "Fri 18".into(),
                 today: true,
@@ -1082,7 +1082,7 @@ mod tests {
         dash.fit_sidebar_to_panel();
         assert_eq!(dash.history.len(), 1);
         assert_eq!(dash.history[0].year, "1851");
-        assert_eq!(dash.school.week.title, "This week");
+        assert_eq!(dash.school.week.title, "School - This week");
         assert!(dash.joke.is_some());
         assert_eq!(dash.todos.len(), 1);
     }

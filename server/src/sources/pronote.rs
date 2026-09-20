@@ -116,7 +116,7 @@ struct TimetableLesson {
     start: NaiveTime,
     end: NaiveTime,
     subject: String,
-    /// Pronote `CouleurFond`, passed through as the week-chip background.
+    /// Pronote `CouleurFond`. Darkened before it is painted as the chip.
     colour: String,
     num: i64,
 }
@@ -883,8 +883,8 @@ pub fn displayed_week_monday(today: NaiveDate) -> NaiveDate {
 fn school_week(lessons: &[TimetableLesson], today: NaiveDate) -> SchoolWeek {
     let monday = displayed_week_monday(today);
     let title = match today.weekday() {
-        Weekday::Sat | Weekday::Sun => "Next week",
-        _ => "This week",
+        Weekday::Sat | Weekday::Sun => "School - Next week",
+        _ => "School - This week",
     };
 
     struct Placed {
@@ -1044,14 +1044,23 @@ fn prefer_shown_lessons(mut lessons: Vec<TimetableLesson>) -> Vec<TimetableLesso
     lessons
 }
 
-/// Background is Pronote's hex as sent. Ink is only for label contrast.
+/// Keep Pronote's hue; scale every channel toward black so white labels read.
+const CHIP_DARKEN_NUM: u16 = 1;
+const CHIP_DARKEN_DEN: u16 = 2;
+
+/// Background is Pronote's hex, darkened. Subject ink is always white.
 fn chip_colours(hex: &str) -> (String, String) {
-    let colour = normalize_pronote_hex(hex).unwrap_or_else(|| "#c8c8c8".into());
-    let ink = parse_hex_rgb(&colour)
-        .map(ink_for_rgb)
-        .unwrap_or("#000000")
-        .into();
-    (colour, ink)
+    let raw = normalize_pronote_hex(hex).unwrap_or_else(|| "#c8c8c8".into());
+    let colour = parse_hex_rgb(&raw)
+        .map(darken_pronote_rgb)
+        .map(|(r, g, b)| format!("#{r:02X}{g:02X}{b:02X}"))
+        .unwrap_or_else(|| "#646464".into());
+    (colour, "#ffffff".into())
+}
+
+fn darken_pronote_rgb((r, g, b): (u8, u8, u8)) -> (u8, u8, u8) {
+    let scale = |c: u8| ((c as u16 * CHIP_DARKEN_NUM) / CHIP_DARKEN_DEN) as u8;
+    (scale(r), scale(g), scale(b))
 }
 
 fn normalize_pronote_hex(raw: &str) -> Option<String> {
@@ -1079,15 +1088,6 @@ fn parse_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
         u8::from_str_radix(&s[2..4], 16).ok()?,
         u8::from_str_radix(&s[4..6], 16).ok()?,
     ))
-}
-
-fn ink_for_rgb((r, g, b): (u8, u8, u8)) -> &'static str {
-    let y = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
-    if y >= 140.0 {
-        "#000000"
-    } else {
-        "#ffffff"
-    }
 }
 
 fn shorten_subject(raw: &str) -> String {
@@ -1789,7 +1789,7 @@ mod tests {
         assert!(!school.homework.is_empty());
         assert!(!school.grades.is_empty());
         assert_eq!(school.days.len(), 2);
-        assert_eq!(school.week.title, "This week");
+        assert_eq!(school.week.title, "School - This week");
         assert_eq!(school.week.days.len(), 5);
         assert!(school.week.days.iter().any(|day| day.today));
         assert!(school
@@ -1903,7 +1903,7 @@ mod tests {
             NaiveDate::from_ymd_opt(2026, 9, 14).unwrap()
         );
         let week = school_week(&demo_lessons(friday), friday);
-        assert_eq!(week.title, "This week");
+        assert_eq!(week.title, "School - This week");
         assert_eq!(week.days.len(), 5);
         assert_eq!(week.days[0].label, "Mon 14");
         assert_eq!(week.days[4].label, "Fri 18");
@@ -1919,7 +1919,7 @@ mod tests {
         assert_eq!(displayed_week_monday(saturday), next_monday);
         assert_eq!(displayed_week_monday(sunday), next_monday);
         let week = school_week(&demo_lessons(saturday), saturday);
-        assert_eq!(week.title, "Next week");
+        assert_eq!(week.title, "School - Next week");
         assert_eq!(week.days[0].label, "Mon 21");
         assert!(week.days.iter().all(|day| !day.today));
     }
@@ -1998,17 +1998,18 @@ mod tests {
     }
 
     #[test]
-    fn week_uses_pronote_hex_unchanged() {
-        assert_eq!(chip_colours("#8000FF").0, "#8000FF");
-        assert_eq!(chip_colours("AaBbCc").0, "#AaBbCc");
-        assert_eq!(chip_colours("  #ff8080  ").0, "#ff8080");
+    fn week_darkens_pronote_hex_and_uses_white_ink() {
+        assert_eq!(chip_colours("#8000FF"), ("#40007F".into(), "#ffffff".into()));
+        assert_eq!(chip_colours("AaBbCc"), ("#555D66".into(), "#ffffff".into()));
+        assert_eq!(chip_colours("  #ff8080  "), ("#7F4040".into(), "#ffffff".into()));
+        assert_eq!(chip_colours("#FFFF00"), ("#7F7F00".into(), "#ffffff".into()));
         let monday = NaiveDate::from_ymd_opt(2026, 9, 14).unwrap();
         let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
         let week = school_week(
             &[tl(monday, t(8, 15), t(9, 10), "Maths", "#8000FF")],
             monday,
         );
-        assert_eq!(week.days[0].lessons[0].colour, "#8000FF");
+        assert_eq!(week.days[0].lessons[0].colour, "#40007F");
         assert_eq!(week.days[0].lessons[0].ink, "#ffffff");
     }
 
@@ -2029,7 +2030,7 @@ mod tests {
         assert_eq!(lesson.subject, "MATHS");
         assert_eq!(lesson.colour, "#8000FF");
         assert_eq!(lesson.num, 2);
-        assert_eq!(chip_colours(&lesson.colour).0, "#8000FF");
+        assert_eq!(chip_colours(&lesson.colour).0, "#40007F");
     }
 
     fn events_as_days() -> Vec<SchoolDay> {
