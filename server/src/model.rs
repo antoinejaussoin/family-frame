@@ -44,7 +44,7 @@ pub const BIRTHDAY_HORIZON_DAYS: i64 = 14;
 /// panel. Keep in sync with `dashboard.css` (`.panel` padding/gaps, `.mast`,
 /// `h2`, `li`, `.events { gap }`). Weather sits in the section headers.
 pub const EVENTS_COLUMN_PX: i32 = 990;
-pub const SECTION_HEAD_PX: i32 = 52;
+pub const SECTION_HEAD_PX: i32 = 48;
 pub const EVENT_ROW_PX: i32 = 60;
 /// Minimum gap between Today and Coming next. Extra leftover space is
 /// absorbed above Coming next so that section sits on the column bottom.
@@ -817,7 +817,7 @@ mod tests {
         assert_eq!(coming_event_capacity(0), 17);
         assert_eq!(coming_event_capacity(1), 17);
         assert_eq!(coming_event_capacity(2), 16);
-        assert_eq!(coming_event_capacity(8), 7);
+        assert_eq!(coming_event_capacity(8), 8);
         assert_eq!(max_today_events(), 13);
     }
 

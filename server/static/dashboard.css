@@ -294,7 +294,7 @@ h2 {
   letter-spacing: 0;
   text-transform: uppercase;
   border-bottom: 4px solid var(--black);
-  padding-bottom: 8px;
+  padding-bottom: 4px;
   min-height: 40px;
 }
 
