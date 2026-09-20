@@ -351,7 +351,7 @@ mod tests {
         assert!(html.contains("15:35"));
         assert!(html.contains("Mon 14"));
         assert!(html.contains("Fri 18"));
-        assert!(html.contains("#40007F"));
+        assert!(html.contains("#20003F"));
         assert!(html.contains("grid-row:"));
         assert!(html.contains("Maths"));
         assert!(html.contains("Français"));

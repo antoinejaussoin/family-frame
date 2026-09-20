@@ -1044,9 +1044,10 @@ fn prefer_shown_lessons(mut lessons: Vec<TimetableLesson>) -> Vec<TimetableLesso
     lessons
 }
 
-/// Keep Pronote's hue; scale every channel toward black so white labels read.
+/// Keep Pronote's hue; pull channels toward black so Spectra dithers
+/// colour+black instead of a pale wash of white.
 const CHIP_DARKEN_NUM: u16 = 1;
-const CHIP_DARKEN_DEN: u16 = 2;
+const CHIP_DARKEN_DEN: u16 = 4;
 
 /// Background is Pronote's hex, darkened. Subject ink is always white.
 fn chip_colours(hex: &str) -> (String, String) {
@@ -1054,7 +1055,7 @@ fn chip_colours(hex: &str) -> (String, String) {
     let colour = parse_hex_rgb(&raw)
         .map(darken_pronote_rgb)
         .map(|(r, g, b)| format!("#{r:02X}{g:02X}{b:02X}"))
-        .unwrap_or_else(|| "#646464".into());
+        .unwrap_or_else(|| "#323232".into());
     (colour, "#ffffff".into())
 }
 
@@ -2001,16 +2002,16 @@ mod tests {
     fn week_darkens_pronote_hex_and_uses_white_ink() {
         assert_eq!(
             chip_colours("#8000FF"),
-            ("#40007F".into(), "#ffffff".into())
+            ("#20003F".into(), "#ffffff".into())
         );
-        assert_eq!(chip_colours("AaBbCc"), ("#555D66".into(), "#ffffff".into()));
+        assert_eq!(chip_colours("AaBbCc"), ("#2A2E33".into(), "#ffffff".into()));
         assert_eq!(
             chip_colours("  #ff8080  "),
-            ("#7F4040".into(), "#ffffff".into())
+            ("#3F2020".into(), "#ffffff".into())
         );
         assert_eq!(
             chip_colours("#FFFF00"),
-            ("#7F7F00".into(), "#ffffff".into())
+            ("#3F3F00".into(), "#ffffff".into())
         );
         let monday = NaiveDate::from_ymd_opt(2026, 9, 14).unwrap();
         let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
@@ -2018,7 +2019,7 @@ mod tests {
             &[tl(monday, t(8, 15), t(9, 10), "Maths", "#8000FF")],
             monday,
         );
-        assert_eq!(week.days[0].lessons[0].colour, "#40007F");
+        assert_eq!(week.days[0].lessons[0].colour, "#20003F");
         assert_eq!(week.days[0].lessons[0].ink, "#ffffff");
     }
 
@@ -2039,7 +2040,7 @@ mod tests {
         assert_eq!(lesson.subject, "MATHS");
         assert_eq!(lesson.colour, "#8000FF");
         assert_eq!(lesson.num, 2);
-        assert_eq!(chip_colours(&lesson.colour).0, "#40007F");
+        assert_eq!(chip_colours(&lesson.colour).0, "#20003F");
     }
 
     fn events_as_days() -> Vec<SchoolDay> {

@@ -86,6 +86,9 @@ fn dist_to_segment2(p: [i32; 3], a: [u8; 3], b: [u8; 3]) -> i32 {
 }
 
 const EDGE_DIST2: i32 = 48 * 48;
+/// Darkened school chips sit close to black on the hue line. Treat only
+/// true ink as black so those fills Floyd–Steinberg instead of snapping.
+const BLACK_DIST2: i32 = 16 * 16;
 
 /// Black — the usual ink. Anti-aliased type is a blend with paper;
 /// chromatic mixes (orange, light blue) are not.
@@ -93,14 +96,15 @@ fn is_black(rgb: [u8; 3]) -> bool {
     rgb == [0x00, 0x00, 0x00]
 }
 
-fn is_white(rgb: [u8; 3]) -> bool {
-    rgb == [0xff, 0xff, 0xff]
-}
-
 fn near_primary(r: i32, g: i32, b: i32) -> bool {
-    SPECTRA6
-        .iter()
-        .any(|&(_, rgb)| color_dist2(r, g, b, rgb) <= EDGE_DIST2)
+    SPECTRA6.iter().any(|&(_, rgb)| {
+        let limit = if is_black(rgb) {
+            BLACK_DIST2
+        } else {
+            EDGE_DIST2
+        };
+        color_dist2(r, g, b, rgb) <= limit
+    })
 }
 
 fn neighbor_near_primary(img: &RgbaImage, x: u32, y: u32) -> bool {
@@ -135,14 +139,14 @@ fn is_antialiased_edge(img: &RgbaImage, x: u32, y: u32) -> bool {
     let p = [r, g, b];
     for (i, &(_, a)) in SPECTRA6.iter().enumerate() {
         for &(_, c) in SPECTRA6.iter().skip(i + 1) {
-            let ink_paper = (is_black(a) && is_white(c)) || (is_white(a) && is_black(c));
-            if ink_paper {
-                // Interior of a grey fill has grey neighbours — dither.
-                // A 1px fringe next to paper or ink still snaps.
-                if !neighbor_near_primary(img, x, y) {
-                    continue;
-                }
-            } else if !is_black(a) && !is_black(c) {
+            // Yellow↔red (orange) and similar are real fills — dither.
+            // Black↔paper and black↔chroma look like Chrome AA, but only
+            // snap the 1px fringe. Interior of a darkened hue (school chips)
+            // has matching neighbours and must Floyd–Steinberg.
+            if !is_black(a) && !is_black(c) {
+                continue;
+            }
+            if !neighbor_near_primary(img, x, y) {
                 continue;
             }
             if dist_to_segment2(p, a, c) <= EDGE_DIST2 {
@@ -407,6 +411,33 @@ mod tests {
         assert!(
             black > 400 && white > 400,
             "overcast grey should dither to black+white, black={black} white={white}"
+        );
+    }
+
+    #[test]
+    fn darkened_hue_fill_dithers_instead_of_snapping_to_black() {
+        let mut img = RgbaImage::from_pixel(PANEL_WIDTH, PANEL_HEIGHT, Rgba([255, 255, 255, 255]));
+        // Pronote purple scaled toward black — sits on the black↔blue line.
+        for y in 200..280 {
+            for x in 200..280 {
+                img.put_pixel(x, y, Rgba([0x20, 0x00, 0x3F, 255]));
+            }
+        }
+        let bin = pack_rgba(&img).unwrap();
+        let mut black = 0;
+        let mut chroma = 0;
+        for y in 210..270 {
+            for x in 210..270 {
+                match nibble_at(&bin, x, y) {
+                    0 => black += 1,
+                    3 | 5 => chroma += 1,
+                    other => panic!("unexpected nibble {other} inside darkened purple fill"),
+                }
+            }
+        }
+        assert!(
+            black < 3600 && chroma > 200,
+            "dark purple must dither, not snap to black: black={black} chroma={chroma}"
         );
     }
 }
