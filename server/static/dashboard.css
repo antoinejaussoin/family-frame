@@ -194,6 +194,7 @@ body {
 .todos,
 .joke,
 .school-week,
+.forecast,
 .history { overflow: hidden; }
 .today,
 .homework,
@@ -201,6 +202,7 @@ body {
 .todos,
 .joke,
 .school-week,
+.forecast,
 .history,
 .tube,
 .rooms { min-width: 0; }
@@ -316,6 +318,7 @@ h2 {
 .todos h2,
 .joke h2,
 .school-week h2,
+.forecast h2,
 .homework h2,
 .grades h2,
 .tube h2 {
@@ -371,6 +374,67 @@ h2 {
   color: var(--red);
   line-height: 21px;
   min-width: 2.4ch;
+}
+
+.forecast h2 {
+  justify-content: flex-start;
+}
+
+.forecast-day {
+  margin-left: auto;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  font-weight: 700;
+  line-height: 16px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.forecast-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.forecast-col .hour {
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
+  font-weight: 700;
+  line-height: 12px;
+}
+
+.forecast-col .wx-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: block;
+  overflow: visible;
+}
+
+.forecast-col .degrees {
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  font-weight: 700;
+  color: var(--red);
+  line-height: 16px;
+}
+
+.forecast-col .rain {
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
+  font-weight: 700;
+  color: var(--blue);
+  line-height: 12px;
 }
 
 .sun-times {
@@ -713,6 +777,7 @@ li {
 .todos h2,
 .joke h2,
 .school-week h2,
+.forecast h2,
 .history h2,
 .tube h2,
 .rooms h2,
@@ -728,6 +793,7 @@ li {
 .todos .section-icon,
 .joke .section-icon,
 .school-week .section-icon,
+.forecast .section-icon,
 .history .section-icon,
 .tube .section-icon,
 .rooms .section-icon,

@@ -374,6 +374,7 @@ mod tests {
     #[test]
     fn dashboard_shows_on_this_day_facts() {
         let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        dash.show_on_this_day = true;
         dash.history = crate::sources::history::demo_history();
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"history\""));
@@ -387,9 +388,53 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_hides_on_this_day_by_default() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        dash.history = crate::sources::history::demo_history();
+        dash.weather = weather::demo_weather();
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(!html.contains("On this day"));
+        assert!(!html.contains("class=\"history\""));
+        assert!(html.contains("no-history"));
+        assert!(html.contains("class=\"forecast\""));
+        assert!(html.contains("Forecast"));
+        assert!(html.contains("forecast-grid"));
+        assert!(html.contains("icon-forecast"));
+        assert!(html.contains("class=\"rain\">70%</span>"));
+    }
+
+    #[test]
+    fn dashboard_pairs_todos_with_joke_above_forecast_and_week() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.todos = vec![crate::model::TodoItem {
+            title: "Buy milk".into(),
+            done: false,
+        }];
+        dash.joke = Some(crate::sources::jokes::demo_joke());
+        dash.weather = weather::demo_weather();
+        dash.school = crate::sources::pronote::demo_school(today);
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        let pair = html.find("sidebar-pair").unwrap();
+        let todos = html.find("class=\"todos\"").unwrap();
+        let joke = html.find("class=\"joke\"").unwrap();
+        let forecast = html.find("class=\"forecast\"").unwrap();
+        let week = html.find("class=\"school-week\"").unwrap();
+        assert!(pair < todos);
+        assert!(todos < joke);
+        assert!(joke < forecast);
+        assert!(forecast < week);
+        assert!(!html.contains("On this day"));
+        assert!(html.contains("Joke of the day"));
+        assert!(html.contains("Forecast"));
+        assert!(html.contains("School - This week"));
+    }
+
+    #[test]
     fn dashboard_pairs_todos_with_joke_above_history_and_week() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
         let mut dash = Dashboard::empty("Family", today);
+        dash.show_on_this_day = true;
         dash.todos = vec![crate::model::TodoItem {
             title: "Buy milk".into(),
             done: false,

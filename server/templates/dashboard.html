@@ -10,10 +10,10 @@
   <link rel="preload" href="/static/fonts/TRMNL16-Bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/TRMNL21-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/TRMNL21-Bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/static/dashboard.css?v=school-week9">
+  <link rel="stylesheet" href="/static/dashboard.css?v=hourly-forecast">
 </head>
 <body>
-  <main class="panel{% if show_school_sections %} with-school{% endif %}{% if not history %} no-history{% endif %}{% if not joke %} no-joke{% endif %}">
+  <main class="panel{% if show_school_sections %} with-school{% endif %}{% if not show_on_this_day or not history %} no-history{% endif %}{% if not joke %} no-joke{% endif %}">
     <div class="frame-meta">
       {% if last_refresh or has_battery %}
       <p class="refresh" aria-label="{% if last_refresh %}Last refresh {{ last_refresh }}, next {{ next_refresh }}{% if has_battery %}, {% endif %}{% endif %}{% if has_battery %}battery {{ battery_pct }} percent{% endif %}">
@@ -81,6 +81,13 @@
           <rect x="18" y="28" width="28" height="5" fill="#000000"/>
           <rect x="18" y="38" width="20" height="5" fill="#000000"/>
           <rect x="18" y="48" width="14" height="5" fill="#ff0000"/>
+        </symbol>
+        <symbol id="icon-forecast" viewBox="0 0 64 64">
+          <circle cx="22" cy="22" r="10" fill="#ffff00"/>
+          <rect x="20" y="4" width="4" height="8" rx="2" fill="#ffff00"/>
+          <rect x="20" y="4" width="4" height="8" rx="2" fill="#ffff00" transform="rotate(45 22 22)"/>
+          <rect x="20" y="4" width="4" height="8" rx="2" fill="#ffff00" transform="rotate(-45 22 22)"/>
+          <path fill="#0000ff" d="M30 36c0-6 5-10 11-10 1-5 6-8 11-8 6 0 11 5 11 11v2h2c4 0 7 3 7 7s-3 7-7 7H32c-5 0-9-4-9-9 0-1 0-2 1-3z"/>
         </symbol>
         <symbol id="icon-school" viewBox="0 0 64 64">
           <rect x="8" y="14" width="48" height="38" rx="4" fill="#000000"/>
@@ -350,7 +357,32 @@
     </div>
     {% endif %}
 
-    {% if history %}
+    {% if weather.days and weather.days|length > 0 %}
+    {% set forecast_day = weather.days[0] %}
+    {% if forecast_day.hours %}
+    <section class="forecast">
+      <h2>
+        <span class="section-title">
+          <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-forecast"/></svg>
+          Forecast
+        </span>
+        <span class="forecast-day">{{ forecast_day.label }}</span>
+      </h2>
+      <div class="forecast-grid" aria-label="{{ forecast_day.label }} hourly forecast">
+        {% for hour in forecast_day.hours %}
+        <div class="forecast-col" aria-label="{{ hour.label }}:00, {{ hour.temperature }}, rain {{ hour.rain }}">
+          <span class="hour">{{ hour.label }}</span>
+          <svg class="wx-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#wx-{{ hour.icon }}"/></svg>
+          <span class="degrees">{{ hour.temperature }}</span>
+          <span class="rain">{{ hour.rain }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+    {% endif %}
+
+    {% if show_on_this_day and history %}
     <section class="history">
       <h2>
         <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-history"/></svg>
