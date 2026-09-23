@@ -52,14 +52,18 @@ pub const SECTION_GAP_PX: i32 = EVENT_ROW_PX;
 pub const EMPTY_SECTION_BODY_PX: i32 = 54;
 
 /// Right-hand columns (same grid row as events). Keep in sync with
-/// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/joke/week/history/tube/rooms,
-/// `h2`, `.todos li`, `.joke`, `.school-item`, `.week-grid`, `.tube-line`, `.rooms li`, `.todos-more`).
+/// `dashboard.css` (`.panel` padding/gaps, `.mast`, homework/grades/todos/joke/forecast/week/history/tube/rooms,
+/// `h2`, `.todos li`, `.joke`, `.school-item`, `.week-grid`, `.forecast-grid`, `.tube-line`, `.rooms li`, `.todos-more`).
 pub const SIDEBAR_PX: i32 = 1008;
 pub const SIDEBAR_GAP_PX: i32 = 28;
 pub const TUBE_ROW_PX: i32 = 44;
 pub const COMING_ROW_PX: i32 = TUBE_ROW_PX;
 pub const SCHOOL_ROW_PX: i32 = 44;
 pub const ROOM_ROW_PX: i32 = TUBE_ROW_PX;
+/// Flip to `true` to paint Wikipedia “On this day” above the school week
+/// again. Forecast stays either way; facts only fill leftover height.
+pub const SHOW_ON_THIS_DAY: bool = false;
+
 /// Wikipedia pool; the panel then keeps only facts that fit leftover height.
 pub const HISTORY_POOL: usize = 12;
 pub const MAX_HISTORY_FACTS: usize = 5;
@@ -99,6 +103,9 @@ pub const JOKE_TEXT_MAX_PX: i32 = SIDEBAR_QUARTER_PX;
 pub const WEEK_GRID_TOP_PX: i32 = 8;
 pub const WEEK_DAY_LABEL_PX: i32 = 22;
 pub const WEEK_SLOT_PX: i32 = 18;
+/// Hourly forecast strip (heading + 8am–8pm columns). Keep in sync with
+/// `.forecast` / `.forecast-grid` in `dashboard.css`.
+pub const FORECAST_BLOCK_PX: i32 = 136;
 
 /// How many Coming next rows fit under Today on the 13.3″ panel.
 pub fn coming_event_capacity(today_count: usize) -> usize {
@@ -160,9 +167,22 @@ pub struct WeatherSlot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WeatherHour {
+    /// Hour of day without leading zero (`8` … `20`).
+    pub label: String,
+    pub icon: String,
+    pub temperature: String,
+    /// Chance of rain, e.g. `30%` or `—` when unknown.
+    pub rain: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WeatherDay {
     pub label: String,
     pub slots: Vec<WeatherSlot>,
+    /// Daytime hours 08:00–20:00 for the sidebar forecast strip.
+    #[serde(default)]
+    pub hours: Vec<WeatherHour>,
     pub sunrise: String,
     pub sunset: String,
     pub pollen: String,
@@ -347,6 +367,9 @@ pub struct Dashboard {
     /// Homework / grades columns. Skipped in the layout hash JSON.
     #[serde(default, skip)]
     pub show_school_sections: bool,
+    /// Wikipedia “On this day”. Defaults from [`SHOW_ON_THIS_DAY`].
+    #[serde(default)]
+    pub show_on_this_day: bool,
     /// Pico has reported a battery reading. Hidden on the panel until then.
     #[serde(default)]
     pub has_battery: bool,
@@ -389,6 +412,7 @@ impl Dashboard {
             school: School::default(),
             source_note: String::new(),
             show_school_sections: false,
+            show_on_this_day: SHOW_ON_THIS_DAY,
             has_battery: false,
             battery_pct: 0,
             battery_level: String::new(),
@@ -464,8 +488,8 @@ impl Dashboard {
     }
 
     /// Keep Tube and House in full on the bottom row. To do and Joke share
-    /// a quarter-column row. On this day sits above the school week; leftover
-    /// height is packed with facts (up to three wrapped lines each).
+    /// a quarter-column row. The hourly forecast sits above the school week.
+    /// When [`SHOW_ON_THIS_DAY`] is on, leftover height packs Wikipedia facts.
     pub fn fit_sidebar_to_panel(&mut self) {
         self.fit_sidebar(self.show_school_sections && self.school.is_visible());
     }
@@ -486,13 +510,26 @@ impl Dashboard {
         } else {
             0
         };
+        let forecast_on = self
+            .weather
+            .days
+            .first()
+            .is_some_and(|day| !day.hours.is_empty());
+        let forecast_px = if forecast_on { FORECAST_BLOCK_PX } else { 0 };
+        if !self.show_on_this_day {
+            self.history.clear();
+        }
         let history_floor = if self.history.is_empty() {
             0
         } else {
             SECTION_HEAD_PX + HISTORY_ITEM_PAD_Y + HISTORY_LINE_PX + HISTORY_ITEM_BORDER_PX
         };
-        let gaps = |history_on: bool| {
-            2 + i32::from(school_on) + i32::from(week_on) + i32::from(history_on) - 1
+        let gaps = |forecast_on: bool, history_on: bool| {
+            2 + i32::from(school_on)
+                + i32::from(week_on)
+                + i32::from(forecast_on)
+                + i32::from(history_on)
+                - 1
         };
 
         let mut joke_px = joke_block_px(&self.joke);
@@ -509,8 +546,9 @@ impl Dashboard {
                 - footer_px
                 - pair_reserve
                 - week_px
+                - forecast_px
                 - history_floor
-                - SIDEBAR_GAP_PX * gaps(history_floor > 0))
+                - SIDEBAR_GAP_PX * gaps(forecast_on, history_floor > 0))
             .max(0);
             let cap = max_rows_in(school_budget, SCHOOL_ROW_PX);
             self.school.homework.truncate(cap.min(MAX_HOMEWORK_ROWS));
@@ -527,8 +565,9 @@ impl Dashboard {
             - school_row
             - footer_px
             - week_px
+            - forecast_px
             - history_floor
-            - SIDEBAR_GAP_PX * gaps(history_floor > 0))
+            - SIDEBAR_GAP_PX * gaps(forecast_on, history_floor > 0))
         .max(0);
         if joke_px > pair_budget {
             self.joke = None;
@@ -560,8 +599,9 @@ impl Dashboard {
             - school_row
             - pair_px
             - week_px
+            - forecast_px
             - footer_px
-            - SIDEBAR_GAP_PX * gaps(history_floor > 0);
+            - SIDEBAR_GAP_PX * gaps(forecast_on, history_floor > 0);
         self.history = if history_floor > 0 {
             pack_history(&self.history, history_budget)
         } else {
@@ -981,6 +1021,7 @@ mod tests {
     fn sidebar_adds_history_facts_that_fit_leftover() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
         let mut dash = Dashboard::empty("Family", today);
+        dash.show_on_this_day = true;
         dash.tube = tube_lines(4);
         dash.rooms = ["Kitchen"].into_iter().map(room).collect();
         dash.todos = vec![todo("Milk"), todo("Eggs")];
@@ -1003,6 +1044,7 @@ mod tests {
     fn sidebar_skips_history_facts_that_need_four_lines() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
         let mut dash = Dashboard::empty("Family", today);
+        dash.show_on_this_day = true;
         dash.tube = tube_lines(4);
         dash.rooms = ["Kitchen"].into_iter().map(room).collect();
         dash.todos = vec![todo("Milk")];
@@ -1020,6 +1062,7 @@ mod tests {
     fn sidebar_history_is_oldest_first_and_capped() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
         let mut dash = Dashboard::empty("Family", today);
+        dash.show_on_this_day = true;
         dash.tube = tube_lines(4);
         dash.rooms = ["Kitchen"].into_iter().map(room).collect();
         dash.todos = vec![todo("Milk")];
@@ -1043,6 +1086,7 @@ mod tests {
     fn sidebar_keeps_history_above_school_week() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
         let mut dash = Dashboard::empty("Family", today);
+        dash.show_on_this_day = true;
         dash.tube = tube_lines(4);
         dash.rooms = ["Kitchen"].into_iter().map(room).collect();
         dash.todos = vec![todo("Milk")];
@@ -1091,6 +1135,7 @@ mod tests {
     fn sidebar_keeps_history_when_todos_overflow() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
         let mut dash = Dashboard::empty("Family", today);
+        dash.show_on_this_day = true;
         dash.tube = tube_lines(4);
         dash.rooms = (0..12).map(|i| room(&format!("R{i}"))).collect();
         dash.todos = (0..80).map(|_| todo("Milk")).collect();
@@ -1104,6 +1149,7 @@ mod tests {
     fn sidebar_keeps_joke_between_todos_and_history() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
         let mut dash = Dashboard::empty("Family", today);
+        dash.show_on_this_day = true;
         dash.tube = tube_lines(4);
         dash.rooms = ["Kitchen"].into_iter().map(room).collect();
         dash.todos = vec![todo("Milk")];
@@ -1121,6 +1167,7 @@ mod tests {
     fn sidebar_keeps_joke_when_todos_fill_leftover() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 13).unwrap();
         let mut dash = Dashboard::empty("Family", today);
+        dash.show_on_this_day = true;
         dash.tube = tube_lines(4);
         dash.rooms = (0..12).map(|i| room(&format!("R{i}"))).collect();
         dash.todos = (0..80).map(|_| todo("Milk")).collect();

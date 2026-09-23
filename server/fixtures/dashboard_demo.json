@@ -30,20 +30,7 @@
   ],
   "family_name": "Family",
   "has_battery": false,
-  "history": [
-    {
-      "text": "The New York Times is founded.",
-      "year": "1851"
-    },
-    {
-      "text": "Blackpool Illuminations are switched on for the first time.",
-      "year": "1879"
-    },
-    {
-      "text": "King Constantine II of Greece marries Princess Anne-Marie.",
-      "year": "1964"
-    }
-  ],
+  "history": [],
   "joke": {
     "punchline": "Because they make up everything.",
     "setup": "Why don't scientists trust atoms?"
@@ -96,18 +83,66 @@
       "title": "School - This week",
       "bands": 12,
       "times": [
-        { "end": false, "label": "08:15", "row": 2 },
-        { "end": false, "label": "08:30", "row": 3 },
-        { "end": false, "label": "09:10", "row": 4 },
-        { "end": false, "label": "09:25", "row": 5 },
-        { "end": false, "label": "10:20", "row": 6 },
-        { "end": false, "label": "10:25", "row": 7 },
-        { "end": false, "label": "11:15", "row": 8 },
-        { "end": false, "label": "11:20", "row": 9 },
-        { "end": false, "label": "13:30", "row": 10 },
-        { "end": false, "label": "14:25", "row": 11 },
-        { "end": false, "label": "15:20", "row": 12 },
-        { "end": false, "label": "15:35", "row": 13 }
+        {
+          "end": false,
+          "label": "08:15",
+          "row": 2
+        },
+        {
+          "end": false,
+          "label": "08:30",
+          "row": 3
+        },
+        {
+          "end": false,
+          "label": "09:10",
+          "row": 4
+        },
+        {
+          "end": false,
+          "label": "09:25",
+          "row": 5
+        },
+        {
+          "end": false,
+          "label": "10:20",
+          "row": 6
+        },
+        {
+          "end": false,
+          "label": "10:25",
+          "row": 7
+        },
+        {
+          "end": false,
+          "label": "11:15",
+          "row": 8
+        },
+        {
+          "end": false,
+          "label": "11:20",
+          "row": 9
+        },
+        {
+          "end": false,
+          "label": "13:30",
+          "row": 10
+        },
+        {
+          "end": false,
+          "label": "14:25",
+          "row": 11
+        },
+        {
+          "end": false,
+          "label": "15:20",
+          "row": 12
+        },
+        {
+          "end": false,
+          "label": "15:35",
+          "row": 13
+        }
       ],
       "days": [
         {
@@ -115,13 +150,55 @@
           "label": "Mon 14",
           "today": false,
           "lessons": [
-            { "colour": "#20003F", "ink": "#ffffff", "row_end": 4, "row_start": 2, "subject": "Maths" },
-            { "colour": "#3F2020", "ink": "#ffffff", "row_end": 6, "row_start": 4, "subject": "Français" },
-            { "colour": "#3F2000", "ink": "#ffffff", "row_end": 8, "row_start": 6, "subject": "Hist-Géo" },
-            { "colour": "#003000", "ink": "#ffffff", "row_end": 10, "row_start": 8, "subject": "SVT" },
-            { "colour": "#3F3F00", "ink": "#ffffff", "row_end": 11, "row_start": 10, "subject": "Anglais" },
-            { "colour": "#202020", "ink": "#ffffff", "row_end": 12, "row_start": 11, "subject": "Techno" },
-            { "colour": "#3F0000", "ink": "#ffffff", "row_end": 14, "row_start": 12, "subject": "EPS" }
+            {
+              "colour": "#20003F",
+              "ink": "#ffffff",
+              "row_end": 4,
+              "row_start": 2,
+              "subject": "Maths"
+            },
+            {
+              "colour": "#3F2020",
+              "ink": "#ffffff",
+              "row_end": 6,
+              "row_start": 4,
+              "subject": "Français"
+            },
+            {
+              "colour": "#3F2000",
+              "ink": "#ffffff",
+              "row_end": 8,
+              "row_start": 6,
+              "subject": "Hist-Géo"
+            },
+            {
+              "colour": "#003000",
+              "ink": "#ffffff",
+              "row_end": 10,
+              "row_start": 8,
+              "subject": "SVT"
+            },
+            {
+              "colour": "#3F3F00",
+              "ink": "#ffffff",
+              "row_end": 11,
+              "row_start": 10,
+              "subject": "Anglais"
+            },
+            {
+              "colour": "#202020",
+              "ink": "#ffffff",
+              "row_end": 12,
+              "row_start": 11,
+              "subject": "Techno"
+            },
+            {
+              "colour": "#3F0000",
+              "ink": "#ffffff",
+              "row_end": 14,
+              "row_start": 12,
+              "subject": "EPS"
+            }
           ]
         },
         {
@@ -129,13 +206,55 @@
           "label": "Tue 15",
           "today": false,
           "lessons": [
-            { "colour": "#3F2020", "ink": "#ffffff", "row_end": 4, "row_start": 2, "subject": "Français" },
-            { "colour": "#20003F", "ink": "#ffffff", "row_end": 6, "row_start": 4, "subject": "Maths" },
-            { "colour": "#3F3F00", "ink": "#ffffff", "row_end": 8, "row_start": 6, "subject": "Anglais" },
-            { "colour": "#00303F", "ink": "#ffffff", "row_end": 10, "row_start": 8, "subject": "Physique" },
-            { "colour": "#3F2000", "ink": "#ffffff", "row_end": 11, "row_start": 10, "subject": "Hist-Géo" },
-            { "colour": "#3F003F", "ink": "#ffffff", "row_end": 12, "row_start": 11, "subject": "Arts" },
-            { "colour": "#003000", "ink": "#ffffff", "row_end": 14, "row_start": 12, "subject": "SVT" }
+            {
+              "colour": "#3F2020",
+              "ink": "#ffffff",
+              "row_end": 4,
+              "row_start": 2,
+              "subject": "Français"
+            },
+            {
+              "colour": "#20003F",
+              "ink": "#ffffff",
+              "row_end": 6,
+              "row_start": 4,
+              "subject": "Maths"
+            },
+            {
+              "colour": "#3F3F00",
+              "ink": "#ffffff",
+              "row_end": 8,
+              "row_start": 6,
+              "subject": "Anglais"
+            },
+            {
+              "colour": "#00303F",
+              "ink": "#ffffff",
+              "row_end": 10,
+              "row_start": 8,
+              "subject": "Physique"
+            },
+            {
+              "colour": "#3F2000",
+              "ink": "#ffffff",
+              "row_end": 11,
+              "row_start": 10,
+              "subject": "Hist-Géo"
+            },
+            {
+              "colour": "#3F003F",
+              "ink": "#ffffff",
+              "row_end": 12,
+              "row_start": 11,
+              "subject": "Arts"
+            },
+            {
+              "colour": "#003000",
+              "ink": "#ffffff",
+              "row_end": 14,
+              "row_start": 12,
+              "subject": "SVT"
+            }
           ]
         },
         {
@@ -143,13 +262,55 @@
           "label": "Wed 16",
           "today": false,
           "lessons": [
-            { "colour": "#20003F", "ink": "#ffffff", "row_end": 4, "row_start": 2, "subject": "Maths" },
-            { "colour": "#3F2000", "ink": "#ffffff", "row_end": 6, "row_start": 4, "subject": "Hist-Géo" },
-            { "colour": "#3F2020", "ink": "#ffffff", "row_end": 8, "row_start": 6, "subject": "Français" },
-            { "colour": "#3F3F00", "ink": "#ffffff", "row_end": 10, "row_start": 8, "subject": "Anglais" },
-            { "colour": "#3F0000", "ink": "#ffffff", "row_end": 11, "row_start": 10, "subject": "EPS" },
-            { "colour": "#00303F", "ink": "#ffffff", "row_end": 12, "row_start": 11, "subject": "Physique" },
-            { "colour": "#200020", "ink": "#ffffff", "row_end": 14, "row_start": 12, "subject": "Musique" }
+            {
+              "colour": "#20003F",
+              "ink": "#ffffff",
+              "row_end": 4,
+              "row_start": 2,
+              "subject": "Maths"
+            },
+            {
+              "colour": "#3F2000",
+              "ink": "#ffffff",
+              "row_end": 6,
+              "row_start": 4,
+              "subject": "Hist-Géo"
+            },
+            {
+              "colour": "#3F2020",
+              "ink": "#ffffff",
+              "row_end": 8,
+              "row_start": 6,
+              "subject": "Français"
+            },
+            {
+              "colour": "#3F3F00",
+              "ink": "#ffffff",
+              "row_end": 10,
+              "row_start": 8,
+              "subject": "Anglais"
+            },
+            {
+              "colour": "#3F0000",
+              "ink": "#ffffff",
+              "row_end": 11,
+              "row_start": 10,
+              "subject": "EPS"
+            },
+            {
+              "colour": "#00303F",
+              "ink": "#ffffff",
+              "row_end": 12,
+              "row_start": 11,
+              "subject": "Physique"
+            },
+            {
+              "colour": "#200020",
+              "ink": "#ffffff",
+              "row_end": 14,
+              "row_start": 12,
+              "subject": "Musique"
+            }
           ]
         },
         {
@@ -157,13 +318,55 @@
           "label": "Thu 17",
           "today": false,
           "lessons": [
-            { "colour": "#003000", "ink": "#ffffff", "row_end": 4, "row_start": 2, "subject": "SVT" },
-            { "colour": "#20003F", "ink": "#ffffff", "row_end": 6, "row_start": 4, "subject": "Maths" },
-            { "colour": "#202020", "ink": "#ffffff", "row_end": 8, "row_start": 6, "subject": "Techno" },
-            { "colour": "#3F2020", "ink": "#ffffff", "row_end": 10, "row_start": 8, "subject": "Français" },
-            { "colour": "#3F2000", "ink": "#ffffff", "row_end": 11, "row_start": 10, "subject": "Hist-Géo" },
-            { "colour": "#3F3F00", "ink": "#ffffff", "row_end": 12, "row_start": 11, "subject": "Anglais" },
-            { "colour": "#303030", "ink": "#ffffff", "row_end": 14, "row_start": 12, "subject": "EMC" }
+            {
+              "colour": "#003000",
+              "ink": "#ffffff",
+              "row_end": 4,
+              "row_start": 2,
+              "subject": "SVT"
+            },
+            {
+              "colour": "#20003F",
+              "ink": "#ffffff",
+              "row_end": 6,
+              "row_start": 4,
+              "subject": "Maths"
+            },
+            {
+              "colour": "#202020",
+              "ink": "#ffffff",
+              "row_end": 8,
+              "row_start": 6,
+              "subject": "Techno"
+            },
+            {
+              "colour": "#3F2020",
+              "ink": "#ffffff",
+              "row_end": 10,
+              "row_start": 8,
+              "subject": "Français"
+            },
+            {
+              "colour": "#3F2000",
+              "ink": "#ffffff",
+              "row_end": 11,
+              "row_start": 10,
+              "subject": "Hist-Géo"
+            },
+            {
+              "colour": "#3F3F00",
+              "ink": "#ffffff",
+              "row_end": 12,
+              "row_start": 11,
+              "subject": "Anglais"
+            },
+            {
+              "colour": "#303030",
+              "ink": "#ffffff",
+              "row_end": 14,
+              "row_start": 12,
+              "subject": "EMC"
+            }
           ]
         },
         {
@@ -171,13 +374,55 @@
           "label": "Fri 18",
           "today": true,
           "lessons": [
-            { "colour": "#20003F", "ink": "#ffffff", "row_end": 5, "row_start": 3, "subject": "Maths" },
-            { "colour": "#3F2020", "ink": "#ffffff", "row_end": 6, "row_start": 5, "subject": "Français" },
-            { "colour": "#3F2000", "ink": "#ffffff", "row_end": 9, "row_start": 7, "subject": "Hist-Géo" },
-            { "colour": "#3F3F00", "ink": "#ffffff", "row_end": 10, "row_start": 9, "subject": "Anglais" },
-            { "colour": "#00303F", "ink": "#ffffff", "row_end": 11, "row_start": 10, "subject": "Physique" },
-            { "colour": "#003000", "ink": "#ffffff", "row_end": 12, "row_start": 11, "subject": "SVT" },
-            { "colour": "#3F0000", "ink": "#ffffff", "row_end": 14, "row_start": 13, "subject": "EPS" }
+            {
+              "colour": "#20003F",
+              "ink": "#ffffff",
+              "row_end": 5,
+              "row_start": 3,
+              "subject": "Maths"
+            },
+            {
+              "colour": "#3F2020",
+              "ink": "#ffffff",
+              "row_end": 6,
+              "row_start": 5,
+              "subject": "Français"
+            },
+            {
+              "colour": "#3F2000",
+              "ink": "#ffffff",
+              "row_end": 9,
+              "row_start": 7,
+              "subject": "Hist-Géo"
+            },
+            {
+              "colour": "#3F3F00",
+              "ink": "#ffffff",
+              "row_end": 10,
+              "row_start": 9,
+              "subject": "Anglais"
+            },
+            {
+              "colour": "#00303F",
+              "ink": "#ffffff",
+              "row_end": 11,
+              "row_start": 10,
+              "subject": "Physique"
+            },
+            {
+              "colour": "#003000",
+              "ink": "#ffffff",
+              "row_end": 12,
+              "row_start": 11,
+              "subject": "SVT"
+            },
+            {
+              "colour": "#3F0000",
+              "ink": "#ffffff",
+              "row_end": 14,
+              "row_start": 13,
+              "subject": "EPS"
+            }
           ]
         }
       ]
@@ -256,7 +501,87 @@
           }
         ],
         "sunrise": "06:33",
-        "sunset": "19:18"
+        "sunset": "19:18",
+        "hours": [
+          {
+            "label": "8",
+            "icon": "sun",
+            "temperature": "15°",
+            "rain": "0%"
+          },
+          {
+            "label": "9",
+            "icon": "sun",
+            "temperature": "16°",
+            "rain": "0%"
+          },
+          {
+            "label": "10",
+            "icon": "sun",
+            "temperature": "17°",
+            "rain": "0%"
+          },
+          {
+            "label": "11",
+            "icon": "partly-cloudy",
+            "temperature": "18°",
+            "rain": "10%"
+          },
+          {
+            "label": "12",
+            "icon": "partly-cloudy",
+            "temperature": "19°",
+            "rain": "10%"
+          },
+          {
+            "label": "13",
+            "icon": "partly-cloudy",
+            "temperature": "20°",
+            "rain": "20%"
+          },
+          {
+            "label": "14",
+            "icon": "partly-cloudy",
+            "temperature": "21°",
+            "rain": "20%"
+          },
+          {
+            "label": "15",
+            "icon": "cloud",
+            "temperature": "21°",
+            "rain": "30%"
+          },
+          {
+            "label": "16",
+            "icon": "cloud",
+            "temperature": "20°",
+            "rain": "40%"
+          },
+          {
+            "label": "17",
+            "icon": "showers",
+            "temperature": "19°",
+            "rain": "50%"
+          },
+          {
+            "label": "18",
+            "icon": "showers",
+            "temperature": "18°",
+            "rain": "60%"
+          },
+          {
+            "label": "19",
+            "icon": "rain",
+            "temperature": "17°",
+            "rain": "70%"
+          },
+          {
+            "label": "20",
+            "icon": "rain",
+            "temperature": "16°",
+            "rain": "70%"
+          }
+        ]
       },
       {
         "label": "Tomorrow",
@@ -283,10 +608,91 @@
           }
         ],
         "sunrise": "06:35",
-        "sunset": "19:16"
+        "sunset": "19:16",
+        "hours": [
+          {
+            "label": "8",
+            "icon": "overcast",
+            "temperature": "13°",
+            "rain": "40%"
+          },
+          {
+            "label": "9",
+            "icon": "overcast",
+            "temperature": "14°",
+            "rain": "40%"
+          },
+          {
+            "label": "10",
+            "icon": "cloud",
+            "temperature": "14°",
+            "rain": "50%"
+          },
+          {
+            "label": "11",
+            "icon": "cloud",
+            "temperature": "15°",
+            "rain": "50%"
+          },
+          {
+            "label": "12",
+            "icon": "showers",
+            "temperature": "15°",
+            "rain": "60%"
+          },
+          {
+            "label": "13",
+            "icon": "showers",
+            "temperature": "16°",
+            "rain": "70%"
+          },
+          {
+            "label": "14",
+            "icon": "storm",
+            "temperature": "17°",
+            "rain": "80%"
+          },
+          {
+            "label": "15",
+            "icon": "storm",
+            "temperature": "17°",
+            "rain": "80%"
+          },
+          {
+            "label": "16",
+            "icon": "showers",
+            "temperature": "16°",
+            "rain": "60%"
+          },
+          {
+            "label": "17",
+            "icon": "cloud",
+            "temperature": "15°",
+            "rain": "40%"
+          },
+          {
+            "label": "18",
+            "icon": "cloud",
+            "temperature": "14°",
+            "rain": "20%"
+          },
+          {
+            "label": "19",
+            "icon": "partly-cloudy-night",
+            "temperature": "13°",
+            "rain": "10%"
+          },
+          {
+            "label": "20",
+            "icon": "moon",
+            "temperature": "13°",
+            "rain": "0%"
+          }
+        ]
       }
     ],
     "location": "London"
   },
-  "weekday": "Friday"
+  "weekday": "Friday",
+  "show_on_this_day": false
 }

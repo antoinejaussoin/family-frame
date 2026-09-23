@@ -2,8 +2,9 @@
 //!
 //! BBC does not publish a documented API. The same CDN JSON the website uses
 //! (`weather-broker-cdn`) returns hourly reports; we keep 09:00 / 15:00 / 21:00
-//! as morning, afternoon, and evening. Three days are built so an evening
-//! calendar rollover can show tomorrow and the day after.
+//! as morning, afternoon, and evening for the calendar headers, plus every
+//! hour from 08:00–20:00 for the sidebar strip. Three days are built so an
+//! evening calendar rollover can show tomorrow and the day after.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use crate::config::WeatherConfig;
-use crate::model::{Weather, WeatherDay, WeatherSlot};
+use crate::model::{Weather, WeatherDay, WeatherHour, WeatherSlot};
 use crate::sources::cache::TtlCache;
 
 use super::context::SourceContext;
@@ -96,6 +97,10 @@ const PERIODS: [Period; 3] = [
     },
 ];
 
+/// Inclusive daytime window for the sidebar hourly strip.
+const DAYTIME_FIRST_HOUR: u32 = 8;
+const DAYTIME_LAST_HOUR: u32 = 20;
+
 struct Period {
     name: &'static str,
     target: u32,
@@ -110,6 +115,7 @@ struct Hourly {
     temperature_c: i32,
     weather_type: i64,
     weather_text: String,
+    rain_percent: Option<i32>,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +141,8 @@ struct CachedSlot {
     temperature_c: i32,
     weather_type: i64,
     weather_text: String,
+    #[serde(default)]
+    rain_percent: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -204,6 +212,8 @@ struct HourlyReport {
     weather_type: Option<i64>,
     #[serde(rename = "weatherTypeText")]
     weather_type_text: Option<String>,
+    #[serde(rename = "precipitationProbabilityInPercent", default)]
+    precipitation_probability: Option<i64>,
 }
 
 pub async fn load_forecast(
@@ -270,6 +280,7 @@ fn forecast_from_json(json: &str, today: NaiveDate, cache: &mut SlotCache) -> Re
                     .iter()
                     .map(|period| slot_for(date, period, &hours, &summaries, cache))
                     .collect(),
+                hours: daytime_hours(date, &hours, cache),
                 sunrise: summary.map(|s| s.sunrise.clone()).unwrap_or_default(),
                 sunset: summary.map(|s| s.sunset.clone()).unwrap_or_default(),
                 pollen: summary.map(|s| s.pollen.clone()).unwrap_or_default(),
@@ -293,6 +304,21 @@ pub fn demo_weather() -> Weather {
                     demo_slot("Afternoon", "partly-cloudy", "21°", "Sunny intervals"),
                     demo_slot("Evening", "rain", "16°", "Light rain"),
                 ],
+                hours: demo_hours(&[
+                    (8, "sun", "15°", "0%"),
+                    (9, "sun", "16°", "0%"),
+                    (10, "sun", "17°", "0%"),
+                    (11, "partly-cloudy", "18°", "10%"),
+                    (12, "partly-cloudy", "19°", "10%"),
+                    (13, "partly-cloudy", "20°", "20%"),
+                    (14, "partly-cloudy", "21°", "20%"),
+                    (15, "cloud", "21°", "30%"),
+                    (16, "cloud", "20°", "40%"),
+                    (17, "showers", "19°", "50%"),
+                    (18, "showers", "18°", "60%"),
+                    (19, "rain", "17°", "70%"),
+                    (20, "rain", "16°", "70%"),
+                ]),
                 sunrise: "06:33".into(),
                 sunset: "19:18".into(),
                 pollen: "Low".into(),
@@ -305,6 +331,21 @@ pub fn demo_weather() -> Weather {
                     demo_slot("Afternoon", "storm", "17°", "Thundery showers"),
                     demo_slot("Evening", "moon", "13°", "Clear sky"),
                 ],
+                hours: demo_hours(&[
+                    (8, "overcast", "13°", "40%"),
+                    (9, "overcast", "14°", "40%"),
+                    (10, "cloud", "14°", "50%"),
+                    (11, "cloud", "15°", "50%"),
+                    (12, "showers", "15°", "60%"),
+                    (13, "showers", "16°", "70%"),
+                    (14, "storm", "17°", "80%"),
+                    (15, "storm", "17°", "80%"),
+                    (16, "showers", "16°", "60%"),
+                    (17, "cloud", "15°", "40%"),
+                    (18, "cloud", "14°", "20%"),
+                    (19, "partly-cloudy-night", "13°", "10%"),
+                    (20, "moon", "13°", "0%"),
+                ]),
                 sunrise: "06:35".into(),
                 sunset: "19:16".into(),
                 pollen: "Moderate".into(),
@@ -317,6 +358,21 @@ pub fn demo_weather() -> Weather {
                     demo_slot("Afternoon", "partly-cloudy", "22°", "Sunny intervals"),
                     demo_slot("Evening", "cloud", "14°", "Light cloud"),
                 ],
+                hours: demo_hours(&[
+                    (8, "sun", "12°", "0%"),
+                    (9, "sun", "13°", "0%"),
+                    (10, "sun", "15°", "0%"),
+                    (11, "sun", "17°", "0%"),
+                    (12, "partly-cloudy", "19°", "10%"),
+                    (13, "partly-cloudy", "20°", "10%"),
+                    (14, "partly-cloudy", "21°", "10%"),
+                    (15, "partly-cloudy", "22°", "10%"),
+                    (16, "cloud", "20°", "20%"),
+                    (17, "cloud", "18°", "20%"),
+                    (18, "cloud", "16°", "10%"),
+                    (19, "cloud", "15°", "10%"),
+                    (20, "cloud", "14°", "10%"),
+                ]),
                 sunrise: "06:37".into(),
                 sunset: "19:14".into(),
                 pollen: "High".into(),
@@ -472,6 +528,17 @@ fn demo_slot(period: &str, icon: &str, temperature: &str, summary: &str) -> Weat
     }
 }
 
+fn demo_hours(rows: &[(u32, &str, &str, &str)]) -> Vec<WeatherHour> {
+    rows.iter()
+        .map(|(hour, icon, temperature, rain)| WeatherHour {
+            label: hour.to_string(),
+            icon: (*icon).into(),
+            temperature: (*temperature).into(),
+            rain: (*rain).into(),
+        })
+        .collect()
+}
+
 fn collect_hours(parsed: &Aggregated) -> Vec<Hourly> {
     parsed
         .forecasts
@@ -486,6 +553,7 @@ fn collect_hours(parsed: &Aggregated) -> Vec<Hourly> {
                 temperature_c: report.temperature_c? as i32,
                 weather_type: report.weather_type.unwrap_or(-1),
                 weather_text: report.weather_type_text.clone().unwrap_or_default(),
+                rain_percent: report.precipitation_probability.map(|p| p as i32),
             })
         })
         .collect()
@@ -545,6 +613,54 @@ fn slot_for(
         temperature: "—".into(),
         summary: String::new(),
     }
+}
+
+fn daytime_hours(date: NaiveDate, hours: &[Hourly], cache: &mut SlotCache) -> Vec<WeatherHour> {
+    (DAYTIME_FIRST_HOUR..=DAYTIME_LAST_HOUR)
+        .map(|hour| hour_for(date, hour, hours, cache))
+        .collect()
+}
+
+fn hour_for(date: NaiveDate, hour: u32, hours: &[Hourly], cache: &mut SlotCache) -> WeatherHour {
+    let key = hour_cache_key(hour);
+    if let Some(picked) = hours.iter().find(|h| h.date == date && h.hour == hour) {
+        cache.put(date, &key, picked);
+        return weather_hour_from(picked);
+    }
+    if let Some(cached) = cache.get(date, &key) {
+        return WeatherHour {
+            label: hour.to_string(),
+            icon: icon_for(cached.weather_type, &cached.weather_text).into(),
+            temperature: format!("{}°", cached.temperature_c),
+            rain: format_rain(cached.rain_percent),
+        };
+    }
+    WeatherHour {
+        label: hour.to_string(),
+        icon: "unknown".into(),
+        temperature: "—".into(),
+        rain: "—".into(),
+    }
+}
+
+fn weather_hour_from(hour: &Hourly) -> WeatherHour {
+    WeatherHour {
+        label: hour.hour.to_string(),
+        icon: icon_for(hour.weather_type, &hour.weather_text).into(),
+        temperature: format!("{}°", hour.temperature_c),
+        rain: format_rain(hour.rain_percent),
+    }
+}
+
+fn format_rain(percent: Option<i32>) -> String {
+    match percent {
+        Some(p) => format!("{p}%"),
+        None => "—".into(),
+    }
+}
+
+fn hour_cache_key(hour: u32) -> String {
+    format!("h{hour:02}")
 }
 
 fn collect_summaries(parsed: &Aggregated) -> HashMap<NaiveDate, DaySummary> {
@@ -630,6 +746,7 @@ impl SlotCache {
                 temperature_c: hour.temperature_c,
                 weather_type: hour.weather_type,
                 weather_text: hour.weather_text.clone(),
+                rain_percent: hour.rain_percent,
             },
         );
     }
@@ -752,6 +869,7 @@ mod tests {
                     temperature_c: 16,
                     weather_type: 1,
                     weather_text: "Sunny".into(),
+                    rain_percent: None,
                 },
             )]),
         };
@@ -837,5 +955,109 @@ mod tests {
         assert_eq!(parse_hour("09:00"), Some(9));
         assert_eq!(parse_hour("9:00"), Some(9));
         assert_eq!(parse_hour("21:00"), Some(21));
+    }
+
+    #[test]
+    fn daytime_hours_include_rain_chance() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 12).unwrap();
+        let json = r#"{
+            "location": {"name": "London"},
+            "forecasts": [{
+                "detailed": {"reports": [
+                    {"localDate": "2026-09-12", "timeslot": "08:00",
+                     "temperatureC": 14, "weatherType": 1, "weatherTypeText": "Sunny",
+                     "precipitationProbabilityInPercent": 0},
+                    {"localDate": "2026-09-12", "timeslot": "12:00",
+                     "temperatureC": 19, "weatherType": 3, "weatherTypeText": "Sunny Intervals",
+                     "precipitationProbabilityInPercent": 20},
+                    {"localDate": "2026-09-12", "timeslot": "15:00",
+                     "temperatureC": 21, "weatherType": 7, "weatherTypeText": "Light Cloud",
+                     "precipitationProbabilityInPercent": 30},
+                    {"localDate": "2026-09-12", "timeslot": "20:00",
+                     "temperatureC": 16, "weatherType": 12, "weatherTypeText": "Light Rain",
+                     "precipitationProbabilityInPercent": 70}
+                ]}
+            }, {
+                "detailed": {"reports": [
+                    {"localDate": "2026-09-13", "timeslot": "08:00",
+                     "temperatureC": 12, "weatherType": 8, "weatherTypeText": "Thick Cloud",
+                     "precipitationProbabilityInPercent": 40},
+                    {"localDate": "2026-09-13", "timeslot": "14:00",
+                     "temperatureC": 17, "weatherType": 28, "weatherTypeText": "Thunder",
+                     "precipitationProbabilityInPercent": 80}
+                ]}
+            }]
+        }"#;
+        let mut cache = SlotCache::default();
+        let weather = forecast_from_json(json, today, &mut cache).unwrap();
+        let hours = &weather.days[0].hours;
+        assert_eq!(hours.len(), 13);
+        assert_eq!(hours[0].label, "8");
+        assert_eq!(hours[0].temperature, "14°");
+        assert_eq!(hours[0].rain, "0%");
+        assert_eq!(hours[0].icon, "sun");
+        assert_eq!(hours[4].label, "12");
+        assert_eq!(hours[4].temperature, "19°");
+        assert_eq!(hours[4].rain, "20%");
+        assert_eq!(hours[7].label, "15");
+        assert_eq!(hours[7].rain, "30%");
+        assert_eq!(hours[12].label, "20");
+        assert_eq!(hours[12].temperature, "16°");
+        assert_eq!(hours[12].rain, "70%");
+        assert_eq!(hours[12].icon, "rain");
+        // Gaps between reported hours stay blank until cached.
+        assert_eq!(hours[1].temperature, "—");
+        assert_eq!(hours[1].rain, "—");
+
+        let tomorrow = &weather.days[1].hours;
+        assert_eq!(tomorrow[0].temperature, "12°");
+        assert_eq!(tomorrow[0].rain, "40%");
+        assert_eq!(tomorrow[6].temperature, "17°");
+        assert_eq!(tomorrow[6].rain, "80%");
+        assert_eq!(tomorrow[6].icon, "storm");
+    }
+
+    #[test]
+    fn missing_daytime_hour_uses_cache() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 12).unwrap();
+        let evening_only = r#"{
+            "location": {"name": "London"},
+            "forecasts": [{
+                "detailed": {"reports": [
+                    {"localDate": "2026-09-12", "timeslot": "20:00",
+                     "temperatureC": 16, "weatherType": 12, "weatherTypeText": "Light Rain",
+                     "precipitationProbabilityInPercent": 70}
+                ]}
+            }]
+        }"#;
+        let mut cache = SlotCache {
+            location_id: "2643743".into(),
+            slots: HashMap::from([(
+                "2026-09-12-h08".into(),
+                CachedSlot {
+                    temperature_c: 14,
+                    weather_type: 1,
+                    weather_text: "Sunny".into(),
+                    rain_percent: Some(0),
+                },
+            )]),
+        };
+        let weather = forecast_from_json(evening_only, today, &mut cache).unwrap();
+        let hours = &weather.days[0].hours;
+        assert_eq!(hours[0].temperature, "14°");
+        assert_eq!(hours[0].icon, "sun");
+        assert_eq!(hours[0].rain, "0%");
+        assert_eq!(hours[12].temperature, "16°");
+        assert_eq!(hours[12].rain, "70%");
+        assert_eq!(hours[1].temperature, "—");
+    }
+
+    #[test]
+    fn demo_weather_has_full_daytime_strip() {
+        let weather = demo_weather();
+        assert_eq!(weather.days[0].hours.len(), 13);
+        assert_eq!(weather.days[0].hours[0].label, "8");
+        assert_eq!(weather.days[0].hours[12].label, "20");
+        assert!(weather.days[0].hours.iter().all(|h| h.rain.ends_with('%')));
     }
 }

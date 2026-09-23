@@ -329,8 +329,11 @@ mod tests {
         assert_eq!(dash.weather.days.len(), 2);
         assert_eq!(dash.weather.days[0].label, "Tomorrow");
         assert_eq!(dash.weather.days[0].slots[0].temperature, "15°");
+        assert_eq!(dash.weather.days[0].hours[0].temperature, "13°");
+        assert_eq!(dash.weather.days[0].hours[0].rain, "40%");
         assert_eq!(dash.weather.days[1].label, "Mon 21");
         assert_eq!(dash.weather.days[1].slots[0].temperature, "19°");
+        assert_eq!(dash.weather.days[1].hours[0].temperature, "12°");
     }
 
     #[test]
