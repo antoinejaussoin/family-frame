@@ -36,9 +36,9 @@ static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 3] = [
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
-    let fw = cyw43::aligned_bytes!("../../firmware/cyw43-firmware/43439A0.bin");
-    let clm = cyw43::aligned_bytes!("../../firmware/cyw43-firmware/43439A0_clm.bin");
-    let nvram = cyw43::aligned_bytes!("../../firmware/cyw43-firmware/nvram_rp2040.bin");
+    let fw = cyw43::aligned_bytes!("../../../firmware/cyw43-firmware/43439A0.bin");
+    let clm = cyw43::aligned_bytes!("../../../firmware/cyw43-firmware/43439A0_clm.bin");
+    let nvram = cyw43::aligned_bytes!("../../../firmware/cyw43-firmware/nvram_rp2040.bin");
 
     let pwr = Output::new(p.PIN_23, Level::Low);
     let cs = Output::new(p.PIN_25, Level::High);

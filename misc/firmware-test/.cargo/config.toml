@@ -2,4 +2,4 @@
 target = "thumbv8m.main-none-eabihf"
 
 [target.thumbv8m.main-none-eabihf]
-runner = "../firmware/flash-pico.sh"
+runner = "../../firmware/flash-pico.sh"

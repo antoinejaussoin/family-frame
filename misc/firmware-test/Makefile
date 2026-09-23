@@ -4,7 +4,7 @@ BIN := firmware-test
 TARGET_DIR := $(or $(CARGO_TARGET_DIR),target)
 ELF := $(TARGET_DIR)/$(TARGET)/release/$(BIN)
 UF2 := $(BIN).uf2
-FLASH := ../firmware/flash-pico.sh
+FLASH := ../../firmware/flash-pico.sh
 HERE := $(CURDIR)
 
 .PHONY: all build flash clean
