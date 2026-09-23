@@ -1,0 +1,36 @@
+[package]
+name = "firmware-test"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Pico LiPo 2 XL W: blink the user LED every second"
+
+[[bin]]
+name = "firmware-test"
+path = "src/main.rs"
+
+[dependencies]
+cortex-m = { version = "0.7.7", features = ["inline-asm"] }
+cortex-m-rt = "0.7.5"
+cyw43 = "0.7.0"
+cyw43-pio = "0.10.0"
+embassy-executor = { version = "0.10.0", features = [
+    "platform-cortex-m",
+    "executor-thread",
+] }
+embassy-rp = { version = "0.10.0", features = [
+    "rp235xb",
+    "time-driver",
+    "critical-section-impl",
+    "binary-info",
+] }
+embassy-time = "0.5.1"
+panic-halt = "1.0.0"
+portable-atomic = { version = "1.11.0", features = ["critical-section"] }
+static_cell = "2.1.1"
+
+[profile.release]
+lto = true
+opt-level = "s"
+codegen-units = 1
+debug = true
