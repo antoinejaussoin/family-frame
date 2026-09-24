@@ -55,21 +55,14 @@ impl DebugOled {
         }
     }
 
-    pub fn paint(&mut self, bat: &mut Battery<'_>, extra: &str) {
+    pub fn paint(&mut self, _bat: &mut Battery<'_>, extra: &str) {
         let Some(screen) = self.screen.as_mut() else {
             return;
         };
         let _ = screen.display.display_on();
         let (mv, pct) = crate::battery::last();
         let status = wifi::status_line();
-        screen.show(
-            self.psram.as_str(),
-            mv,
-            pct,
-            bat.sample_chip_tenths(),
-            status.as_str(),
-            extra,
-        );
+        screen.show(self.psram.as_str(), mv, pct, status.as_str(), extra);
     }
 }
 
@@ -94,7 +87,6 @@ impl Screen {
         psram: &str,
         mv: u32,
         pct: u16,
-        chip_tenths: Option<i16>,
         status: &str,
         extra: &str,
     ) {
@@ -102,7 +94,7 @@ impl Screen {
         line(&mut self.display, self.style, 0, "family-frame OLED");
         line(&mut self.display, self.style, 1, psram);
         line(&mut self.display, self.style, 2, &bat_line(mv, pct));
-        line(&mut self.display, self.style, 3, &chip_line(chip_tenths));
+        line(&mut self.display, self.style, 3, &lposc_line());
         line(&mut self.display, self.style, 4, status);
         line(&mut self.display, self.style, 5, extra);
         self.display.flush().ok();
@@ -149,17 +141,11 @@ fn bat_line(mv: u32, pct: u16) -> String<20> {
     s
 }
 
-fn chip_line(tenths: Option<i16>) -> String<20> {
+fn lposc_line() -> String<21> {
+    let (hz, slow_tenths, src) = crate::power::lposc_status();
     let mut s = String::new();
-    match tenths {
-        Some(t) => {
-            let whole = t / 10;
-            let frac = t.unsigned_abs() % 10;
-            let _ = write!(s, "chip {whole}.{frac} C");
-        }
-        None => {
-            let _ = s.push_str("chip --");
-        }
-    }
+    let sign = if slow_tenths < 0 { '-' } else { '+' };
+    let abs = slow_tenths.unsigned_abs();
+    let _ = write!(s, "{src} {sign}{}.{}% {hz}", abs / 10, abs % 10);
     s
 }

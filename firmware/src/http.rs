@@ -56,7 +56,15 @@ pub async fn get_frame(
 
     let (mv, pct) = crate::battery::last();
     let wake = crate::power::take_wake_label();
-    let body = telemetry_form(mv, pct, crate::power::on_usb(), wake, cfg.wake_at.as_str());
+    let (_, hw_drift, _) = crate::power::lposc_status();
+    let body = telemetry_form(
+        mv,
+        pct,
+        crate::power::on_usb(),
+        wake,
+        cfg.wake_at.as_str(),
+        hw_drift,
+    );
     let Some(req) = post_frame_request::<512>(
         target.host.as_str(),
         target.port,

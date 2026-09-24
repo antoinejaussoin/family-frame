@@ -98,13 +98,22 @@ pub fn sanitize_wake_at(raw: &str) -> Option<&str> {
 }
 
 /// `application/x-www-form-urlencoded` body for a Pico poll.
-pub fn telemetry_form(mv: u32, pct: u16, usb: bool, wake: &str, wake_at: &str) -> String<96> {
+/// `hw_drift_tenths` is tenths of a percent, positive when the LPOSC is slow.
+pub fn telemetry_form(
+    mv: u32,
+    pct: u16,
+    usb: bool,
+    wake: &str,
+    wake_at: &str,
+    hw_drift_tenths: i32,
+) -> String<128> {
     let mut body = String::new();
     let usb_n = if usb { 1 } else { 0 };
     let _ = write!(body, "mv={mv}&pct={pct}&usb={usb_n}&wake={wake}");
     if let Some(slot) = sanitize_wake_at(wake_at) {
         let _ = write!(body, "&wake_at={slot}");
     }
+    let _ = write!(body, "&hw_drift={hw_drift_tenths}");
     body
 }
 
@@ -180,30 +189,30 @@ mod tests {
     #[test]
     fn telemetry_form_encodes_fields() {
         assert_eq!(
-            telemetry_form(3850, 72, false, "timer", "").as_str(),
-            "mv=3850&pct=72&usb=0&wake=timer"
+            telemetry_form(3850, 72, false, "timer", "", 250).as_str(),
+            "mv=3850&pct=72&usb=0&wake=timer&hw_drift=250"
         );
         assert_eq!(
-            telemetry_form(4200, 100, true, "cold", "").as_str(),
-            "mv=4200&pct=100&usb=1&wake=cold"
+            telemetry_form(4200, 100, true, "cold", "", -30).as_str(),
+            "mv=4200&pct=100&usb=1&wake=cold&hw_drift=-30"
         );
         assert_eq!(
-            telemetry_form(3850, 72, false, "button", "").as_str(),
-            "mv=3850&pct=72&usb=0&wake=button"
+            telemetry_form(3850, 72, false, "button", "", 0).as_str(),
+            "mv=3850&pct=72&usb=0&wake=button&hw_drift=0"
         );
         assert_eq!(
-            telemetry_form(3850, 72, false, "timer", "2026-09-19T18:00:00Z").as_str(),
-            "mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z"
+            telemetry_form(3850, 72, false, "timer", "2026-09-19T18:00:00Z", 250).as_str(),
+            "mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z&hw_drift=250"
         );
         assert_eq!(
-            telemetry_form(3850, 72, false, "timer", "bad&x=1").as_str(),
-            "mv=3850&pct=72&usb=0&wake=timer"
+            telemetry_form(3850, 72, false, "timer", "bad&x=1", 0).as_str(),
+            "mv=3850&pct=72&usb=0&wake=timer&hw_drift=0"
         );
     }
 
     #[test]
     fn post_request_keeps_checksum_on_if_none_match() {
-        let body = telemetry_form(3850, 72, false, "timer", "");
+        let body = telemetry_form(3850, 72, false, "timer", "", 0);
         let req = post_frame_request::<384>(
             "192.168.0.251",
             8765,
@@ -218,13 +227,13 @@ mod tests {
         assert!(s.contains("If-None-Match: abc123\r\n"));
         assert!(s.contains("Content-Type: application/x-www-form-urlencoded\r\n"));
         assert!(s.contains(&format!("Content-Length: {}\r\n", body.len())));
-        assert!(s.ends_with("\r\n\r\nmv=3850&pct=72&usb=0&wake=timer"));
+        assert!(s.ends_with("\r\n\r\nmv=3850&pct=72&usb=0&wake=timer&hw_drift=0"));
         assert!(!s.contains("checksum="));
     }
 
     #[test]
     fn post_request_echoes_stored_wake_at() {
-        let body = telemetry_form(3850, 72, false, "timer", "2026-09-19T18:00:00Z");
+        let body = telemetry_form(3850, 72, false, "timer", "2026-09-19T18:00:00Z", 250);
         let req = post_frame_request::<512>(
             "192.168.0.251",
             8765,
@@ -235,7 +244,7 @@ mod tests {
         .unwrap();
         assert!(
             req.as_str()
-                .ends_with("\r\n\r\nmv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z")
+                .ends_with("\r\n\r\nmv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z&hw_drift=250")
         );
     }
 

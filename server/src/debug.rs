@@ -41,6 +41,8 @@ pub struct Poll {
     pub wake: String,
     /// Seconds the Pico was told to sleep after this poll.
     pub sleep_s: u64,
+    /// LPOSC error versus 32.768 kHz, as a fraction. Positive means slow.
+    pub hw_drift: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +86,9 @@ pub struct DebugPage {
     pub pico_overhead_label: String,
     pub graph_svg: String,
     pub drift_graph_svg: String,
+    pub hw_drift: f64,
+    pub hw_drift_label: String,
+    pub hw_drift_graph_svg: String,
     pub debug_dir_bytes: u64,
     pub debug_dir_label: String,
     pub poll_count: usize,
@@ -254,6 +259,9 @@ pub fn page_from_polls_full(
             pico_overhead_label: String::new(),
             graph_svg: String::new(),
             drift_graph_svg: String::new(),
+            hw_drift: 0.0,
+            hw_drift_label: String::new(),
+            hw_drift_graph_svg: String::new(),
             debug_dir_bytes: dir_bytes,
             debug_dir_label,
             poll_count,
@@ -297,6 +305,12 @@ pub fn page_from_polls_full(
         pico_overhead_label: pico_overhead_label(pico_overhead_secs),
         graph_svg: graph_svg(polls, extras.cell, battery.eta_seconds),
         drift_graph_svg: drift_graph_svg(polls),
+        hw_drift: polls.last().map(|p| p.hw_drift).unwrap_or(0.0),
+        hw_drift_label: polls
+            .last()
+            .map(|p| pico_drift_label(p.hw_drift))
+            .unwrap_or_default(),
+        hw_drift_graph_svg: hw_drift_graph_svg(polls),
         debug_dir_bytes: dir_bytes,
         debug_dir_label,
         poll_count,
@@ -580,6 +594,43 @@ fn drift_graph_svg(polls: &[Poll]) -> String {
         }
         samples.push((curr.t.timestamp() as f64, pct));
     }
+    signed_series_svg(&samples, "Wake error versus scheduled time", |pct| {
+        if pct.abs() < 0.05 {
+            "on time".to_string()
+        } else if pct > 0.0 {
+            format!("{pct:.1}% late")
+        } else {
+            format!("{:.1}% early", pct.abs())
+        }
+    })
+}
+
+/// Each poll's reported LPOSC error, in percent. Positive means slow.
+fn hw_drift_graph_svg(polls: &[Poll]) -> String {
+    let samples: Vec<(f64, f64)> = polls
+        .iter()
+        .map(|p| (p.t.timestamp() as f64, p.hw_drift * 100.0))
+        .filter(|(_, pct)| pct.is_finite())
+        .collect();
+    if samples.len() < 2 {
+        return String::new();
+    }
+    signed_series_svg(&samples, "LPOSC error versus 32.768 kHz", |pct| {
+        if pct.abs() < 0.05 {
+            "on time".to_string()
+        } else if pct > 0.0 {
+            format!("{pct:.1}% slow")
+        } else {
+            format!("{:.1}% fast", pct.abs())
+        }
+    })
+}
+
+fn signed_series_svg(
+    samples: &[(f64, f64)],
+    aria: &str,
+    label_of: impl Fn(f64) -> String,
+) -> String {
     if samples.len() < 2 {
         return String::new();
     }
@@ -609,17 +660,11 @@ fn drift_graph_svg(polls: &[Poll]) -> String {
     let ink = "#111827";
     let grid = "#d6d3c9";
     let zero = "#b45309";
-    for (t, pct) in &samples {
+    for (t, pct) in samples {
         let x = x_of(*t);
         let y = y_of(*pct);
         let _ = write!(points, "{x:.1},{y:.1} ");
-        let label = if pct.abs() < 0.05 {
-            "on time".to_string()
-        } else if *pct > 0.0 {
-            format!("{pct:.1}% late")
-        } else {
-            format!("{:.1}% early", pct.abs())
-        };
+        let label = label_of(*pct);
         let _ = write!(
             hits,
             r##"<circle cx="{x:.1}" cy="{y:.1}" r="7" fill="transparent" data-drift="{label}"/>"##
@@ -633,7 +678,7 @@ fn drift_graph_svg(polls: &[Poll]) -> String {
     let hi_label = format!("{span:.1}");
     let lo_label = format!("-{span:.1}");
     format!(
-        r##"<svg viewBox="0 0 {W} {H}" role="img" aria-label="Wake error versus scheduled time">
+        r##"<svg viewBox="0 0 {W} {H}" role="img" aria-label="{aria}">
   <line x1="{PAD_L}" y1="{y_hi:.1}" x2="{right:.1}" y2="{y_hi:.1}" stroke="{grid}" />
   <line x1="{PAD_L}" y1="{y_zero:.1}" x2="{right:.1}" y2="{y_zero:.1}" stroke="{zero}" stroke-dasharray="4 3" />
   <line x1="{PAD_L}" y1="{y_lo:.1}" x2="{right:.1}" y2="{y_lo:.1}" stroke="{grid}" />
@@ -788,6 +833,7 @@ mod tests {
             usb,
             wake: "timer".into(),
             sleep_s: 3600,
+            hw_drift: 0.0,
             scheduled_at: None,
             next_wake_at: Some(
                 Utc.with_ymd_and_hms(2026, 9, 15, 12, 0, 0).unwrap()
@@ -949,12 +995,29 @@ mod tests {
         assert!(page.drift_graph_svg.contains("data-drift="));
         assert!(!page.drift_graph_svg.contains(r#"r="2.6""#));
         assert!(page.drift_graph_svg.contains("Wake error"));
+        assert!(page.hw_drift_graph_svg.contains("on time"));
         let bare = page_from_polls(
             &[poll_at(0, 80, false, 200, "aa"), poll_at(60, 79, false, 200, "bb")],
             chrono_tz::Europe::London,
             |_| false,
         );
         assert!(bare.drift_graph_svg.is_empty());
+    }
+
+    #[test]
+    fn hw_drift_chart_plots_reported_lposc_error() {
+        let mut polls = vec![
+            poll_at(0, 80, false, 200, "a"),
+            poll_at(60, 70, false, 204, "b"),
+        ];
+        polls[0].hw_drift = 0.25;
+        polls[1].hw_drift = 0.248;
+        let page = page_from_polls(&polls, chrono_tz::Europe::London, |_| false);
+        assert_eq!(page.hw_drift, 0.248);
+        assert_eq!(page.hw_drift_label, "24.8% slow");
+        assert!(page.hw_drift_graph_svg.contains("polyline"));
+        assert!(page.hw_drift_graph_svg.contains("24.8% slow"));
+        assert!(page.hw_drift_graph_svg.contains("LPOSC"));
     }
 
     #[test]

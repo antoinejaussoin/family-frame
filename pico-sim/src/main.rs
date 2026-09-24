@@ -47,7 +47,7 @@ impl Telemetry {
     fn body(&mut self) -> String {
         let wake = if self.first { "cold" } else { "timer" };
         self.first = false;
-        let body = telemetry_form(self.mv, self.pct, self.usb, wake, &self.wake_at);
+        let body = telemetry_form(self.mv, self.pct, self.usb, wake, &self.wake_at, 0);
         if self.drain && !self.usb {
             self.pct = self.pct.saturating_sub(1);
             self.mv = 3300 + u32::from(self.pct) * 9;
@@ -131,7 +131,14 @@ fn frame_url(base: &str) -> String {
     format!("{}/api/frame.bin", base.trim_end_matches('/'))
 }
 
-fn telemetry_form(mv: u32, pct: u16, usb: bool, wake: &str, wake_at: &str) -> String {
+fn telemetry_form(
+    mv: u32,
+    pct: u16,
+    usb: bool,
+    wake: &str,
+    wake_at: &str,
+    hw_drift_tenths: i32,
+) -> String {
     let mut body = format!(
         "mv={mv}&pct={pct}&usb={}&wake={wake}",
         if usb { 1 } else { 0 }
@@ -140,6 +147,7 @@ fn telemetry_form(mv: u32, pct: u16, usb: bool, wake: &str, wake_at: &str) -> St
         body.push_str("&wake_at=");
         body.push_str(wake_at);
     }
+    body.push_str(&format!("&hw_drift={hw_drift_tenths}"));
     body
 }
 
@@ -250,16 +258,16 @@ mod tests {
     #[test]
     fn telemetry_form_matches_firmware() {
         assert_eq!(
-            telemetry_form(3850, 72, false, "timer", ""),
-            "mv=3850&pct=72&usb=0&wake=timer"
+            telemetry_form(3850, 72, false, "timer", "", 0),
+            "mv=3850&pct=72&usb=0&wake=timer&hw_drift=0"
         );
         assert_eq!(
-            telemetry_form(3850, 72, false, "button", ""),
-            "mv=3850&pct=72&usb=0&wake=button"
+            telemetry_form(3850, 72, false, "button", "", 0),
+            "mv=3850&pct=72&usb=0&wake=button&hw_drift=0"
         );
         assert_eq!(
-            telemetry_form(3850, 72, false, "timer", "2026-09-19T18:00:00Z"),
-            "mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z"
+            telemetry_form(3850, 72, false, "timer", "2026-09-19T18:00:00Z", 250),
+            "mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z&hw_drift=250"
         );
     }
 
@@ -343,7 +351,7 @@ mod tests {
             first: true,
             wake_at: String::new(),
         };
-        assert_eq!(tel.body(), "mv=3800&pct=55&usb=0&wake=cold");
-        assert_eq!(tel.body(), "mv=3786&pct=54&usb=0&wake=timer");
+        assert_eq!(tel.body(), "mv=3800&pct=55&usb=0&wake=cold&hw_drift=0");
+        assert_eq!(tel.body(), "mv=3786&pct=54&usb=0&wake=timer&hw_drift=0");
     }
 }

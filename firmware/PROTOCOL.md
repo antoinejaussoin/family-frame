@@ -37,9 +37,9 @@ Host: 192.168.0.251:8765
 Connection: close
 If-None-Match: <sha256>
 Content-Type: application/x-www-form-urlencoded
-Content-Length: 31
+Content-Length: 73
 
-mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z
+mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z&hw_drift=250
 ```
 
 | Field | Meaning |
@@ -49,6 +49,7 @@ mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z
 | `usb` | `1` if a USB host is sending SOFs, else `0` |
 | `wake` | `timer` after POWMAN sleep, `cold` on power-on, `button` if Inky A or B woke the chip (or was pressed while USB kept it awake) |
 | `wake_at` | Last `X-Wake-At` the Pico stored (omitted if none). Timer polls treat this as the schedule slot this contact is serving. |
+| `hw_drift` | LPOSC error versus 32.768 kHz, in tenths of a percent. Positive means slow. `250` is 25.0% slow. |
 
 Checksum is **not** in the URL. Unchanged frames return **204 No Content**
 (the honest POST equivalent of 304). Firmware still accepts 304.
@@ -73,14 +74,16 @@ If `schedule_kind` is omitted, a non-empty `wake-up` list selects times.
 Dashboard and Pictures each keep both values so the family UI can switch
 without losing the other setting.
 
-The Pico’s POWMAN timer (LPOSC) typically runs a few percent slow, so a
-commanded hour can land a couple of minutes late. After two consecutive
+Before each nap the Pico counts its LPOSC against the 12 MHz crystal (or,
+if that count fails, the factory OTP frequency) and programs the POWMAN
+divider, so a commanded sleep is already close to wall-clock time. Residual
+error still varies with voltage and temperature. After two consecutive
 `wake=timer` polls (not buttons, and not while USB is holding the chip
 awake) the server fits wall-clock elapsed time to
 `elapsed ≈ (1 + pico_drift) * asked + pico_overhead_secs`. The intercept is
 the roughly-fixed time to boot, join Wi-Fi, fetch, and paint; it only
 separates from drift when recent sleeps have different lengths. Both values
-are stored in `config.toml` (drift capped at ±20%, overhead at 3 minutes —
+are stored in `config.toml` (drift capped at ±50%, overhead at 3 minutes —
 larger gaps are ignored). Later sleeps subtract the overhead first, then
 shorten the remainder so the panel still refreshes on the intended
 wall-clock cadence.

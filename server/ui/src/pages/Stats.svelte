@@ -13,6 +13,7 @@
   let clearing = $state(false)
   let fetchGen = 0
   let driftTip = $state(null)
+  let hwTip = $state(null)
 
   async function refresh() {
     const gen = ++fetchGen
@@ -181,13 +182,18 @@
   }
 
   function onDriftPointer(event) {
+    driftTip = tipFrom(event)
+  }
+
+  function onHwPointer(event) {
+    hwTip = tipFrom(event)
+  }
+
+  function tipFrom(event) {
     const hit = event.target?.closest?.('[data-drift]')
-    if (!hit) {
-      driftTip = null
-      return
-    }
+    if (!hit) return null
     const box = event.currentTarget.getBoundingClientRect()
-    driftTip = {
+    return {
       text: hit.dataset.drift,
       x: event.clientX - box.left,
       y: event.clientY - box.top,
@@ -479,7 +485,8 @@
             </p>
             <p class="debug-stat-hint">
               {driftHint}{#if (page.pico_overhead_secs ?? 0) >= 1}
-                · {Math.round(page.pico_overhead_secs)}s wake{/if}
+                · {Math.round(page.pico_overhead_secs)}s wake{/if}{#if page.hw_drift_label}
+                · LPOSC {page.hw_drift_label}{/if}
             </p>
           </div>
           <div class="drift-gauge-wrap">
@@ -602,6 +609,30 @@
         <p class="mt-3 text-sm font-semibold text-muted">
           Each timer wake, early or late versus its scheduled slot, as a percent of the interval.
           Positive is late. This should settle toward zero as sleep compensation catches the clock.
+        </p>
+      </section>
+    {/if}
+
+    {#if page.hw_drift_graph_svg}
+      <section class="card mb-5 p-5 sm:p-6" aria-label="LPOSC error over time">
+        <h2 class="mb-3 text-xs font-extrabold tracking-wide text-muted uppercase">
+          LPOSC over time
+        </h2>
+        <div
+          class="drift-graph"
+          role="group"
+          aria-label="LPOSC error chart"
+          onpointermove={onHwPointer}
+          onpointerleave={() => (hwTip = null)}
+        >
+          {@html page.hw_drift_graph_svg}
+          {#if hwTip}
+            <p class="drift-tip" style="left: {hwTip.x}px; top: {hwTip.y}px">{hwTip.text}</p>
+          {/if}
+        </div>
+        <p class="mt-3 text-sm font-semibold text-muted">
+          Oscillator error measured against the 12 MHz crystal before each nap, versus 32.768 kHz.
+          Positive is slow. This is the raw chip, before sleep compensation.
         </p>
       </section>
     {/if}

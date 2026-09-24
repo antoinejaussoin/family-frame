@@ -50,6 +50,8 @@ struct PicoTelemetry {
     /// Echo of the last `X-Wake-At`. Timer polls use this as the assigned slot.
     #[serde(default)]
     wake_at: Option<String>,
+    /// LPOSC error versus 32.768 kHz, in tenths of a percent. Positive = slow.
+    hw_drift: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -521,6 +523,7 @@ async fn frame_bin_post(
                 usb: tel.usb != 0,
                 wake: tel.wake,
                 sleep_s,
+                hw_drift: f64::from(tel.hw_drift) / 1000.0,
             };
             let png = if status == 200 {
                 Some(frame.preview_png.as_slice())

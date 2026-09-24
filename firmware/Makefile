@@ -35,7 +35,7 @@ build-oled:
 uf2-oled: build-oled
 	UF2="$(HERE)/$(OLED_UF2)" $(FLASH) --uf2-only $(OLED_ELF)
 
-flash-oled: build-oled
+oled: build-oled
 	UF2="$(HERE)/$(OLED_UF2)" $(FLASH) $(OLED_ELF)
 
 test:
