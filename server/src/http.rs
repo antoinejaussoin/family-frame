@@ -499,8 +499,20 @@ async fn frame_bin_post(
             let now = Utc::now();
             let (sleep_s, wake_at) =
                 pico_sleep_plan_for_wake(&state, &tel.wake, tel.wake_at.as_deref(), now).await;
+            let echoed = tel
+                .wake_at
+                .as_deref()
+                .and_then(crate::schedule::parse_wake_at_slot);
+            let prev_next = state
+                .debug
+                .snapshot()
+                .await
+                .last()
+                .and_then(|p| p.next_wake_at);
             let poll = Poll {
                 t: now,
+                scheduled_at: echoed.or(prev_next),
+                next_wake_at: Some(wake_at),
                 status,
                 offered,
                 checksum: frame.checksum.clone(),
@@ -509,7 +521,6 @@ async fn frame_bin_post(
                 usb: tel.usb != 0,
                 wake: tel.wake,
                 sleep_s,
-                wake_at: Some(wake_at),
             };
             let png = if status == 200 {
                 Some(frame.preview_png.as_slice())
@@ -631,15 +642,7 @@ fn offered_checksum<'a>(headers: &'a HeaderMap, q: &'a FrameQuery) -> Option<&'a
 async fn public_settings(state: &AppState) -> crate::config::PublicSettings {
     let cfg = state.cache.snapshot_config().await;
     let polls = state.debug.snapshot().await;
-    let assigned = polls.last().and_then(|p| {
-        crate::schedule::assigned_wake_from_poll(
-            p.wake_at,
-            p.t,
-            p.sleep_s,
-            cfg.pico_drift,
-            cfg.pico_overhead_secs,
-        )
-    });
+    let assigned = polls.last().and_then(|p| p.next_wake_at);
     cfg.public_settings_for_assigned_wake(Utc::now(), assigned)
 }
 
@@ -675,6 +678,11 @@ async fn update_pico_drift(state: &AppState, tel: &PicoTelemetry) {
         return;
     };
     let now = Utc::now();
+    let scheduled_at = tel
+        .wake_at
+        .as_deref()
+        .and_then(crate::schedule::parse_wake_at_slot)
+        .or(prev.next_wake_at);
     match crate::schedule::timing_between_polls(
         &prev.wake,
         prev.usb,
@@ -683,6 +691,7 @@ async fn update_pico_drift(state: &AppState, tel: &PicoTelemetry) {
         &tel.wake,
         tel.usb != 0,
         now,
+        scheduled_at,
     ) {
         crate::schedule::TimingPair::Skip => {}
         crate::schedule::TimingPair::OutOfRange { asked, elapsed } => {
@@ -704,6 +713,7 @@ async fn update_pico_drift(state: &AppState, tel: &PicoTelemetry) {
                         &window[1].wake,
                         window[1].usb,
                         window[1].t,
+                        window[1].scheduled_at,
                     )
                 {
                     samples.push((asked, elapsed));

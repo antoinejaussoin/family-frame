@@ -98,9 +98,10 @@ impl WeeklyWakes {
     }
 }
 
-/// Largest stored/applied Pico timer error, as a fraction of the asked sleep.
+/// Largest stored/applied Pico timer error, as a fraction of the asked sleep
+/// or of the gap between `scheduled_at` and the actual arrival.
 /// Bigger gaps usually mean a button wake, USB wait, or a missed poll.
-pub const MAX_PICO_DRIFT: f64 = 0.05;
+pub const MAX_PICO_DRIFT: f64 = 0.20;
 
 /// Largest stored wake overhead (boot, Wi-Fi, fetch, panel write), seconds.
 /// Independent of how long the Pico slept.
@@ -331,6 +332,9 @@ pub fn is_timer_wake(wake: &str) -> bool {
 /// Measure drift only between two consecutive automatic timer polls.
 ///
 /// Button wakes (early), USB waits (different clock), and cold boots are skipped.
+/// `scheduled_at` is the slot this arrival was supposed to hit; `arrived` is
+/// when the Pico actually contacted. A miss larger than [`MAX_PICO_DRIFT`]
+/// drops the sample.
 pub fn drift_between_polls(
     prev_wake: &str,
     prev_usb: bool,
@@ -338,14 +342,26 @@ pub fn drift_between_polls(
     prev_at: DateTime<Utc>,
     wake: &str,
     usb: bool,
-    now: DateTime<Utc>,
+    arrived: DateTime<Utc>,
+    scheduled_at: Option<DateTime<Utc>>,
 ) -> DriftSample {
     if !is_timer_wake(wake) || !is_timer_wake(prev_wake) || usb || prev_usb || prev_sleep_s == 0 {
         return DriftSample::Skip;
     }
-    let elapsed = now.signed_duration_since(prev_at).num_seconds();
+    let Some(target) = scheduled_at else {
+        return DriftSample::Skip;
+    };
+    let elapsed = arrived.signed_duration_since(prev_at).num_seconds();
     if elapsed <= 0 {
         return DriftSample::Skip;
+    }
+    if !arrival_near_scheduled(prev_at, target, arrived, false) {
+        let drift = (elapsed as f64 - prev_sleep_s as f64) / prev_sleep_s as f64;
+        return DriftSample::OutOfRange {
+            asked: prev_sleep_s,
+            elapsed,
+            drift,
+        };
     }
     measure_pico_drift(prev_sleep_s, elapsed)
 }
@@ -353,7 +369,8 @@ pub fn drift_between_polls(
 /// Timer-to-timer interval for the slope/intercept fit.
 ///
 /// Unlike [`drift_between_polls`], a few extra seconds of boot/Wi-Fi/fetch
-/// are expected and do not reject the sample.
+/// are expected and do not reject the sample. `scheduled_at` is the slot this
+/// arrival was supposed to hit; `arrived` is the contact time.
 pub fn timing_between_polls(
     prev_wake: &str,
     prev_usb: bool,
@@ -361,14 +378,24 @@ pub fn timing_between_polls(
     prev_at: DateTime<Utc>,
     wake: &str,
     usb: bool,
-    now: DateTime<Utc>,
+    arrived: DateTime<Utc>,
+    scheduled_at: Option<DateTime<Utc>>,
 ) -> TimingPair {
     if !is_timer_wake(wake) || !is_timer_wake(prev_wake) || usb || prev_usb || prev_sleep_s == 0 {
         return TimingPair::Skip;
     }
-    let elapsed = now.signed_duration_since(prev_at).num_seconds();
+    let Some(target) = scheduled_at else {
+        return TimingPair::Skip;
+    };
+    let elapsed = arrived.signed_duration_since(prev_at).num_seconds();
     if elapsed <= 0 {
         return TimingPair::Skip;
+    }
+    if !arrival_near_scheduled(prev_at, target, arrived, true) {
+        return TimingPair::OutOfRange {
+            asked: prev_sleep_s,
+            elapsed,
+        };
     }
     match timing_sample(prev_sleep_s, elapsed) {
         Some((asked, elapsed_f)) => TimingPair::Sample {
@@ -380,6 +407,30 @@ pub fn timing_between_polls(
             elapsed,
         },
     }
+}
+
+/// True when `arrived` is within [`MAX_PICO_DRIFT`] of `scheduled_at`.
+///
+/// `allow_overhead` adds [`MAX_PICO_OVERHEAD_SECS`] on the late side, because
+/// the POST lands after the timer fires (boot, Wi-Fi, fetch).
+fn arrival_near_scheduled(
+    prev_at: DateTime<Utc>,
+    scheduled_at: DateTime<Utc>,
+    arrived: DateTime<Utc>,
+    allow_overhead: bool,
+) -> bool {
+    let intended = scheduled_at.signed_duration_since(prev_at).num_seconds();
+    if intended <= 0 {
+        return false;
+    }
+    let late = arrived.signed_duration_since(scheduled_at).num_seconds();
+    let slack = (intended as f64 * MAX_PICO_DRIFT).ceil() as i64;
+    let max_late = if allow_overhead {
+        slack + MAX_PICO_OVERHEAD_SECS as i64
+    } else {
+        slack
+    };
+    (-slack..=max_late).contains(&late)
 }
 
 /// Keep the most recent [`PICO_TIMING_SAMPLE_LIMIT`] intervals.
@@ -741,13 +792,13 @@ mod tests {
     }
 
     #[test]
-    fn drift_over_five_percent_is_rejected() {
-        // 6% late, or a button cutting the interval in half.
+    fn drift_over_twenty_percent_is_rejected() {
+        // 21% late, or a button cutting the interval in half.
         assert!(matches!(
-            measure_pico_drift(3600, 3816),
+            measure_pico_drift(3600, 4356),
             DriftSample::OutOfRange {
                 asked: 3600,
-                elapsed: 3816,
+                elapsed: 4356,
                 ..
             }
         ));
@@ -766,8 +817,8 @@ mod tests {
     fn compensate_clamps_and_never_returns_zero() {
         assert_eq!(compensate_sleep_secs(3600, 0.0, 0.0), 3600);
         assert_eq!(
-            compensate_sleep_secs(3600, 0.2, 0.0),
-            compensate_sleep_secs(3600, 0.05, 0.0)
+            compensate_sleep_secs(3600, 0.5, 0.0),
+            compensate_sleep_secs(3600, 0.2, 0.0)
         );
         assert_eq!(compensate_sleep_secs(3600, f64::NAN, 0.0), 3600);
         assert_eq!(compensate_sleep_secs(0, 0.03, 0.0), 1);
@@ -818,14 +869,14 @@ mod tests {
 
     #[test]
     fn short_sleep_with_overhead_is_a_valid_timing_sample() {
-        // Old 1-parameter model treated 20s extra on a 3-minute nap as 11% drift.
+        // 40s extra on a 3-minute nap is 22% and still outside the drift cap.
         assert!(matches!(
-            measure_pico_drift(180, 200),
+            measure_pico_drift(180, 220),
             DriftSample::OutOfRange { .. }
         ));
         assert_eq!(timing_sample(180, 200), Some((180.0, 200.0)));
         assert_eq!(timing_sample(3600, 1800), None);
-        assert!(timing_sample(3600, 3961).is_none());
+        assert!(timing_sample(3600, 4501).is_none());
         assert!(timing_sample(3600, 3700).is_some());
     }
 
@@ -841,26 +892,49 @@ mod tests {
     fn only_timer_to_timer_on_battery_counts() {
         let t0 = at_london(2026, 9, 16, 12, 0, 0);
         let t1 = at_london(2026, 9, 16, 13, 2, 0);
+        let slot = at_london(2026, 9, 16, 13, 0, 0);
         assert!(matches!(
-            drift_between_polls("timer", false, 3600, t0, "timer", false, t1),
+            drift_between_polls("timer", false, 3600, t0, "timer", false, t1, Some(slot)),
             DriftSample::Measured(_)
         ));
         assert_eq!(
-            drift_between_polls("timer", false, 3600, t0, "button", false, t1),
+            drift_between_polls("timer", false, 3600, t0, "button", false, t1, Some(slot)),
             DriftSample::Skip
         );
         assert_eq!(
-            drift_between_polls("button", false, 3600, t0, "timer", false, t1),
+            drift_between_polls("button", false, 3600, t0, "timer", false, t1, Some(slot)),
             DriftSample::Skip
         );
         assert_eq!(
-            drift_between_polls("timer", false, 3600, t0, "timer", true, t1),
+            drift_between_polls("timer", false, 3600, t0, "timer", true, t1, Some(slot)),
             DriftSample::Skip
         );
         assert_eq!(
-            drift_between_polls("cold", false, 3600, t0, "timer", false, t1),
+            drift_between_polls("cold", false, 3600, t0, "timer", false, t1, Some(slot)),
             DriftSample::Skip
         );
+    }
+
+    #[test]
+    fn scheduled_at_far_from_arrival_is_rejected_even_when_sleep_matches() {
+        let t0 = at_london(2026, 9, 16, 12, 0, 0);
+        let slot = at_london(2026, 9, 16, 15, 0, 0);
+        // Woke after ~1h, while this contact was scheduled for 15:00.
+        let arrived = at_london(2026, 9, 16, 13, 2, 0);
+        assert!(matches!(
+            drift_between_polls("timer", false, 3600, t0, "timer", false, arrived, Some(slot)),
+            DriftSample::OutOfRange { .. }
+        ));
+        assert!(matches!(
+            timing_between_polls("timer", false, 3600, t0, "timer", false, arrived, Some(slot)),
+            TimingPair::OutOfRange { .. }
+        ));
+        // Same gap is a normal sample when the slot is the one it actually hit.
+        let hit = at_london(2026, 9, 16, 13, 0, 0);
+        assert!(matches!(
+            timing_between_polls("timer", false, 3484, t0, "timer", false, arrived, Some(hit)),
+            TimingPair::Sample { .. }
+        ));
     }
 
     #[test]

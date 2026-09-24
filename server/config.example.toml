@@ -28,7 +28,7 @@ poll_interval_secs = 3600
 # if `wake-up` is non-empty, otherwise interval.
 # schedule_kind = "interval"
 # Fractional Pico timer error vs wall clock, written automatically from
-# consecutive timer polls (not buttons). Positive = woke late. Capped at ±5%.
+# consecutive timer polls (not buttons). Positive = woke late. Capped at ±20%.
 # A second value, pico_overhead_secs, is the roughly-fixed time to boot, join
 # Wi-Fi, fetch, and paint — fitted together with drift when sleep lengths vary.
 # pico_drift = 0.0

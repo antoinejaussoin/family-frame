@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -25,7 +25,13 @@ pub const POLLS_PER_PAGE: usize = 20;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Poll {
+    /// When the Pico contacted the server.
     pub t: DateTime<Utc>,
+    /// Slot this contact was supposed to hit. Copied from the previous line's
+    /// `next_wake_at` (the Pico echoes it as `wake_at=`).
+    pub scheduled_at: Option<DateTime<Utc>>,
+    /// Slot the following contact should hit.
+    pub next_wake_at: Option<DateTime<Utc>>,
     pub status: u16,
     pub offered: String,
     pub checksum: String,
@@ -34,11 +40,7 @@ pub struct Poll {
     pub usb: bool,
     pub wake: String,
     /// Seconds the Pico was told to sleep after this poll.
-    #[serde(default)]
     pub sleep_s: u64,
-    /// Wall-clock instant that sleep was aiming for (not the POWMAN seconds).
-    #[serde(default)]
-    pub wake_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone)]
@@ -261,8 +263,7 @@ pub fn page_from_polls_full(
     }
 
     let last = polls.last().unwrap();
-    let (next_refresh, next_refresh_rel) =
-        next_refresh_copy(last, now, tz, pico_drift, pico_overhead_secs);
+    let (next_refresh, next_refresh_rel) = next_refresh_copy(last, now, tz);
     let skip = (page - 1) * POLLS_PER_PAGE;
     let empty_mv = extras.cell.empty_mv;
 
@@ -349,22 +350,9 @@ fn format_when(t: DateTime<Utc>, tz: Tz) -> String {
     t.with_timezone(&tz).format("%a %-d %b, %H:%M").to_string()
 }
 
-fn next_refresh_copy(
-    last: &Poll,
-    now: DateTime<Utc>,
-    tz: Tz,
-    pico_drift: f64,
-    pico_overhead_secs: f64,
-) -> (String, String) {
-    let at = if let Some(wake_at) = last.wake_at {
-        wake_at
-    } else {
-        if last.sleep_s == 0 {
-            return (String::new(), String::new());
-        }
-        let wall =
-            crate::schedule::wall_secs_from_commanded(last.sleep_s, pico_drift, pico_overhead_secs);
-        last.t + Duration::seconds(i64::try_from(wall).unwrap_or(i64::MAX))
+fn next_refresh_copy(last: &Poll, now: DateTime<Utc>, tz: Tz) -> (String, String) {
+    let Some(at) = last.next_wake_at else {
+        return (String::new(), String::new());
     };
     (format_when(at, tz), format_until(at, now))
 }
@@ -690,7 +678,7 @@ fn prune_frames(dir: &Path, polls: &[Poll]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use chrono::{Duration, TimeZone};
 
     fn poll_at(mins: i64, pct: u16, usb: bool, status: u16, checksum: &str) -> Poll {
         Poll {
@@ -703,7 +691,12 @@ mod tests {
             usb,
             wake: "timer".into(),
             sleep_s: 3600,
-            wake_at: None,
+            scheduled_at: None,
+            next_wake_at: Some(
+                Utc.with_ymd_and_hms(2026, 9, 15, 12, 0, 0).unwrap()
+                    + Duration::minutes(mins)
+                    + Duration::hours(1),
+            ),
         }
     }
 
@@ -862,7 +855,7 @@ mod tests {
     fn page_next_refresh_uses_stored_wake_at() {
         let mut polls = vec![poll_at(60, 78, false, 204, "deadbeef")];
         polls[0].sleep_s = 1;
-        polls[0].wake_at = Some(Utc.with_ymd_and_hms(2026, 9, 15, 14, 0, 0).unwrap());
+        polls[0].next_wake_at = Some(Utc.with_ymd_and_hms(2026, 9, 15, 14, 0, 0).unwrap());
         let page = page_from_polls(&polls, chrono_tz::Europe::London, |_| true);
         assert!(
             page.next_refresh.contains("15:00"),
@@ -874,7 +867,7 @@ mod tests {
     #[test]
     fn page_next_refresh_undoes_pico_drift() {
         let mut polls = vec![poll_at(60, 78, false, 204, "deadbeef")];
-        polls[0].sleep_s = 3495; // 3600 wall-clock seconds at 3% slow
+        polls[0].next_wake_at = Some(Utc.with_ymd_and_hms(2026, 9, 15, 14, 0, 0).unwrap());
         let page =
             page_from_polls_with_drift(&polls, chrono_tz::Europe::London, 0.03, 0.0, 1, 0, |_| {
                 true

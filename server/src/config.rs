@@ -117,7 +117,7 @@ pub struct Config {
     #[serde(default, alias = "schedule-kind")]
     pub schedule_kind: Option<ScheduleKind>,
     /// Fractional Pico timer error vs wall clock (`elapsed ≈ (1+drift)*asked + overhead`).
-    /// Positive = woke late. Written automatically from timer polls; capped at ±5%.
+    /// Positive = woke late. Written automatically from timer polls; capped at ±20%.
     #[serde(default)]
     pub pico_drift: f64,
     /// Fixed seconds added to every wake (boot, Wi-Fi, fetch, panel write).
@@ -2117,12 +2117,12 @@ wake-up = ["08:00"]
     }
 
     #[test]
-    fn pico_drift_over_five_percent_is_clamped_on_load() {
+    fn pico_drift_over_twenty_percent_is_clamped_on_load() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
-        std::fs::write(&path, "pico_drift = 0.2\n").unwrap();
+        std::fs::write(&path, "pico_drift = 0.3\n").unwrap();
         let cfg = Config::load(&path).unwrap();
-        assert_eq!(cfg.pico_drift, 0.05);
+        assert_eq!(cfg.pico_drift, 0.2);
     }
 
     #[test]
