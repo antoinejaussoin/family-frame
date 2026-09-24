@@ -721,13 +721,35 @@ textarea {
   outline-offset: 2px;
 }
 
-.battery-graph svg {
+.battery-graph svg,
+.drift-graph svg {
   display: block;
   width: 100%;
   height: auto;
 }
 
-.battery-graph .tick {
+.drift-graph {
+  position: relative;
+}
+
+.drift-tip {
+  position: absolute;
+  z-index: 1;
+  margin: 0;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.4rem;
+  background: var(--color-ink);
+  color: var(--color-paper, #f3efe6);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 8px));
+}
+
+.battery-graph .tick,
+.drift-graph .tick {
   font-size: 10px;
   fill: var(--color-muted);
 }

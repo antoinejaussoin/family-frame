@@ -83,6 +83,7 @@ pub struct DebugPage {
     pub pico_overhead_secs: f64,
     pub pico_overhead_label: String,
     pub graph_svg: String,
+    pub drift_graph_svg: String,
     pub debug_dir_bytes: u64,
     pub debug_dir_label: String,
     pub poll_count: usize,
@@ -252,6 +253,7 @@ pub fn page_from_polls_full(
             pico_overhead_secs: 0.0,
             pico_overhead_label: String::new(),
             graph_svg: String::new(),
+            drift_graph_svg: String::new(),
             debug_dir_bytes: dir_bytes,
             debug_dir_label,
             poll_count,
@@ -294,6 +296,7 @@ pub fn page_from_polls_full(
         pico_overhead_secs,
         pico_overhead_label: pico_overhead_label(pico_overhead_secs),
         graph_svg: graph_svg(polls, extras.cell, battery.eta_seconds),
+        drift_graph_svg: drift_graph_svg(polls),
         debug_dir_bytes: dir_bytes,
         debug_dir_label,
         poll_count,
@@ -545,6 +548,100 @@ fn graph_svg(polls: &[Poll], cell: Cell, eta_seconds: i64) -> String {
   {proj}
   <polyline fill="none" stroke="{ink}" stroke-width="1.75" points="{points}"/>
   {dots}
+</svg>"##
+    )
+}
+
+/// Signed lateness of each timer wake versus `scheduled_at`, as a percent of
+/// the interval. Positive means the Pico arrived late. Compensation should
+/// pull this toward zero.
+fn drift_graph_svg(polls: &[Poll]) -> String {
+    let mut samples: Vec<(f64, f64)> = Vec::new();
+    for pair in polls.windows(2) {
+        let (prev, curr) = (&pair[0], &pair[1]);
+        if !crate::schedule::is_timer_wake(&prev.wake)
+            || !crate::schedule::is_timer_wake(&curr.wake)
+            || prev.usb
+            || curr.usb
+        {
+            continue;
+        }
+        let Some(scheduled) = curr.scheduled_at else {
+            continue;
+        };
+        let intended = scheduled.signed_duration_since(prev.t).num_seconds();
+        if intended <= 0 {
+            continue;
+        }
+        let late = curr.t.signed_duration_since(scheduled).num_seconds() as f64;
+        let pct = late / intended as f64 * 100.0;
+        if !pct.is_finite() || pct.abs() > crate::schedule::MAX_PICO_DRIFT * 100.0 {
+            continue;
+        }
+        samples.push((curr.t.timestamp() as f64, pct));
+    }
+    if samples.len() < 2 {
+        return String::new();
+    }
+
+    const W: f64 = 320.0;
+    const H: f64 = 140.0;
+    const PAD_L: f64 = 32.0;
+    const PAD_R: f64 = 10.0;
+    const PAD_T: f64 = 10.0;
+    const PAD_B: f64 = 16.0;
+
+    let t0 = samples.first().unwrap().0;
+    let t1 = samples.last().unwrap().0;
+    let dt = (t1 - t0).max(1.0);
+    let span = samples
+        .iter()
+        .map(|s| s.1.abs())
+        .fold(1.0_f64, f64::max)
+        * 1.15;
+    let inner_w = W - PAD_L - PAD_R;
+    let inner_h = H - PAD_T - PAD_B;
+    let x_of = |t: f64| PAD_L + (t - t0) / dt * inner_w;
+    let y_of = |pct: f64| PAD_T + (1.0 - (pct + span) / (2.0 * span)) * inner_h;
+
+    let mut points = String::new();
+    let mut hits = String::new();
+    let ink = "#111827";
+    let grid = "#d6d3c9";
+    let zero = "#b45309";
+    for (t, pct) in &samples {
+        let x = x_of(*t);
+        let y = y_of(*pct);
+        let _ = write!(points, "{x:.1},{y:.1} ");
+        let label = if pct.abs() < 0.05 {
+            "on time".to_string()
+        } else if *pct > 0.0 {
+            format!("{pct:.1}% late")
+        } else {
+            format!("{:.1}% early", pct.abs())
+        };
+        let _ = write!(
+            hits,
+            r##"<circle cx="{x:.1}" cy="{y:.1}" r="7" fill="transparent" data-drift="{label}"/>"##
+        );
+    }
+
+    let y_hi = y_of(span);
+    let y_zero = y_of(0.0);
+    let y_lo = y_of(-span);
+    let right = W - PAD_R;
+    let hi_label = format!("{span:.1}");
+    let lo_label = format!("-{span:.1}");
+    format!(
+        r##"<svg viewBox="0 0 {W} {H}" role="img" aria-label="Wake error versus scheduled time">
+  <line x1="{PAD_L}" y1="{y_hi:.1}" x2="{right:.1}" y2="{y_hi:.1}" stroke="{grid}" />
+  <line x1="{PAD_L}" y1="{y_zero:.1}" x2="{right:.1}" y2="{y_zero:.1}" stroke="{zero}" stroke-dasharray="4 3" />
+  <line x1="{PAD_L}" y1="{y_lo:.1}" x2="{right:.1}" y2="{y_lo:.1}" stroke="{grid}" />
+  <text x="2" y="{y_hi:.1}" class="tick" dy="3">{hi_label}</text>
+  <text x="2" y="{y_zero:.1}" class="tick" dy="3">0</text>
+  <text x="2" y="{y_lo:.1}" class="tick" dy="3">{lo_label}</text>
+  <polyline fill="none" stroke="{ink}" stroke-width="1" points="{points}"/>
+  {hits}
 </svg>"##
     )
 }
@@ -835,6 +932,29 @@ mod tests {
         assert_eq!(page.page, 1);
         assert_eq!(page.page_count, 0);
         assert_eq!(page.debug_dir_label, "0 B");
+    }
+
+    #[test]
+    fn drift_graph_plots_timer_lateness_around_zero() {
+        let mut polls = vec![
+            poll_at(0, 80, false, 200, "aa"),
+            poll_at(62, 79, false, 200, "bb"),
+            poll_at(118, 78, false, 200, "cc"),
+        ];
+        polls[1].scheduled_at = polls[0].next_wake_at;
+        polls[2].scheduled_at = polls[1].next_wake_at;
+        let page = page_from_polls(&polls, chrono_tz::Europe::London, |_| false);
+        assert!(page.drift_graph_svg.contains("polyline"));
+        assert!(page.drift_graph_svg.contains(r#"stroke-width="1" points"#));
+        assert!(page.drift_graph_svg.contains("data-drift="));
+        assert!(!page.drift_graph_svg.contains(r#"r="2.6""#));
+        assert!(page.drift_graph_svg.contains("Wake error"));
+        let bare = page_from_polls(
+            &[poll_at(0, 80, false, 200, "aa"), poll_at(60, 79, false, 200, "bb")],
+            chrono_tz::Europe::London,
+            |_| false,
+        );
+        assert!(bare.drift_graph_svg.is_empty());
     }
 
     #[test]
