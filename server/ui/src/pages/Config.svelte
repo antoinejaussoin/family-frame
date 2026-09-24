@@ -60,6 +60,7 @@
   let familyName = $state('')
   let timezone = $state('Europe/London')
   let batteryMah = $state(10000)
+  let powerLed = $state(true)
   let calendars = $state([])
   let binUprn = $state('')
   let birthdays = $state([])
@@ -81,6 +82,7 @@
     familyName = s.family_name || ''
     timezone = s.timezone || 'Europe/London'
     batteryMah = s.battery_mah || 10000
+    powerLed = s.power_led !== false
     const urls = s.calendar?.ics_urls || []
     calendars = urls.length
       ? urls.map((url) => ({ key: rowKey(), url }))
@@ -153,6 +155,7 @@
         family_name: familyName.trim(),
         timezone: timezone.trim(),
         battery_mah: Math.max(1, Number(batteryMah) || 10000),
+        power_led: powerLed,
         calendar: {
           ics_urls: calendars.map((row) => row.url.trim()).filter(Boolean),
         },
@@ -290,6 +293,32 @@
             <p class="field-hint">
               Nameplate of the 1S LiPo. Defaults to 10000, which matches the usual pouch on the
               shopping list. Stats uses this for “months left”.
+            </p>
+          </div>
+
+          <div class="field-block">
+            <p class="field-label">Power LED</p>
+            <div class="seg mt-2" role="group" aria-label="Power LED">
+              <button
+                type="button"
+                class={powerLed ? 'on' : ''}
+                aria-pressed={powerLed}
+                onclick={() => (powerLed = true)}
+              >
+                On
+              </button>
+              <button
+                type="button"
+                class={!powerLed ? 'on' : ''}
+                aria-pressed={!powerLed}
+                onclick={() => (powerLed = false)}
+              >
+                Off
+              </button>
+            </div>
+            <p class="field-hint">
+              The white LED on the Pico. Leave this on unless you cut the trace. Stats uses it
+              when estimating idle current.
             </p>
           </div>
         </div>

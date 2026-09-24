@@ -3,7 +3,7 @@
   import FrameMark from '../lib/FrameMark.svelte'
   import PageNav from '../lib/PageNav.svelte'
   import { formatDuration, intervalToDuration } from 'date-fns'
-  import { deleteDebug, getDebug } from '../lib/api.js'
+  import { deleteDebug, getDebug, getSettings } from '../lib/api.js'
 
   const builtVersion = import.meta.env.APP_VERSION
   let page = $state(null)
@@ -60,6 +60,11 @@
 
   onMount(() => {
     refresh()
+    getSettings()
+      .then((s) => {
+        if (typeof s.power_led === 'boolean') simLed = s.power_led
+      })
+      .catch(() => {})
     const id = setInterval(refresh, 10_000)
     return () => clearInterval(id)
   })
