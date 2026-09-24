@@ -14,7 +14,6 @@
   let fetchGen = 0
   let driftTip = $state(null)
   let hwTip = $state(null)
-  let hwTip = $state(null)
 
   async function refresh() {
     const gen = ++fetchGen
