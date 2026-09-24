@@ -76,10 +76,6 @@ async fn main(spawner: Spawner) {
     let frame_ptr = psram_ptr(_psram.as_ref());
 
     let mut bat = battery::Battery::new(p.ADC, p.PIN_43);
-    #[cfg(feature = "oled-debug")]
-    {
-        bat = bat.with_chip_temp(p.ADC_TEMP_SENSOR);
-    }
     let mut ui = DebugUi::new(
         #[cfg(feature = "oled-debug")]
         p.I2C1,

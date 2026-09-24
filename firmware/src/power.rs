@@ -31,6 +31,10 @@ use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
 
 static USB_HOST: AtomicBool = AtomicBool::new(false);
+/// Last LPOSC frequency programmed into the POWMAN divider, in hertz.
+static LPOSC_HZ: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+/// 1 = crystal count, 2 = OTP, 3 = nominal 32.768 kHz.
+static LPOSC_SRC: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
 static USB_HOST_CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static WOKE_FROM_SLEEP: AtomicBool = AtomicBool::new(false);
 static BUTTON_WAKE: AtomicBool = AtomicBool::new(false);
@@ -572,14 +576,35 @@ fn sysreset() -> ! {
     }
 }
 
-/// Hertz to program into the AON timer, so one POWMAN tick is one millisecond.
+/// Crystal count, else the factory OTP word, else 32.768 kHz.
 ///
-/// The crystal count is taken at the voltage and temperature of this nap.
-/// The OTP word is the factory measurement and is only a fallback.
+/// Cached so the OLED debug build can show the same figure the nap uses.
 fn lposc_hz() -> u32 {
-    measure_lposc_hz()
-        .or_else(otp_lposc_hz)
-        .unwrap_or(LPOSC_NOMINAL_HZ)
+    let (hz, src) = measure_lposc_hz()
+        .map(|hz| (hz, 1u8))
+        .or_else(|| otp_lposc_hz().map(|hz| (hz, 2)))
+        .unwrap_or((LPOSC_NOMINAL_HZ, 3));
+    LPOSC_HZ.store(hz, Ordering::Relaxed);
+    LPOSC_SRC.store(src, Ordering::Relaxed);
+    hz
+}
+
+/// Measured LPOSC versus 32.768 kHz, for the OLED debug build.
+///
+/// `slow_tenths` is tenths of a percent, positive when the oscillator is slow
+/// (the same sign as the server’s `pico_drift`).
+pub fn lposc_status() -> (u32, i32, &'static str) {
+    let mut hz = LPOSC_HZ.load(Ordering::Relaxed);
+    if hz == 0 {
+        hz = lposc_hz();
+    }
+    let src = match LPOSC_SRC.load(Ordering::Relaxed) {
+        1 => "xtal",
+        2 => "otp",
+        _ => "nom",
+    };
+    let slow_tenths = (LPOSC_NOMINAL_HZ as i32 - hz as i32) * 1000 / hz as i32;
+    (hz, slow_tenths, src)
 }
 
 /// Count LPOSC against the 12 MHz crystal. Resolution is 1/32 kHz (~31 Hz).
