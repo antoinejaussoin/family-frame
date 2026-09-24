@@ -101,7 +101,7 @@ impl WeeklyWakes {
 /// Largest stored/applied Pico timer error, as a fraction of the asked sleep
 /// or of the gap between `scheduled_at` and the actual arrival.
 /// Bigger gaps usually mean a button wake, USB wait, or a missed poll.
-pub const MAX_PICO_DRIFT: f64 = 0.20;
+pub const MAX_PICO_DRIFT: f64 = 0.50;
 
 /// Largest stored wake overhead (boot, Wi-Fi, fetch, panel write), seconds.
 /// Independent of how long the Pico slept.
@@ -792,22 +792,22 @@ mod tests {
     }
 
     #[test]
-    fn drift_over_twenty_percent_is_rejected() {
-        // 21% late, or a button cutting the interval in half.
+    fn drift_over_fifty_percent_is_rejected() {
+        // 51% late, or a button cutting the interval to less than half.
         assert!(matches!(
-            measure_pico_drift(3600, 4356),
+            measure_pico_drift(3600, 5436),
             DriftSample::OutOfRange {
                 asked: 3600,
-                elapsed: 4356,
+                elapsed: 5436,
                 ..
             }
         ));
         assert_eq!(
-            measure_pico_drift(3600, 1800),
+            measure_pico_drift(3600, 1700),
             DriftSample::OutOfRange {
                 asked: 3600,
-                elapsed: 1800,
-                drift: -0.5,
+                elapsed: 1700,
+                drift: (1700.0 - 3600.0) / 3600.0,
             }
         );
         assert_eq!(measure_pico_drift(0, 10), DriftSample::Skip);
@@ -817,8 +817,8 @@ mod tests {
     fn compensate_clamps_and_never_returns_zero() {
         assert_eq!(compensate_sleep_secs(3600, 0.0, 0.0), 3600);
         assert_eq!(
-            compensate_sleep_secs(3600, 0.5, 0.0),
-            compensate_sleep_secs(3600, 0.2, 0.0)
+            compensate_sleep_secs(3600, 0.8, 0.0),
+            compensate_sleep_secs(3600, 0.5, 0.0)
         );
         assert_eq!(compensate_sleep_secs(3600, f64::NAN, 0.0), 3600);
         assert_eq!(compensate_sleep_secs(0, 0.03, 0.0), 1);
@@ -869,14 +869,14 @@ mod tests {
 
     #[test]
     fn short_sleep_with_overhead_is_a_valid_timing_sample() {
-        // 40s extra on a 3-minute nap is 22% and still outside the drift cap.
+        // 100s extra on a 3-minute nap is past the 50% cap.
         assert!(matches!(
-            measure_pico_drift(180, 220),
+            measure_pico_drift(180, 280),
             DriftSample::OutOfRange { .. }
         ));
         assert_eq!(timing_sample(180, 200), Some((180.0, 200.0)));
-        assert_eq!(timing_sample(3600, 1800), None);
-        assert!(timing_sample(3600, 4501).is_none());
+        assert_eq!(timing_sample(3600, 1700), None);
+        assert!(timing_sample(3600, 5581).is_none());
         assert!(timing_sample(3600, 3700).is_some());
     }
 

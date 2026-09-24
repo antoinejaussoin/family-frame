@@ -119,9 +119,32 @@ const POWMAN_TIMER_IRQ: u32 = 45;
 /// Low 16 bits of scratch[0] while we are in a planned POWMAN nap.
 const SLEEP_MAGIC: u32 = 0xF4AE;
 
-const LPOSC_KHZ_INT: u32 = 32;
-/// 0.768 × 65536 for a 32.768 kHz LPOSC.
-const LPOSC_KHZ_FRAC: u32 = 50_332;
+/// Nominal LPOSC. Used only when a measurement and the OTP word are both missing.
+const LPOSC_NOMINAL_HZ: u32 = 32_768;
+/// Same ±50% window the server will store. Outside it, the count is not an LPOSC.
+const LPOSC_MIN_HZ: u32 = 16_384;
+const LPOSC_MAX_HZ: u32 = 49_152;
+
+const CLOCKS: u32 = 0x4001_0000;
+const CLK_REF_CTRL: u32 = 0x30;
+const CLK_REF_SRC_XOSC: u32 = 0x2;
+const FC0_REF_KHZ: u32 = 0x8c;
+const FC0_MIN_KHZ: u32 = 0x90;
+const FC0_MAX_KHZ: u32 = 0x94;
+const FC0_INTERVAL: u32 = 0x9c;
+const FC0_SRC: u32 = 0xa0;
+const FC0_STATUS: u32 = 0xa4;
+const FC0_RESULT: u32 = 0xa8;
+const FC0_SRC_LPOSC: u32 = 0x0e;
+const FC0_STATUS_DIED: u32 = 1 << 28;
+const FC0_STATUS_RUNNING: u32 = 1 << 8;
+const FC0_STATUS_DONE: u32 = 1 << 4;
+/// Pico 2 crystal. The frequency counter needs this as `clk_ref`.
+const XOSC_KHZ: u32 = 12_000;
+
+/// Factory LPOSC frequency (Hz), measured at 1.1 V and room temperature.
+const OTP_DATA: u32 = 0x4013_0000;
+const OTP_LPOSC_CALIB_ROW: usize = 0x11;
 
 pub fn on_usb() -> bool {
     USB_HOST.load(Ordering::Relaxed)
@@ -429,8 +452,9 @@ fn arm_lposc_alarm_ms(delay_ms: u64) -> bool {
         timer &= !TIMER_RUN;
         powman_write(OFF_TIMER, timer);
     }
-    powman_write(OFF_LPOSC_FREQ_INT, LPOSC_KHZ_INT);
-    powman_write(OFF_LPOSC_FREQ_FRAC, LPOSC_KHZ_FRAC);
+    let (khz_int, khz_frac) = lposc_divider_words(lposc_hz());
+    powman_write(OFF_LPOSC_FREQ_INT, khz_int);
+    powman_write(OFF_LPOSC_FREQ_FRAC, khz_frac);
     if !running {
         write_u64_words(OFF_SET_TIME_15, 0);
     }
@@ -546,6 +570,76 @@ fn sysreset() -> ! {
     loop {
         cortex_m::asm::nop();
     }
+}
+
+/// Hertz to program into the AON timer, so one POWMAN tick is one millisecond.
+///
+/// The crystal count is taken at the voltage and temperature of this nap.
+/// The OTP word is the factory measurement and is only a fallback.
+fn lposc_hz() -> u32 {
+    measure_lposc_hz()
+        .or_else(otp_lposc_hz)
+        .unwrap_or(LPOSC_NOMINAL_HZ)
+}
+
+/// Count LPOSC against the 12 MHz crystal. Resolution is 1/32 kHz (~31 Hz).
+fn measure_lposc_hz() -> Option<u32> {
+    if clocks_read(CLK_REF_CTRL) & 0x3 != CLK_REF_SRC_XOSC {
+        return None;
+    }
+    if !spin_until(
+        || clocks_read(FC0_STATUS) & FC0_STATUS_RUNNING == 0,
+        2_000_000,
+    ) {
+        return None;
+    }
+    clocks_write(FC0_REF_KHZ, XOSC_KHZ);
+    clocks_write(FC0_MIN_KHZ, 0);
+    clocks_write(FC0_MAX_KHZ, 0x01ff_ffff);
+    // Longest window the 4-bit interval allows, so a ~32 kHz count averages.
+    clocks_write(FC0_INTERVAL, 15);
+    clocks_write(FC0_SRC, FC0_SRC_LPOSC);
+    if !spin_until(|| clocks_read(FC0_STATUS) & FC0_STATUS_DONE != 0, 2_000_000) {
+        return None;
+    }
+    if clocks_read(FC0_STATUS) & FC0_STATUS_DIED != 0 {
+        return None;
+    }
+    let result = clocks_read(FC0_RESULT);
+    let khz = result >> 5;
+    let frac = result & 0x1f;
+    let hz = khz
+        .saturating_mul(1000)
+        .saturating_add(frac.saturating_mul(1000) / 32);
+    accept_lposc_hz(hz)
+}
+
+fn otp_lposc_hz() -> Option<u32> {
+    let hz =
+        unsafe { core::ptr::read_volatile((OTP_DATA as *const u16).add(OTP_LPOSC_CALIB_ROW)) }
+            as u32;
+    accept_lposc_hz(hz)
+}
+
+fn accept_lposc_hz(hz: u32) -> Option<u32> {
+    if (LPOSC_MIN_HZ..=LPOSC_MAX_HZ).contains(&hz) {
+        Some(hz)
+    } else {
+        None
+    }
+}
+
+/// `(LPOSC_FREQ_KHZ_INT, LPOSC_FREQ_KHZ_FRAC)` for `hz`.
+fn lposc_divider_words(hz: u32) -> (u32, u32) {
+    (hz / 1000, (hz % 1000) * 65_536 / 1000)
+}
+
+fn clocks_read(off: u32) -> u32 {
+    unsafe { core::ptr::read_volatile((CLOCKS + off) as *const u32) }
+}
+
+fn clocks_write(off: u32, value: u32) {
+    unsafe { core::ptr::write_volatile((CLOCKS + off) as *mut u32, value) }
 }
 
 fn now_ms() -> u64 {

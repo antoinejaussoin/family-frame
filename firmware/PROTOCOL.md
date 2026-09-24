@@ -73,14 +73,16 @@ If `schedule_kind` is omitted, a non-empty `wake-up` list selects times.
 Dashboard and Pictures each keep both values so the family UI can switch
 without losing the other setting.
 
-The Pico’s POWMAN timer (LPOSC) typically runs a few percent slow, so a
-commanded hour can land a couple of minutes late. After two consecutive
+Before each nap the Pico counts its LPOSC against the 12 MHz crystal (or,
+if that count fails, the factory OTP frequency) and programs the POWMAN
+divider, so a commanded sleep is already close to wall-clock time. Residual
+error still varies with voltage and temperature. After two consecutive
 `wake=timer` polls (not buttons, and not while USB is holding the chip
 awake) the server fits wall-clock elapsed time to
 `elapsed ≈ (1 + pico_drift) * asked + pico_overhead_secs`. The intercept is
 the roughly-fixed time to boot, join Wi-Fi, fetch, and paint; it only
 separates from drift when recent sleeps have different lengths. Both values
-are stored in `config.toml` (drift capped at ±20%, overhead at 3 minutes —
+are stored in `config.toml` (drift capped at ±50%, overhead at 3 minutes —
 larger gaps are ignored). Later sleeps subtract the overhead first, then
 shorten the remainder so the panel still refreshes on the intended
 wall-clock cadence.
