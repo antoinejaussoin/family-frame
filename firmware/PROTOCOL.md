@@ -37,9 +37,9 @@ Host: 192.168.0.251:8765
 Connection: close
 If-None-Match: <sha256>
 Content-Type: application/x-www-form-urlencoded
-Content-Length: 31
+Content-Length: 73
 
-mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z
+mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z&hw_drift=250
 ```
 
 | Field | Meaning |
@@ -49,6 +49,7 @@ mv=3850&pct=72&usb=0&wake=timer&wake_at=2026-09-19T18:00:00Z
 | `usb` | `1` if a USB host is sending SOFs, else `0` |
 | `wake` | `timer` after POWMAN sleep, `cold` on power-on, `button` if Inky A or B woke the chip (or was pressed while USB kept it awake) |
 | `wake_at` | Last `X-Wake-At` the Pico stored (omitted if none). Timer polls treat this as the schedule slot this contact is serving. |
+| `hw_drift` | LPOSC error versus 32.768 kHz, in tenths of a percent. Positive means slow. `250` is 25.0% slow. |
 
 Checksum is **not** in the URL. Unchanged frames return **204 No Content**
 (the honest POST equivalent of 304). Firmware still accepts 304.
