@@ -3,7 +3,7 @@
   import FrameMark from '../lib/FrameMark.svelte'
   import PageNav from '../lib/PageNav.svelte'
   import { formatDuration, intervalToDuration } from 'date-fns'
-  import { deleteDebug, getDebug } from '../lib/api.js'
+  import { deleteDebug, getDebug, getSettings } from '../lib/api.js'
 
   const builtVersion = import.meta.env.APP_VERSION
   let page = $state(null)
@@ -12,6 +12,7 @@
   let loading = $state(true)
   let clearing = $state(false)
   let fetchGen = 0
+  let driftTip = $state(null)
 
   async function refresh() {
     const gen = ++fetchGen
@@ -59,6 +60,11 @@
 
   onMount(() => {
     refresh()
+    getSettings()
+      .then((s) => {
+        if (typeof s.power_led === 'boolean') simLed = s.power_led
+      })
+      .catch(() => {})
     const id = setInterval(refresh, 10_000)
     return () => clearInterval(id)
   })
@@ -172,6 +178,20 @@
     if (!m) return 0
     const n = Number(m[1])
     return m[2].toLowerCase() === 'slow' ? n : -n
+  }
+
+  function onDriftPointer(event) {
+    const hit = event.target?.closest?.('[data-drift]')
+    if (!hit) {
+      driftTip = null
+      return
+    }
+    const box = event.currentTarget.getBoundingClientRect()
+    driftTip = {
+      text: hit.dataset.drift,
+      x: event.clientX - box.left,
+      y: event.clientY - box.top,
+    }
   }
 
   function driftWord(pct) {
@@ -558,6 +578,30 @@
         </div>
         <p class="mt-3 text-sm font-semibold text-muted">
           Filled dots are on battery. Hollow dots are USB. Dashed line is a drain estimate.
+        </p>
+      </section>
+    {/if}
+
+    {#if page.drift_graph_svg}
+      <section class="card mb-5 p-5 sm:p-6" aria-label="Wake error over time">
+        <h2 class="mb-3 text-xs font-extrabold tracking-wide text-muted uppercase">
+          Wake error over time
+        </h2>
+        <div
+          class="drift-graph"
+          role="group"
+          aria-label="Wake error chart"
+          onpointermove={onDriftPointer}
+          onpointerleave={() => (driftTip = null)}
+        >
+          {@html page.drift_graph_svg}
+          {#if driftTip}
+            <p class="drift-tip" style="left: {driftTip.x}px; top: {driftTip.y}px">{driftTip.text}</p>
+          {/if}
+        </div>
+        <p class="mt-3 text-sm font-semibold text-muted">
+          Each timer wake, early or late versus its scheduled slot, as a percent of the interval.
+          Positive is late. This should settle toward zero as sleep compensation catches the clock.
         </p>
       </section>
     {/if}

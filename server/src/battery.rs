@@ -593,7 +593,8 @@ mod tests {
             usb,
             wake: "timer".into(),
             sleep_s: 3600,
-            wake_at: None,
+            scheduled_at: None,
+            next_wake_at: None,
         }
     }
 

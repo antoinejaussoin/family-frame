@@ -117,7 +117,7 @@ pub struct Config {
     #[serde(default, alias = "schedule-kind")]
     pub schedule_kind: Option<ScheduleKind>,
     /// Fractional Pico timer error vs wall clock (`elapsed ≈ (1+drift)*asked + overhead`).
-    /// Positive = woke late. Written automatically from timer polls; capped at ±5%.
+    /// Positive = woke late. Written automatically from timer polls; capped at ±20%.
     #[serde(default)]
     pub pico_drift: f64,
     /// Fixed seconds added to every wake (boot, Wi-Fi, fetch, panel write).
@@ -127,6 +127,10 @@ pub struct Config {
     /// Nameplate of the 1S LiPo pouch (mAh). Used for remaining-energy math.
     #[serde(default = "default_battery_mah")]
     pub battery_mah: u32,
+    /// White power LED on the Pico still fitted. `false` means the trace was cut.
+    /// Stats uses this as the starting point for the idle-current estimate.
+    #[serde(default = "default_power_led")]
+    pub power_led: bool,
     /// VSYS millivolts treated as 0% usable. Default matches the Pico cutoff.
     #[serde(default = "default_battery_empty_mv")]
     pub battery_empty_mv: u32,
@@ -312,6 +316,7 @@ impl Default for Config {
             pico_drift: 0.0,
             pico_overhead_secs: 0.0,
             battery_mah: DEFAULT_CAPACITY_MAH,
+            power_led: true,
             battery_empty_mv: DEFAULT_EMPTY_MV,
             chrome_path: String::new(),
             todoist: TodoistConfig::default(),
@@ -530,6 +535,8 @@ pub struct PublicSettings {
     pub timezone: String,
     pub family_name: String,
     pub battery_mah: u32,
+    /// White power LED still fitted. `false` after the trace is cut.
+    pub power_led: bool,
     pub calendar: PublicCalendar,
     pub bins: PublicBins,
     pub birthdays: Vec<PublicBirthday>,
@@ -566,6 +573,7 @@ pub struct SettingsPatch {
     pub family_name: Option<String>,
     pub timezone: Option<String>,
     pub battery_mah: Option<u32>,
+    pub power_led: Option<bool>,
     pub calendar: Option<CalendarPatch>,
     pub bins: Option<BinsPatch>,
     pub birthdays: Option<Vec<PublicBirthday>>,
@@ -770,6 +778,7 @@ impl Config {
             timezone: self.timezone.clone(),
             family_name: self.family_name.clone(),
             battery_mah: self.battery_mah,
+            power_led: self.power_led,
             calendar: PublicCalendar {
                 ics_urls: self.sources.ics_urls.clone(),
             },
@@ -856,6 +865,9 @@ impl Config {
         }
         if let Some(mah) = patch.battery_mah {
             self.battery_mah = mah.max(1);
+        }
+        if let Some(on) = patch.power_led {
+            self.power_led = on;
         }
         if let Some(calendar) = &patch.calendar {
             if let Some(urls) = &calendar.ics_urls {
@@ -964,6 +976,7 @@ impl Config {
         doc["family_name"] = Item::Value(Value::from(self.family_name.as_str()));
         doc["timezone"] = Item::Value(Value::from(self.timezone.as_str()));
         doc["battery_mah"] = Item::Value(Value::from(i64::from(self.battery_mah)));
+        doc["power_led"] = Item::Value(Value::from(self.power_led));
         let dash = self.mode_schedule(FrameMode::Dashboard);
         doc["mode"] = Item::Value(Value::from(self.mode.as_str()));
         doc["poll_interval_secs"] = Item::Value(Value::from(dash.interval_secs as i64));
@@ -1383,6 +1396,10 @@ fn default_poll_interval_secs() -> u64 {
 
 fn default_battery_mah() -> u32 {
     DEFAULT_CAPACITY_MAH
+}
+
+fn default_power_led() -> bool {
+    true
 }
 
 fn default_battery_empty_mv() -> u32 {
@@ -2117,12 +2134,12 @@ wake-up = ["08:00"]
     }
 
     #[test]
-    fn pico_drift_over_five_percent_is_clamped_on_load() {
+    fn pico_drift_over_twenty_percent_is_clamped_on_load() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
-        std::fs::write(&path, "pico_drift = 0.2\n").unwrap();
+        std::fs::write(&path, "pico_drift = 0.3\n").unwrap();
         let cfg = Config::load(&path).unwrap();
-        assert_eq!(cfg.pico_drift, 0.05);
+        assert_eq!(cfg.pico_drift, 0.2);
     }
 
     #[test]
@@ -2353,10 +2370,12 @@ password = "hunter2"
         )
         .unwrap();
         let mut cfg = Config::load(&path).unwrap();
+        assert!(cfg.power_led);
         cfg.apply_patch(SettingsPatch {
             family_name: Some("Famille Test".into()),
             timezone: Some("Europe/Paris".into()),
             battery_mah: Some(5000),
+            power_led: Some(false),
             calendar: Some(CalendarPatch {
                 ics_urls: Some(vec![
                     "webcal://calendar.example.com/family.ics".into(),
@@ -2413,6 +2432,7 @@ password = "hunter2"
         assert_eq!(reloaded.family_name, "Famille Test");
         assert_eq!(reloaded.timezone, "Europe/Paris");
         assert_eq!(reloaded.battery_mah, 5000);
+        assert!(!reloaded.power_led);
         assert_eq!(
             reloaded.sources.ics_urls,
             [
@@ -2431,6 +2451,7 @@ password = "hunter2"
         let public = reloaded.public_settings(Utc::now());
         assert_eq!(public.family_name, "Famille Test");
         assert_eq!(public.battery_mah, 5000);
+        assert!(!public.power_led);
         assert_eq!(public.calendar.ics_urls.len(), 2);
         assert_eq!(public.birthdays[0].dob, "2018-03-15");
         assert_eq!(public.todoist.token, "tok_123");

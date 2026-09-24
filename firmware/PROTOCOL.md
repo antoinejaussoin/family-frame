@@ -80,7 +80,7 @@ awake) the server fits wall-clock elapsed time to
 `elapsed ≈ (1 + pico_drift) * asked + pico_overhead_secs`. The intercept is
 the roughly-fixed time to boot, join Wi-Fi, fetch, and paint; it only
 separates from drift when recent sleeps have different lengths. Both values
-are stored in `config.toml` (drift capped at ±5%, overhead at 3 minutes —
+are stored in `config.toml` (drift capped at ±20%, overhead at 3 minutes —
 larger gaps are ignored). Later sleeps subtract the overhead first, then
 shorten the remainder so the panel still refreshes on the intended
 wall-clock cadence.
