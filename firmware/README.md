@@ -108,6 +108,8 @@ swaps SCLK and MOSI — meter it, do not trust the vendor PDF.
 | Inky button B (wake / fetch) | 6 |
 | OLED SDA (`family-frame-oled` only) | 18 |
 | OLED SCL (`family-frame-oled` only) | 19 |
+| PIR OUT (antenna-end hole, no firmware yet) | 32 |
+| LED MOSFET gate (antenna-end hole, no firmware yet) | 33 |
 
 The **user LED** (next to USB-C, RM2 `WL_GPIO0`) is on only while a USB
 host is actually talking (SOF frames). Unplugging the cable turns it off

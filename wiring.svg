@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="820" viewBox="0 0 1180 820" role="img" aria-label="Side stack of the 13.3 inch e-ink frame">
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="980" viewBox="0 0 1180 980" role="img" aria-label="Side stack of the 13.3 inch e-ink frame">
   <defs>
     <style>
       .bg { fill: #ffffff; }
@@ -70,4 +70,13 @@
   <text class="head" x="620" y="644">If the panel stays white</text>
   <text class="text" x="620" y="672">Swap SCLK and MOSI on the HAT (do not trust the vendor PDF). Confirm with a continuity meter.</text>
   <text class="text" x="620" y="694">BUSY is active low. A 300 ms D/C setup delay is required on Spectra 6.</text>
+
+  <rect class="card" x="40" y="720" width="1100" height="220" rx="8"/>
+  <text class="head" x="60" y="748">Presence light (antenna-end holes, past the HAT)</text>
+  <text class="text" x="60" y="776">PIR red to antenna-end 3V3. PIR black to GND. PIR white (OUT) to GP32. Yellow Grove wire open.</text>
+  <text class="text" x="60" y="800">IRLB8721 gate to GP33, and a 100 kOhm from GP33 to GND so the bar stays off in sleep.</text>
+  <text class="text" x="60" y="824">MOSFET source to GND. MOSFET drain to LED minus. LED plus to JST-PH battery plus (VSYS).</text>
+  <text class="text" x="60" y="848">Do not use VBUS. Do not feed the bar from 3V3. Do not use GP30 (BOOT), GP43 (battery sense), or GP47 (PSRAM).</text>
+  <text class="small" x="60" y="880">Bar is the 60 mm warm-white COB, on the top inner lip. Cell voltage, not 5 V. No firmware yet: the pulldown holds it off.</text>
+  <text class="small" x="60" y="904">Hole-by-hole wires are section 4 of connections.svg. Parts are in shopping.md.</text>
 </svg>
