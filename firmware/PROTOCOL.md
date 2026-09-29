@@ -74,10 +74,12 @@ If `schedule_kind` is omitted, a non-empty `wake-up` list selects times.
 Dashboard and Pictures each keep both values so the family UI can switch
 without losing the other setting.
 
-Before each nap the Pico counts its LPOSC against the 12 MHz crystal (or,
-if that count fails, the factory OTP frequency) and programs the POWMAN
-divider, so a commanded sleep is already close to wall-clock time. Residual
-error still varies with voltage and temperature. After two consecutive
+The first time the settings sector has no LPOSC frequency, the Pico counts
+it against the 12 MHz crystal (or, if that count fails, the factory OTP
+frequency) and stores the hertz value in flash. Every later nap programs the
+POWMAN divider from that stored value and does not count again, so a
+commanded sleep stays close to wall-clock time. Residual error still varies
+with voltage and temperature. After two consecutive
 `wake=timer` polls (not buttons, and not while USB is holding the chip
 awake) the server fits wall-clock elapsed time to
 `elapsed ≈ (1 + pico_drift) * asked + pico_overhead_secs`. The intercept is

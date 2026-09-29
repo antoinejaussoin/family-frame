@@ -71,6 +71,8 @@ async fn main(spawner: Spawner) {
     static FLASH: StaticCell<SharedFlash> = StaticCell::new();
     let flash = FLASH.init(Mutex::new(flash));
     settings::replace(settings::load_flash(&mut *flash.lock().await)).await;
+    let stored = settings::snapshot().await;
+    power::adopt_stored_lposc(stored.lposc_hz, stored.lposc_src);
 
     let _psram = init_psram(p.QMI_CS1, p.PIN_47);
     let frame_ptr = psram_ptr(_psram.as_ref());
@@ -129,6 +131,7 @@ async fn main(spawner: Spawner) {
                 painted_diag = true;
                 cold = false;
             }
+            persist_fresh_lposc(flash).await;
             Timer::after_secs(2).await;
             continue;
         }
@@ -168,7 +171,7 @@ async fn main(spawner: Spawner) {
         } else {
             DEFAULT_SLEEP_S
         };
-        nap_with_ui(&mut ui, &mut bat, nap).await;
+        nap_with_ui(&mut ui, &mut bat, nap, flash).await;
     }
 }
 
@@ -245,12 +248,32 @@ async fn run_cycle(
     }
 }
 
+/// Write a one-time LPOSC count into the settings sector.
+async fn persist_fresh_lposc(flash: &'static SharedFlash) {
+    let Some((hz, src)) = power::fresh_lposc() else {
+        return;
+    };
+    settings::update(|c| {
+        c.lposc_hz = hz;
+        c.lposc_src = src;
+    })
+    .await;
+    let cfg = settings::snapshot().await;
+    let mut guard = flash.lock().await;
+    if settings::save_flash(&mut guard, &cfg).is_ok() {
+        power::mark_lposc_persisted();
+    }
+}
+
 async fn remember_server(
     flash: &'static SharedFlash,
     checksum: &str,
     sleep_s: Option<u32>,
     wake_at: &str,
 ) {
+    // Fold a first-time count into this save so a checksum write cannot
+    // put a zero frequency back over it.
+    persist_fresh_lposc(flash).await;
     let mut dirty = false;
     settings::update(|c| {
         if let Some(s) = sleep_s.filter(|&s| s > 0) {
@@ -330,8 +353,16 @@ impl DebugUi {
     }
 }
 
-async fn nap_with_ui(ui: &mut DebugUi, bat: &mut battery::Battery<'_>, nap: u32) {
+async fn nap_with_ui(
+    ui: &mut DebugUi,
+    bat: &mut battery::Battery<'_>,
+    nap: u32,
+    flash: &'static SharedFlash,
+) {
     let _ = bat.sample();
+    // Count once when flash has no frequency. POWMAN sleep does not return.
+    let _ = power::lposc_status();
+    persist_fresh_lposc(flash).await;
     let usb = power::plugged_usb().await;
     if usb {
         let mut msg = String::<24>::new();

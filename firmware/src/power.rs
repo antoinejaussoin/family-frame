@@ -35,6 +35,8 @@ static USB_HOST: AtomicBool = AtomicBool::new(false);
 static LPOSC_HZ: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 /// 1 = crystal count, 2 = OTP, 3 = nominal 32.768 kHz.
 static LPOSC_SRC: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+/// This boot counted a frequency that is not in flash yet.
+static LPOSC_FRESH: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 static USB_HOST_CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static WOKE_FROM_SLEEP: AtomicBool = AtomicBool::new(false);
 static BUTTON_WAKE: AtomicBool = AtomicBool::new(false);
@@ -576,16 +578,57 @@ fn sysreset() -> ! {
     }
 }
 
+/// Use a frequency already stored in the settings sector. Skips the crystal count.
+pub fn adopt_stored_lposc(hz: u32, src: u8) {
+    if accept_lposc_hz(hz).is_none() {
+        return;
+    }
+    let src = match src {
+        1 | 2 | 3 => src,
+        _ => 3,
+    };
+    LPOSC_HZ.store(hz, Ordering::Relaxed);
+    LPOSC_SRC.store(src, Ordering::Relaxed);
+    LPOSC_FRESH.store(false, Ordering::Relaxed);
+}
+
+/// Drop the RAM copy so the next nap counts again. Used when flash is erased.
+pub fn forget_stored_lposc() {
+    LPOSC_HZ.store(0, Ordering::Relaxed);
+    LPOSC_SRC.store(0, Ordering::Relaxed);
+    LPOSC_FRESH.store(false, Ordering::Relaxed);
+}
+
+/// A count from this boot that still needs writing to flash.
+pub fn fresh_lposc() -> Option<(u32, u8)> {
+    if !LPOSC_FRESH.load(Ordering::Relaxed) {
+        return None;
+    }
+    let hz = LPOSC_HZ.load(Ordering::Relaxed);
+    accept_lposc_hz(hz)?;
+    Some((hz, LPOSC_SRC.load(Ordering::Relaxed)))
+}
+
+pub fn mark_lposc_persisted() {
+    LPOSC_FRESH.store(false, Ordering::Relaxed);
+}
+
 /// Crystal count, else the factory OTP word, else 32.768 kHz.
 ///
-/// Cached so the OLED debug build can show the same figure the nap uses.
+/// The first successful count is kept in RAM and, by the caller, in flash.
+/// Later naps and later boots reuse that frequency and do not count again.
 fn lposc_hz() -> u32 {
+    let cached = LPOSC_HZ.load(Ordering::Relaxed);
+    if accept_lposc_hz(cached).is_some() {
+        return cached;
+    }
     let (hz, src) = measure_lposc_hz()
         .map(|hz| (hz, 1u8))
         .or_else(|| otp_lposc_hz().map(|hz| (hz, 2)))
         .unwrap_or((LPOSC_NOMINAL_HZ, 3));
     LPOSC_HZ.store(hz, Ordering::Relaxed);
     LPOSC_SRC.store(src, Ordering::Relaxed);
+    LPOSC_FRESH.store(true, Ordering::Relaxed);
     hz
 }
 
