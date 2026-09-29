@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -87,6 +87,8 @@ pub struct DebugPage {
     pub graph_svg: String,
     /// Millivolts below the first on-battery reading. Empty when fewer than two battery polls.
     pub drain_graph_svg: String,
+    /// Estimated millivolts lost on each full UTC day. Empty until two midnights can be estimated.
+    pub daily_mv_svg: String,
     pub drift_graph_svg: String,
     pub hw_drift: f64,
     pub hw_drift_label: String,
@@ -261,6 +263,7 @@ pub fn page_from_polls_full(
             pico_overhead_label: String::new(),
             graph_svg: String::new(),
             drain_graph_svg: String::new(),
+            daily_mv_svg: String::new(),
             drift_graph_svg: String::new(),
             hw_drift: 0.0,
             hw_drift_label: String::new(),
@@ -308,6 +311,7 @@ pub fn page_from_polls_full(
         pico_overhead_label: pico_overhead_label(pico_overhead_secs),
         graph_svg: graph_svg(polls, extras.cell, battery.eta_seconds),
         drain_graph_svg: drain_graph_svg(polls),
+        daily_mv_svg: daily_mv_svg(polls),
         drift_graph_svg: drift_graph_svg(polls),
         hw_drift: polls.last().map(|p| p.hw_drift).unwrap_or(0.0),
         hw_drift_label: polls
@@ -678,6 +682,228 @@ fn drain_graph_svg(polls: &[Poll]) -> String {
     )
 }
 
+/// One bar per full UTC day: estimated millivolts lost from midnight to the next midnight.
+///
+/// Neither boundary is a poll. Voltage at each midnight is a straight line between
+/// the on-battery readings on either side. USB readings are skipped. A day is
+/// included only when both midnights fall inside the battery samples, so every
+/// bar is 24 hours.
+fn daily_mv_svg(polls: &[Poll]) -> String {
+    let batt: Vec<&Poll> = polls.iter().filter(|p| !p.usb).collect();
+    if batt.len() < 2 {
+        return String::new();
+    }
+    let days = utc_day_losses(&batt);
+    if days.is_empty() {
+        return String::new();
+    }
+
+    const W: f64 = 320.0;
+    const H: f64 = 168.0;
+    const PAD_L: f64 = 28.0;
+    const PAD_R: f64 = 8.0;
+    const PAD_T: f64 = 12.0;
+    const PAD_B: f64 = 28.0;
+    let inner_w = W - PAD_L - PAD_R;
+    let inner_h = H - PAD_T - PAD_B;
+
+    let mut y_min = days.iter().fold(0.0_f64, |acc, d| acc.min(d.loss));
+    let mut y_max = days.iter().fold(0.0_f64, |acc, d| acc.max(d.loss));
+    if y_max - y_min < 4.0 {
+        y_max = y_max.max(4.0);
+        y_min = y_min.min(0.0);
+    }
+    let pad = (y_max - y_min) * 0.1;
+    y_min -= if y_min < 0.0 { pad } else { 0.0 };
+    y_max += pad;
+    let y_of = |loss: f64| PAD_T + (y_max - loss) / (y_max - y_min) * inner_h;
+    let zero = y_of(0.0);
+
+    let n = days.len() as f64;
+    let gap = if days.len() > 14 { 2.0 } else { 4.0 };
+    let bar_w = ((inner_w - gap * (n - 1.0)) / n).max(1.0);
+    let step = bar_w + gap;
+
+    let grid = "#d6d3c9";
+    let loss_fill = "#2f6d4f";
+    let gain_fill = "#d4654a";
+    let right = W - PAD_R;
+
+    let mut y_lines = String::new();
+    let mut y_ticks = vec![0.0_f64];
+    if y_max - pad > 1.0 {
+        y_ticks.push(y_max - pad);
+    }
+    if y_min < -1.0 {
+        y_ticks.push(days.iter().fold(0.0_f64, |acc, d| acc.min(d.loss)));
+    }
+    for tick in y_ticks {
+        let y = y_of(tick);
+        let _ = write!(
+            y_lines,
+            r##"<line x1="{PAD_L}" y1="{y:.1}" x2="{right:.1}" y2="{y:.1}" stroke="{grid}"/>
+  <text x="2" y="{:.1}" class="tick">{:.0}</text>"##,
+            y + 3.5,
+            tick
+        );
+    }
+
+    let mut bars = String::new();
+    let mut labels = String::new();
+    let mut last_label_x = f64::NEG_INFINITY;
+    for (i, day) in days.iter().enumerate() {
+        let x = PAD_L + i as f64 * step;
+        let y_val = y_of(day.loss);
+        let top = y_val.min(zero);
+        let height = (y_val - zero).abs().max(0.0);
+        let fill = if day.loss < -0.05 {
+            gain_fill
+        } else {
+            loss_fill
+        };
+        let title = format!("{} · {} mV", day.label, fmt_mv(day.loss));
+        let _ = write!(
+            bars,
+            r##"<rect x="{x:.1}" y="{top:.1}" width="{bar_w:.1}" height="{height:.1}" rx="1.5" fill="{fill}"><title>{title}</title></rect>"##
+        );
+        if bar_w >= 28.0 && height >= 1.0 {
+            let value_y = if day.loss >= 0.0 {
+                (top - 3.0).max(9.0)
+            } else {
+                top + height + 10.0
+            };
+            let _ = write!(
+                bars,
+                r##"<text x="{text_x:.1}" y="{value_y:.1}" text-anchor="middle" class="tick">{mv}</text>"##,
+                text_x = x + bar_w / 2.0,
+                mv = fmt_mv(day.loss)
+            );
+        }
+        let label = day.tick.clone();
+        let text_x = x + bar_w / 2.0;
+        let last = i + 1 == days.len();
+        if text_x - last_label_x >= 40.0 || (last && text_x - last_label_x >= 22.0) {
+            let anchor = if last && text_x - last_label_x < 40.0 {
+                "end"
+            } else {
+                "middle"
+            };
+            let lx = if anchor == "end" { x + bar_w } else { text_x };
+            let _ = write!(
+                labels,
+                r##"<text x="{lx:.1}" y="{:.1}" text-anchor="{anchor}" class="tick">{label}</text>"##,
+                H - 6.0
+            );
+            last_label_x = lx;
+        }
+    }
+
+    format!(
+        r##"<svg viewBox="0 0 {W} {H}" role="img" aria-label="Estimated millivolts lost each UTC day">
+  {y_lines}
+  <line x1="{PAD_L}" y1="{zero:.1}" x2="{right:.1}" y2="{zero:.1}" stroke="#a8a29a" stroke-width="1.25"/>
+  {bars}
+  {labels}
+</svg>"##
+    )
+}
+
+struct UtcDayLoss {
+    loss: f64,
+    /// Short axis label: `16 Sep` on the first day and each new month, otherwise the day number.
+    tick: String,
+    /// `16 Sep`, for the bar tooltip.
+    label: String,
+}
+
+fn utc_day_losses(batt: &[&Poll]) -> Vec<UtcDayLoss> {
+    let first = batt[0].t;
+    let last = batt.last().unwrap().t;
+    let mut midnight =
+        Utc.from_utc_datetime(&first.date_naive().and_hms_opt(0, 0, 0).expect("midnight"));
+    if first > midnight {
+        midnight += Duration::days(1);
+    }
+    let mut days = Vec::new();
+    let mut prev_month = 0u32;
+    while midnight + Duration::days(1) <= last {
+        let end = midnight + Duration::days(1);
+        let Some(start_mv) = mv_at_battery(batt, midnight) else {
+            midnight = end;
+            continue;
+        };
+        let Some(end_mv) = mv_at_battery(batt, end) else {
+            break;
+        };
+        let month = midnight.month();
+        let label = format!("{} {}", midnight.day(), month_abbr(month));
+        let tick = if days.is_empty() || month != prev_month {
+            label.clone()
+        } else {
+            midnight.day().to_string()
+        };
+        prev_month = month;
+        days.push(UtcDayLoss {
+            loss: start_mv - end_mv,
+            tick,
+            label,
+        });
+        midnight = end;
+    }
+    days
+}
+
+/// Linear VSYS at `at` between the on-battery polls on either side.
+fn mv_at_battery(batt: &[&Poll], at: DateTime<Utc>) -> Option<f64> {
+    let ts = at.timestamp();
+    let first = batt.first()?.t.timestamp();
+    let last = batt.last()?.t.timestamp();
+    if ts < first || ts > last {
+        return None;
+    }
+    if let Some(hit) = batt.iter().find(|p| p.t.timestamp() == ts) {
+        return Some(f64::from(hit.mv));
+    }
+    let idx = batt.iter().position(|p| p.t.timestamp() > ts)?;
+    if idx == 0 {
+        return None;
+    }
+    let a = batt[idx - 1];
+    let b = batt[idx];
+    let ta = a.t.timestamp() as f64;
+    let tb = b.t.timestamp() as f64;
+    if tb <= ta {
+        return Some(f64::from(b.mv));
+    }
+    let u = (ts as f64 - ta) / (tb - ta);
+    Some(f64::from(a.mv) + u * (f64::from(b.mv) - f64::from(a.mv)))
+}
+
+fn month_abbr(month: u32) -> &'static str {
+    match month {
+        1 => "Jan",
+        2 => "Feb",
+        3 => "Mar",
+        4 => "Apr",
+        5 => "May",
+        6 => "Jun",
+        7 => "Jul",
+        8 => "Aug",
+        9 => "Sep",
+        10 => "Oct",
+        11 => "Nov",
+        _ => "Dec",
+    }
+}
+
+fn fmt_mv(v: f64) -> String {
+    if (v - v.round()).abs() < 0.05 {
+        format!("{:.0}", v.round())
+    } else {
+        format!("{v:.1}")
+    }
+}
+
 /// Signed lateness of each timer wake versus `scheduled_at`, as a percent of
 /// the interval. Positive means the Pico arrived late. Compensation should
 /// pull this toward zero.
@@ -757,11 +983,7 @@ fn signed_series_svg(
     let t0 = samples.first().unwrap().0;
     let t1 = samples.last().unwrap().0;
     let dt = (t1 - t0).max(1.0);
-    let span = samples
-        .iter()
-        .map(|s| s.1.abs())
-        .fold(1.0_f64, f64::max)
-        * 1.15;
+    let span = samples.iter().map(|s| s.1.abs()).fold(1.0_f64, f64::max) * 1.15;
     let inner_w = W - PAD_L - PAD_R;
     let inner_h = H - PAD_T - PAD_B;
     let x_of = |t: f64| PAD_L + (t - t0) / dt * inner_w;
@@ -1115,6 +1337,24 @@ mod tests {
     }
 
     #[test]
+    fn daily_mv_chart_interpolates_full_utc_days_and_skips_usb() {
+        let mut polls = vec![
+            poll_at(0, 90, false, 200, "a"),
+            poll_at(24 * 60, 100, true, 200, "usb"),
+            poll_at(48 * 60, 80, false, 200, "b"),
+        ];
+        polls[0].mv = 4200;
+        polls[1].mv = 4300;
+        polls[2].mv = 4160;
+        let svg = daily_mv_svg(&polls);
+        assert!(svg.contains("<rect"));
+        assert!(svg.contains("16 Sep"));
+        assert!(svg.contains("20 mV"));
+        assert!(!svg.contains("15 Sep"));
+        assert!(daily_mv_svg(&polls[..1]).is_empty());
+    }
+
+    #[test]
     fn empty_page_has_no_graph() {
         let page = page_from_polls(&[], chrono_tz::Europe::London, |_| false);
         assert_eq!(page.version, crate::VERSION);
@@ -1144,7 +1384,10 @@ mod tests {
         assert!(page.drift_graph_svg.contains("Wake error"));
         assert!(page.hw_drift_graph_svg.contains("on time"));
         let bare = page_from_polls(
-            &[poll_at(0, 80, false, 200, "aa"), poll_at(60, 79, false, 200, "bb")],
+            &[
+                poll_at(0, 80, false, 200, "aa"),
+                poll_at(60, 79, false, 200, "bb"),
+            ],
             chrono_tz::Europe::London,
             |_| false,
         );

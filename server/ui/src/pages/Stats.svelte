@@ -604,6 +604,21 @@
       </section>
     {/if}
 
+    {#if page.daily_mv_svg}
+      <section class="card mb-5 p-5 sm:p-6" aria-label="Millivolts lost per day">
+        <h2 class="mb-3 text-xs font-extrabold tracking-wide text-muted uppercase">
+          Millivolts lost per day
+        </h2>
+        <div class="battery-graph">
+          {@html page.daily_mv_svg}
+        </div>
+        <p class="mt-3 text-sm font-semibold text-muted">
+          Each bar is one UTC day, midnight to midnight. Voltage at midnight is estimated
+          from the on-battery readings on either side. Hover a bar for the value.
+        </p>
+      </section>
+    {/if}
+
     {#if page.drift_graph_svg}
       <section class="card mb-5 p-5 sm:p-6" aria-label="Wake error over time">
         <h2 class="mb-3 text-xs font-extrabold tracking-wide text-muted uppercase">
