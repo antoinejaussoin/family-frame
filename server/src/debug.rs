@@ -85,6 +85,8 @@ pub struct DebugPage {
     pub pico_overhead_secs: f64,
     pub pico_overhead_label: String,
     pub graph_svg: String,
+    /// Millivolts below the first on-battery reading. Empty when fewer than two battery polls.
+    pub drain_graph_svg: String,
     pub drift_graph_svg: String,
     pub hw_drift: f64,
     pub hw_drift_label: String,
@@ -258,6 +260,7 @@ pub fn page_from_polls_full(
             pico_overhead_secs: 0.0,
             pico_overhead_label: String::new(),
             graph_svg: String::new(),
+            drain_graph_svg: String::new(),
             drift_graph_svg: String::new(),
             hw_drift: 0.0,
             hw_drift_label: String::new(),
@@ -304,6 +307,7 @@ pub fn page_from_polls_full(
         pico_overhead_secs,
         pico_overhead_label: pico_overhead_label(pico_overhead_secs),
         graph_svg: graph_svg(polls, extras.cell, battery.eta_seconds),
+        drain_graph_svg: drain_graph_svg(polls),
         drift_graph_svg: drift_graph_svg(polls),
         hw_drift: polls.last().map(|p| p.hw_drift).unwrap_or(0.0),
         hw_drift_label: polls
@@ -562,6 +566,114 @@ fn graph_svg(polls: &[Poll], cell: Cell, eta_seconds: i64) -> String {
   {proj}
   <polyline fill="none" stroke="{ink}" stroke-width="1.75" points="{points}"/>
   {dots}
+</svg>"##
+    )
+}
+
+/// Millivolts given up since the first on-battery sample.
+///
+/// Zero is that first reading. Down the chart is a lower VSYS. USB polls are
+/// omitted: a host pulls the reading up and hides the pack.
+fn drain_graph_svg(polls: &[Poll]) -> String {
+    let batt: Vec<&Poll> = polls.iter().filter(|p| !p.usb).collect();
+    if batt.len() < 2 {
+        return String::new();
+    }
+    let t0 = batt[0].t.timestamp() as f64;
+    let mv0 = f64::from(batt[0].mv);
+    let pts: Vec<(f64, f64)> = batt
+        .iter()
+        .map(|p| {
+            let hours = (p.t.timestamp() as f64 - t0) / 3600.0;
+            let lost = mv0 - f64::from(p.mv);
+            (hours, lost)
+        })
+        .collect();
+    let hours_end = pts.last().unwrap().0.max(1.0 / 60.0);
+    let mut y_min = pts.iter().fold(0.0_f64, |acc, p| acc.min(p.1));
+    let mut y_max = pts.iter().fold(0.0_f64, |acc, p| acc.max(p.1));
+    if y_max - y_min < 8.0 {
+        y_max = y_max.max(8.0);
+        y_min = y_min.min(0.0);
+    }
+    let pad = (y_max - y_min) * 0.08;
+    y_min -= pad;
+    y_max += pad;
+
+    const W: f64 = 320.0;
+    const H: f64 = 156.0;
+    const PAD_L: f64 = 28.0;
+    const PAD_R: f64 = 10.0;
+    const PAD_T: f64 = 12.0;
+    const PAD_B: f64 = 22.0;
+    let inner_w = W - PAD_L - PAD_R;
+    let inner_h = H - PAD_T - PAD_B;
+    let x_of = |hours: f64| PAD_L + (hours / hours_end) * inner_w;
+    let y_of = |lost: f64| PAD_T + (lost - y_min) / (y_max - y_min) * inner_h;
+
+    let ink = "#2f6d4f";
+    let grid = "#d6d3c9";
+    let zero = y_of(0.0);
+    let right = W - PAD_R;
+
+    let mut points = String::new();
+    for (hours, lost) in &pts {
+        let _ = write!(points, "{:.1},{:.1} ", x_of(*hours), y_of(*lost));
+    }
+
+    let mut y_ticks = vec![0.0_f64];
+    if y_max > 1.0 {
+        y_ticks.push(y_max - pad);
+    }
+    if y_min + pad < -1.0 {
+        y_ticks.push(y_min + pad);
+    }
+    let mut y_lines = String::new();
+    for tick in y_ticks {
+        let y = y_of(tick);
+        let label = format!("{:.0}", tick);
+        let _ = write!(
+            y_lines,
+            r##"<line x1="{PAD_L}" y1="{y:.1}" x2="{right:.1}" y2="{y:.1}" stroke="{grid}"/>
+  <text x="2" y="{:.1}" class="tick">{label}</text>"##,
+            y + 3.5
+        );
+    }
+
+    let mut x_lines = String::new();
+    let mut x_marks = vec![0.0_f64, hours_end];
+    if hours_end >= 36.0 {
+        x_marks.insert(1, hours_end / 2.0);
+    }
+    for (i, hours) in x_marks.iter().enumerate() {
+        let x = x_of(*hours);
+        let anchor = if i == 0 {
+            "start"
+        } else if i + 1 == x_marks.len() {
+            "end"
+        } else {
+            "middle"
+        };
+        let label = if *hours < 0.05 {
+            "0".to_string()
+        } else if *hours < 10.0 {
+            format!("{hours:.1}h")
+        } else {
+            format!("{:.0}h", hours.round())
+        };
+        let _ = write!(
+            x_lines,
+            r##"<text x="{x:.1}" y="{:.1}" text-anchor="{anchor}" class="tick">{label}</text>"##,
+            H - 4.0
+        );
+    }
+
+    format!(
+        r##"<svg viewBox="0 0 {W} {H}" role="img" aria-label="Millivolts given up since the first on-battery sample">
+  {y_lines}
+  <line x1="{PAD_L}" y1="{zero:.1}" x2="{right:.1}" y2="{zero:.1}" stroke="#a8a29a" stroke-width="1.25"/>
+  {x_lines}
+  <polyline fill="none" stroke="{ink}" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round" points="{points}"/>
 </svg>"##
     )
 }
@@ -965,6 +1077,41 @@ mod tests {
             "/api/debug/frames/deadbeef.png"
         );
         assert!(page.graph_svg.contains("<svg"));
+        assert!(page.drain_graph_svg.contains("polyline"));
+        assert!(page.drain_graph_svg.contains("Millivolts given up"));
+    }
+
+    #[test]
+    fn drain_chart_starts_at_the_first_battery_sample_and_ignores_usb() {
+        let mut polls = vec![
+            poll_at(0, 100, true, 200, "usb"),
+            poll_at(10, 90, false, 200, "a"),
+            poll_at(60 * 24, 80, false, 200, "b"),
+        ];
+        polls[0].mv = 4300;
+        polls[1].mv = 4200;
+        polls[2].mv = 4150;
+        let svg = drain_graph_svg(&polls);
+        assert!(svg.contains("polyline"));
+        let points: Vec<(f64, f64)> = svg
+            .split_once(r#"points=""#)
+            .unwrap()
+            .1
+            .split('"')
+            .next()
+            .unwrap()
+            .split_whitespace()
+            .map(|pair| {
+                let (x, y) = pair.split_once(',').unwrap();
+                (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap())
+            })
+            .collect();
+        assert_eq!(points.len(), 2);
+        assert!(
+            points[1].1 > points[0].1,
+            "later lower voltage should sit further down the chart"
+        );
+        assert!(drain_graph_svg(&polls[..1]).is_empty());
     }
 
     #[test]

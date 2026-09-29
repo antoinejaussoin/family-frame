@@ -589,6 +589,21 @@
       </section>
     {/if}
 
+    {#if page.drain_graph_svg}
+      <section class="card mb-5 p-5 sm:p-6" aria-label="Voltage given up">
+        <h2 class="mb-3 text-xs font-extrabold tracking-wide text-muted uppercase">
+          Voltage given up, from the first sample
+        </h2>
+        <div class="battery-graph">
+          {@html page.drain_graph_svg}
+        </div>
+        <p class="mt-3 text-sm font-semibold text-muted">
+          Millivolts below the first on-battery reading. Down the chart is charge given up.
+          USB polls are left off.
+        </p>
+      </section>
+    {/if}
+
     {#if page.drift_graph_svg}
       <section class="card mb-5 p-5 sm:p-6" aria-label="Wake error over time">
         <h2 class="mb-3 text-xs font-extrabold tracking-wide text-muted uppercase">

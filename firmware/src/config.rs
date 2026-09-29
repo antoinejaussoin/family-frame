@@ -17,6 +17,10 @@ const SERVER_OFF: usize = PSK_OFF + 1 + PSK_MAX;
 const CHECKSUM_OFF: usize = SERVER_OFF + 1 + SERVER_MAX;
 const SLEEP_OFF: usize = CHECKSUM_OFF + 1 + CHECKSUM_MAX;
 const WAKE_AT_OFF: usize = SLEEP_OFF + 4;
+/// Past the length-prefixed fields. Old records have zeros here and still decode.
+const LPOSC_HZ_OFF: usize = WAKE_AT_OFF + 1 + WAKE_AT_MAX;
+const LPOSC_SRC_OFF: usize = LPOSC_HZ_OFF + 4;
+const _: () = assert!(LPOSC_SRC_OFF < RECORD);
 
 /// In-RAM copy of the provisioned settings (and the flash payload).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,6 +34,10 @@ pub struct NetConfig {
     /// Last `X-Wake-At` token; echoed on the next POST so the server can
     /// treat this poll as that schedule slot. Opaque to the Pico.
     pub wake_at: String<WAKE_AT_MAX>,
+    /// LPOSC frequency programmed into POWMAN, in hertz. `0` means not counted yet.
+    pub lposc_hz: u32,
+    /// `1` crystal count, `2` factory OTP, `3` nominal 32.768 kHz. `0` if unset.
+    pub lposc_src: u8,
 }
 
 impl NetConfig {
@@ -41,6 +49,8 @@ impl NetConfig {
             last_checksum: String::new(),
             sleep_s: DEFAULT_SLEEP_S,
             wake_at: String::new(),
+            lposc_hz: 0,
+            lposc_src: 0,
         }
     }
 
@@ -58,6 +68,8 @@ pub fn encode(cfg: &NetConfig) -> [u8; RECORD] {
     write_field(&mut buf, CHECKSUM_OFF, cfg.last_checksum.as_bytes());
     buf[SLEEP_OFF..SLEEP_OFF + 4].copy_from_slice(&cfg.sleep_s.to_le_bytes());
     write_field(&mut buf, WAKE_AT_OFF, cfg.wake_at.as_bytes());
+    buf[LPOSC_HZ_OFF..LPOSC_HZ_OFF + 4].copy_from_slice(&cfg.lposc_hz.to_le_bytes());
+    buf[LPOSC_SRC_OFF] = cfg.lposc_src;
     let crc = checksum(&buf[8..]);
     buf[4..8].copy_from_slice(&crc.to_le_bytes());
     buf
@@ -79,6 +91,8 @@ pub fn decode(buf: &[u8; RECORD]) -> Option<NetConfig> {
     cfg.last_checksum = read_field(buf, CHECKSUM_OFF, CHECKSUM_MAX)?;
     cfg.sleep_s = u32::from_le_bytes(buf[SLEEP_OFF..SLEEP_OFF + 4].try_into().ok()?);
     cfg.wake_at = read_field(buf, WAKE_AT_OFF, WAKE_AT_MAX)?;
+    cfg.lposc_hz = u32::from_le_bytes(buf[LPOSC_HZ_OFF..LPOSC_HZ_OFF + 4].try_into().ok()?);
+    cfg.lposc_src = buf[LPOSC_SRC_OFF];
     Some(cfg)
 }
 
@@ -227,5 +241,17 @@ mod tests {
         let decoded = decode(&old).unwrap();
         assert!(decoded.wake_at.is_empty());
         assert_eq!(decoded.sleep_s, 90);
+        assert_eq!(decoded.lposc_hz, 0);
+        assert_eq!(decoded.lposc_src, 0);
+    }
+
+    #[test]
+    fn lposc_hz_roundtrips_without_dropping_wifi() {
+        let mut c = cfg("home", "x", "192.168.0.251:8765", "deadbeef", 3600);
+        c.lposc_hz = 26_214;
+        c.lposc_src = 1;
+        let decoded = decode(&encode(&c)).unwrap();
+        assert_eq!(decoded, c);
+        assert_eq!(decoded.ssid.as_str(), "home");
     }
 }

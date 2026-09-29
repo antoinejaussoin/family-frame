@@ -234,6 +234,7 @@ async fn handle_line(
             let _ = write_text(class, "checksum cleared.\r\n").await;
         }
         "clear" => {
+            power::forget_stored_lposc();
             settings::replace(settings::NetConfig::empty()).await;
             let mut flash = flash.lock().await;
             let _ = settings::erase_flash(&mut flash);
