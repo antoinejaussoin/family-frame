@@ -1,7 +1,8 @@
 use chrono::NaiveDate;
 
 use crate::model::{
-    CalendarEvent, Dashboard, HistoryFact, Joke, RoomClimate, School, StatusLine, TodoItem, Weather,
+    CalendarEvent, Dashboard, HistoryFact, Joke, MinecraftView, RoomClimate, School, StatusLine,
+    TodoItem, Weather,
 };
 
 /// What a source is allowed to add. No variant clears another source's calendar.
@@ -15,6 +16,7 @@ pub enum Contribution {
     School(School),
     Joke(Joke),
     History(Vec<HistoryFact>),
+    Minecraft(MinecraftView),
     Mast {
         saint_title: String,
         saint_name: String,
@@ -82,6 +84,7 @@ pub fn apply(
         }
         Contribution::Joke(joke) => dash.joke = Some(joke),
         Contribution::History(facts) => dash.history = facts,
+        Contribution::Minecraft(view) => dash.minecraft = Some(view),
         Contribution::Mast {
             saint_title,
             saint_name,

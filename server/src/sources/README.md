@@ -52,7 +52,7 @@ runs once at the end if the merged list is empty.
 
 Declare the table in `config.rs` (`SourcesConfig`) and document it in
 `config.example.toml`. Credential sources are enabled iff the secrets
-are non-empty. Always-on sources (`tfl`, `jokes`, `history`, `saints`)
+are non-empty. Always-on sources (`tfl`, `jokes`, `history`, `saints`, `minecraft`)
 take `enabled = true` by default.
 
 Legacy aliases (`[todoist]`, top-level `birthdays`, `[sources].ics_urls`)

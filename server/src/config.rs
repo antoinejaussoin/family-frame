@@ -300,6 +300,8 @@ pub struct SourcesConfig {
     #[serde(default)]
     pub history: ToggleConfig,
     pub saints: ToggleConfig,
+    /// Minecraft allowance cell. Minutes live in `minecraft-allowance.json`.
+    pub minecraft: ToggleConfig,
     pub pronote: Option<PronoteConfig>,
 }
 
@@ -431,6 +433,7 @@ impl Default for SourcesConfig {
             jokes: ToggleConfig::default(),
             history: ToggleConfig::default(),
             saints: ToggleConfig::default(),
+            minecraft: ToggleConfig::default(),
             pronote: None,
         }
     }

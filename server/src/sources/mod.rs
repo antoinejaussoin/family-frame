@@ -24,6 +24,7 @@ pub mod ics;
 pub mod jokes;
 #[cfg(feature = "meross")]
 pub mod meross;
+pub mod minecraft;
 #[cfg(not(feature = "meross"))]
 pub mod meross {
     use super::*;
@@ -158,6 +159,7 @@ pub fn all_sources() -> Vec<Box<dyn DataSource>> {
         Box::new(pronote::PronoteSource),
         Box::new(birthdays::BirthdaysSource),
         Box::new(saints::SaintsSource),
+        Box::new(minecraft::MinecraftSource),
     ]
 }
 
@@ -261,6 +263,7 @@ mod tests {
                 "pronote",
                 "birthdays",
                 "saints",
+                "minecraft",
             ]
         );
     }
@@ -304,7 +307,10 @@ mod tests {
             .filter(|s| s.uses_live_fetch(&cfg))
             .map(|s| s.id())
             .collect();
-        assert_eq!(live, ["weather", "tfl", "jokes", "history", "saints"]);
+        assert_eq!(
+            live,
+            ["weather", "tfl", "jokes", "history", "saints", "minecraft"]
+        );
         assert!(all_sources()
             .iter()
             .all(|s| !s.private() || !s.uses_live_fetch(&cfg)));
@@ -335,7 +341,17 @@ mod tests {
             .filter(|s| s.enabled(&cfg))
             .map(|s| s.id())
             .collect();
-        assert_eq!(enabled, ["tfl", "jokes", "history", "birthdays", "saints"]);
+        assert_eq!(
+            enabled,
+            [
+                "tfl",
+                "jokes",
+                "history",
+                "birthdays",
+                "saints",
+                "minecraft"
+            ]
+        );
     }
 
     fn offline_demo_dashboard(today: NaiveDate) -> Dashboard {

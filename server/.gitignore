@@ -2,6 +2,7 @@
 /config.toml
 /meross-creds.json
 /weather-cache.json
+/minecraft-allowance.json
 /out
 /debug
 .DS_Store

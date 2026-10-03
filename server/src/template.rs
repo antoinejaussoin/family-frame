@@ -469,4 +469,44 @@ mod tests {
         assert!(html.contains("Because they make up everything."));
         assert!(!html.contains("no-joke"));
     }
+
+    fn minecraft(phase: &str, time: &str, next_time: &str) -> crate::model::MinecraftView {
+        crate::model::MinecraftView {
+            phase: phase.into(),
+            minutes: 0,
+            time: time.into(),
+            next_minutes: 0,
+            next_time: next_time.into(),
+        }
+    }
+
+    #[test]
+    fn dashboard_footer_splits_tube_house_minecraft() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 10, 7).unwrap());
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(!html.contains("with-minecraft"));
+        assert!(!html.contains("class=\"minecraft"));
+
+        dash.minecraft = Some(minecraft("week", "1h 30", ""));
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        let footer = html.find("sidebar-footer with-minecraft").unwrap();
+        let tube = html.find("class=\"tube\"").unwrap();
+        let rooms = html.find("class=\"rooms\"").unwrap();
+        let mc = html.find("class=\"minecraft phase-week\"").unwrap();
+        assert!(footer < tube && tube < rooms && rooms < mc);
+        assert!(html.contains("<p class=\"mc-time\">1h 30</p>"));
+        assert!(html.contains("<p class=\"mc-caption\">weekend</p>"));
+        assert!(!html.contains("mc-next"));
+    }
+
+    #[test]
+    fn dashboard_minecraft_weekend_shows_next() {
+        let mut dash = Dashboard::empty("Family", NaiveDate::from_ymd_opt(2026, 10, 10).unwrap());
+        dash.minecraft = Some(minecraft("weekend", "2h", "25m"));
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("class=\"minecraft phase-weekend\""));
+        assert!(html.contains("<p class=\"mc-time\">2h</p>"));
+        assert!(html.contains("<p class=\"mc-caption\">now</p>"));
+        assert!(html.contains("<span class=\"mc-next-time\">25m</span>"));
+    }
 }

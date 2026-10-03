@@ -191,6 +191,20 @@ body {
   min-width: 0;
   align-items: start;
 }
+/* Bottom row on an 8-column grid: Tube 3 · House 3 · Minecraft 2
+   (4 · 4 without Minecraft, the same widths as .sidebar-pair). */
+.sidebar-footer {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 24px;
+  min-width: 0;
+  align-items: start;
+}
+.sidebar-footer > .tube,
+.sidebar-footer > .rooms { grid-column: span 4; }
+.sidebar-footer.with-minecraft > .tube,
+.sidebar-footer.with-minecraft > .rooms { grid-column: span 3; }
+.sidebar-footer > .minecraft { grid-column: span 2; }
 .todos,
 .joke,
 .school-week,
@@ -205,7 +219,8 @@ body {
 .forecast,
 .history,
 .tube,
-.rooms { min-width: 0; }
+.rooms,
+.minecraft { min-width: 0; }
 .coming {
   flex: 0 1 auto;
   margin-top: auto;
@@ -321,7 +336,8 @@ h2 {
 .forecast h2,
 .homework h2,
 .grades h2,
-.tube h2 {
+.tube h2,
+.minecraft h2 {
   color: var(--black);
   border-bottom-color: var(--black);
 }
@@ -757,6 +773,19 @@ li {
   padding: 0 8px;
 }
 
+/* Three-column Tube: a name column sized for “Northern” so “Good service” fits. */
+.with-minecraft .tube li.tube-line {
+  grid-template-columns: 108px minmax(0, 1fr);
+}
+.with-minecraft .line-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.with-minecraft .line-status {
+  padding: 0 4px;
+}
+
 .severity-good .line-status { color: var(--black); }
 .severity-delay .line-status {
   background: var(--yellow);
@@ -765,6 +794,57 @@ li {
 .severity-severe .line-status {
   background: var(--red);
   color: var(--white);
+}
+
+.minecraft {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.minecraft h2 {
+  align-self: stretch;
+}
+.mc-art {
+  display: block;
+  width: 119px;
+  height: 56px;
+  margin-top: 12px;
+  shape-rendering: crispEdges;
+}
+.mc-time {
+  margin: 8px 0 0;
+  font-family: var(--type-date-family);
+  font-size: var(--type-date-size);
+  font-weight: 700;
+  line-height: 40px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mc-caption {
+  margin: 2px 0 0;
+  padding: 0 6px;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  font-weight: 700;
+  line-height: 18px;
+  text-transform: uppercase;
+}
+.phase-weekend .mc-caption {
+  background: var(--yellow);
+}
+.mc-next {
+  margin: 8px 0 0;
+  font-family: var(--type-sm-family);
+  font-size: var(--type-sm-size);
+  line-height: 16px;
+  white-space: nowrap;
+}
+.mc-next-time {
+  font-family: var(--type-md-family);
+  font-size: var(--type-md-size);
+  font-weight: 700;
+  line-height: 21px;
+  color: var(--blue);
 }
 
 .homework h2,
@@ -781,6 +861,7 @@ li {
 .history h2,
 .tube h2,
 .rooms h2,
+.minecraft h2,
 .coming h2 {
   font-family: var(--type-md-family);
   font-size: var(--type-md-size);
