@@ -836,7 +836,9 @@ li {
   margin: 8px 0 0;
   font-family: var(--type-sm-family);
   font-size: var(--type-sm-size);
+  font-weight: 700;
   line-height: 16px;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 .mc-next-time {
@@ -844,6 +846,7 @@ li {
   font-size: var(--type-md-size);
   font-weight: 700;
   line-height: 21px;
+  text-transform: none;
   color: var(--blue);
 }
 

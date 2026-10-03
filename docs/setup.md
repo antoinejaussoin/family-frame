@@ -245,7 +245,8 @@ curl 'http://<frame-host>:8765/api/minecraft'                       # report
 
 `minutes` can also go in a JSON body (`{"minutes": 15}`), and a plain GET
 with `?minutes=` works too. One step is capped at ±600. The reply is
-JSON. Its `summary` field reads `+15 min. Coming weekend: 1h 30`.
+JSON. Its `summary` field is worded so Siri can read it aloud:
+`Added 15 minutes. Coming weekend: 1 hour 30 minutes.`
 
 **Siri / Shortcuts** (iPhone on the home Wi-Fi):
 

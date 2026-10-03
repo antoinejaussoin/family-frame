@@ -146,6 +146,17 @@ pub fn format_minutes(minutes: i32) -> String {
     }
 }
 
+/// `0 minutes`, `1 hour 15 minutes`: Siri reads `10m` as "10 meters".
+pub fn spoken_minutes(minutes: i32) -> String {
+    let m = minutes.abs();
+    let unit = |n: i32, one: &str| format!("{n} {one}{}", if n == 1 { "" } else { "s" });
+    match (m / 60, m % 60) {
+        (0, mm) => unit(mm, "minute"),
+        (h, 0) => unit(h, "hour"),
+        (h, mm) => format!("{} {}", unit(h, "hour"), unit(mm, "minute")),
+    }
+}
+
 pub fn ledger_path(config_dir: &Path) -> PathBuf {
     config_dir.join(LEDGER_FILE)
 }
@@ -238,19 +249,20 @@ pub fn adjust(config_dir: &Path, tz: Tz, now: DateTime<Utc>, minutes: i32) -> Re
     if applied != 0 {
         save(config_dir, &ledger)?;
     }
-    let target_time = format_minutes(ledger.balance(clock.target()));
+    let target_time = spoken_minutes(ledger.balance(clock.target()));
+    let verb = if applied > 0 { "Added" } else { "Removed" };
     let lead = if applied == 0 {
         "Nothing left to remove.".to_string()
     } else if applied != minutes {
-        format!("{} min (that was all that was left).", signed(applied))
+        format!("{verb} {} (that was all that was left).", spoken_minutes(applied))
     } else {
-        format!("{} min.", signed(applied))
+        format!("{verb} {}.", spoken_minutes(applied))
     };
     Ok(Adjusted {
         requested: minutes,
         applied,
         weekend: clock.target(),
-        summary: format!("{lead} {}: {target_time}", clock.target_label()),
+        summary: format!("{lead} {}: {target_time}.", clock.target_label()),
         report: report(&ledger, clock, tz),
     })
 }
@@ -350,8 +362,12 @@ pub fn report(ledger: &Ledger, clock: Clock, tz: Tz) -> Report {
     let headline = total(ledger, clock.headline);
     let next = (clock.phase == Phase::Weekend).then(|| total(ledger, clock.target()));
     let summary = match &next {
-        None => format!("Coming weekend: {}", headline.time),
-        Some(n) => format!("This weekend: {}. Next weekend: {}", headline.time, n.time),
+        None => format!("Coming weekend: {}.", spoken_minutes(headline.minutes)),
+        Some(n) => format!(
+            "This weekend: {}. Next weekend: {}.",
+            spoken_minutes(headline.minutes),
+            spoken_minutes(n.minutes)
+        ),
     };
 
     let mut fridays: Vec<NaiveDate> = ledger.entries.iter().map(|e| e.weekend).collect();
@@ -617,6 +633,17 @@ mod tests {
     }
 
     #[test]
+    fn spoken_minutes_spell_out_units() {
+        assert_eq!(spoken_minutes(0), "0 minutes");
+        assert_eq!(spoken_minutes(1), "1 minute");
+        assert_eq!(spoken_minutes(-10), "10 minutes");
+        assert_eq!(spoken_minutes(60), "1 hour");
+        assert_eq!(spoken_minutes(120), "2 hours");
+        assert_eq!(spoken_minutes(75), "1 hour 15 minutes");
+        assert_eq!(spoken_minutes(121), "2 hours 1 minute");
+    }
+
+    #[test]
     fn adjust_persists_and_summarises() {
         let dir = tempfile::tempdir().unwrap();
         let tz = chrono_tz::Europe::London;
@@ -624,12 +651,12 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 10, 7, 17, 0, 0).unwrap();
         let out = adjust(dir.path(), tz, now, 15).unwrap();
         assert_eq!(out.applied, 15);
-        assert_eq!(out.summary, "+15 min. Coming weekend: 15m");
+        assert_eq!(out.summary, "Added 15 minutes. Coming weekend: 15 minutes.");
         let out = adjust(dir.path(), tz, now, -30).unwrap();
         assert_eq!(out.applied, -15);
         assert_eq!(
             out.summary,
-            "-15 min (that was all that was left). Coming weekend: 0m"
+            "Removed 15 minutes (that was all that was left). Coming weekend: 0 minutes."
         );
         assert_eq!(load(dir.path()).unwrap().entries.len(), 2);
         assert!(adjust(dir.path(), tz, now, 0).is_err());
@@ -675,7 +702,10 @@ mod tests {
         assert_eq!(r.phase, Phase::Weekend);
         assert_eq!(r.headline.minutes, 20);
         assert_eq!(r.next.as_ref().unwrap().minutes, 5);
-        assert_eq!(r.summary, "This weekend: 20m. Next weekend: 5m");
+        assert_eq!(
+            r.summary,
+            "This weekend: 20 minutes. Next weekend: 5 minutes."
+        );
         let statuses: Vec<_> = r
             .weekends
             .iter()
