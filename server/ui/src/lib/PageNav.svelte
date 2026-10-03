@@ -5,6 +5,7 @@
 
   const items = [
     { href: '/', label: 'Family' },
+    { href: '/minecraft', label: 'Minecraft' },
     { href: '/preview', label: 'Layout' },
     { href: '/stats', label: 'Stats' },
     { href: '/config', label: 'Setup' },

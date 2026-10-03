@@ -130,6 +130,12 @@ enabled = true
 [sources.saints]
 enabled = true
 
+[sources.minecraft]
+# Minecraft allowance cell next to Tube / House. Minutes are added on
+# /minecraft or POST /api/minecraft?minutes=15 and stored in
+# minecraft-allowance.json next to this file.
+enabled = true
+
 [sources.pronote]
 # Direct PRONOTE space URL (the eleve.html or parent.html page), not an ENT
 # portal. Index Education’s public demo:

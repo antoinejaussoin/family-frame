@@ -21,7 +21,7 @@ use crate::config::SettingsPatch;
 use crate::debug::{page_from_polls_full, DebugExtras, DebugLog, Poll};
 use crate::frame::{checksum_matches, FrameCache};
 use crate::sources;
-use crate::sources::meross;
+use crate::sources::{meross, minecraft};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -73,6 +73,7 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
         .route("/pictures/{id}/thumb.jpg", get(picture_thumb))
         .route("/pictures/{id}/dither.png", get(picture_dither))
         .route("/pictures/{id}/original", get(picture_original))
+        .route("/minecraft", get(minecraft_get).post(minecraft_post))
         .route("/debug", get(get_debug).delete(delete_debug))
         .route("/debug/frames/{id}", get(debug_frame))
         // Phone JPEGs routinely exceed Axum's 2 MiB default (multipart parse fails).
@@ -99,6 +100,7 @@ pub fn router(state: AppState, ui_dir: Option<PathBuf>) -> Router {
             .route("/", get(spa_missing))
             .route("/preview", get(spa_missing))
             .route("/stats", get(spa_missing))
+            .route("/minecraft", get(spa_missing))
             .route("/config", get(spa_missing));
     }
 
@@ -215,6 +217,79 @@ async fn debug_frame(State(state): State<AppState>, Path(name): Path<String>) ->
         }
         None => (StatusCode::NOT_FOUND, "not found\n").into_response(),
     }
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct MinecraftQuery {
+    minutes: Option<String>,
+}
+
+/// Report, or `?minutes=N` to add/remove (so a Shortcut can call it as a plain GET).
+async fn minecraft_get(State(state): State<AppState>, Query(q): Query<MinecraftQuery>) -> Response {
+    match q.minutes.as_deref() {
+        Some(raw) => match minecraft::parse_minutes(raw) {
+            Ok(minutes) => minecraft_adjust(&state, minutes).await,
+            Err(err) => bad_request(err),
+        },
+        None => {
+            let cfg = state.cache.snapshot_config().await;
+            match minecraft::current_report(&cfg.config_dir, cfg.tz(), Utc::now()) {
+                Ok(report) => no_store_json(&report),
+                Err(err) => error_response(err),
+            }
+        }
+    }
+}
+
+/// `?minutes=N`, or a body of `{"minutes": N}` / `N` / `minutes=N`.
+async fn minecraft_post(
+    State(state): State<AppState>,
+    Query(q): Query<MinecraftQuery>,
+    body: axum::body::Bytes,
+) -> Response {
+    let parsed = match q.minutes.as_deref() {
+        Some(raw) => minecraft::parse_minutes(raw),
+        None => match minecraft::minutes_from_body(&body) {
+            Some(result) => result,
+            None => {
+                return bad_request(anyhow::anyhow!(
+                    "pass minutes, e.g. /api/minecraft?minutes=15 or {{\"minutes\": 15}}"
+                ))
+            }
+        },
+    };
+    match parsed {
+        Ok(minutes) => minecraft_adjust(&state, minutes).await,
+        Err(err) => bad_request(err),
+    }
+}
+
+async fn minecraft_adjust(state: &AppState, minutes: i32) -> Response {
+    if let Err(err) = minecraft::validate_step(minutes) {
+        return bad_request(err);
+    }
+    let cfg = state.cache.snapshot_config().await;
+    match minecraft::adjust(&cfg.config_dir, cfg.tz(), Utc::now(), minutes) {
+        Ok(out) => {
+            tracing::info!(
+                requested = out.requested,
+                applied = out.applied,
+                weekend = %out.weekend,
+                "minecraft allowance"
+            );
+            if out.applied != 0 {
+                state.cache.invalidate().await;
+            }
+            no_store_json(&out)
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+fn no_store_json<T: serde::Serialize>(value: &T) -> Response {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+    (headers, Json(value)).into_response()
 }
 
 async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {

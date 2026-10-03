@@ -4,9 +4,11 @@
   import Preview from './pages/Preview.svelte'
   import Stats from './pages/Stats.svelte'
   import Config from './pages/Config.svelte'
+  import Minecraft from './pages/Minecraft.svelte'
 
   $effect(() => {
     const titles = {
+      '/minecraft': 'Minecraft allowance',
       '/preview': 'Layout simulator',
       '/stats': 'Frame stats',
       '/config': 'Board setup',
@@ -21,6 +23,8 @@
   <Stats />
 {:else if route.path === '/config'}
   <Config />
+{:else if route.path === '/minecraft'}
+  <Minecraft />
 {:else}
   <Home />
 {/if}

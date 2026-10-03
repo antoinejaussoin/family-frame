@@ -10,7 +10,7 @@
   <link rel="preload" href="/static/fonts/TRMNL16-Bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/TRMNL21-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/TRMNL21-Bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/static/dashboard.css?v=hourly-forecast">
+  <link rel="stylesheet" href="/static/dashboard.css?v=minecraft">
 </head>
 <body>
   <main class="panel{% if show_school_sections %} with-school{% endif %}{% if not show_on_this_day or not history %} no-history{% endif %}{% if not joke %} no-joke{% endif %}">
@@ -419,7 +419,7 @@
     </section>
     {% endif %}
 
-    <div class="sidebar-pair">
+    <div class="sidebar-footer{% if minecraft %} with-minecraft{% endif %}">
     <section class="tube">
       <h2>
         <svg class="section-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-tube"/></svg>
@@ -458,6 +458,28 @@
       <p class="empty">No thermometer readings yet.</p>
       {% endif %}
     </section>
+
+    {% if minecraft %}
+    <section class="minecraft phase-{{ minecraft.phase }}">
+      <h2>Minecraft</h2>
+      <svg class="mc-art" viewBox="0 0 136 64" aria-hidden="true">
+        <path fill="#00ff00" d="M0 0h64v8h-64zM0 8h64v8h-64zM0 16h8v8h-8zM16 16h24v8h-24zM48 16h16v8h-16zM16 24h8v8h-8zM48 24h8v8h-8z"/>
+        <path fill="#ff0000" d="M8 16h8v8h-8zM40 16h8v8h-8zM0 24h16v8h-16zM24 24h24v8h-24zM56 24h8v8h-8zM0 32h8v8h-8zM16 32h16v8h-16zM40 32h16v8h-16zM0 40h24v8h-24zM32 40h32v8h-32zM8 48h8v8h-8zM24 48h16v8h-16zM48 48h16v8h-16zM0 56h48v8h-48zM56 56h8v8h-8z"/>
+        <path fill="#ffff00" d="M32 32h8v8h-8zM16 48h8v8h-8z"/>
+        <path fill="#000000" d="M8 32h8v8h-8zM56 32h8v8h-8zM24 40h8v8h-8zM0 48h8v8h-8zM40 48h8v8h-8zM48 56h8v8h-8z"/>
+        <path fill="#00ff00" d="M72 0h16v8h-16zM96 0h40v8h-40zM72 8h40v8h-40zM120 8h16v8h-16zM72 16h8v8h-8zM96 16h16v8h-16zM128 16h8v8h-8zM72 24h8v8h-8zM96 24h8v8h-8zM128 24h8v8h-8zM72 32h24v8h-24zM112 32h24v8h-24zM72 40h8v8h-8zM120 40h16v8h-16zM72 48h16v8h-16zM120 48h8v8h-8zM72 56h16v8h-16zM96 56h16v8h-16zM120 56h16v8h-16z"/>
+        <path fill="#ffff00" d="M88 0h8v8h-8zM112 8h8v8h-8zM104 24h8v8h-8zM80 40h8v8h-8zM128 48h8v8h-8z"/>
+        <path fill="#000000" d="M80 16h16v8h-16zM112 16h16v8h-16zM80 24h16v8h-16zM112 24h16v8h-16zM96 32h16v8h-16zM88 40h32v8h-32zM88 48h32v8h-32zM88 56h8v8h-8zM112 56h8v8h-8z"/>
+      </svg>
+      <p class="mc-time">{{ minecraft.time }}</p>
+      {% if minecraft.phase == "weekend" %}
+      <p class="mc-caption">now</p>
+      <p class="mc-next">next <span class="mc-next-time">{{ minecraft.next_time }}</span></p>
+      {% else %}
+      <p class="mc-caption">weekend</p>
+      {% endif %}
+    </section>
+    {% endif %}
     </div>
     </div>
   </main>

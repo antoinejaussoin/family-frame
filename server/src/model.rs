@@ -60,6 +60,9 @@ pub const TUBE_ROW_PX: i32 = 44;
 pub const COMING_ROW_PX: i32 = TUBE_ROW_PX;
 pub const SCHOOL_ROW_PX: i32 = 44;
 pub const ROOM_ROW_PX: i32 = TUBE_ROW_PX;
+/// Minecraft cell: heading + art + big time + caption + “next” line
+/// (`.minecraft` / `.mc-*` in `dashboard.css`). Matches four Tube rows.
+pub const MINECRAFT_BLOCK_PX: i32 = SECTION_HEAD_PX + 4 * TUBE_ROW_PX;
 /// Flip to `true` to paint Wikipedia “On this day” above the school week
 /// again. Forecast stays either way; facts only fill leftover height.
 pub const SHOW_ON_THIS_DAY: bool = false;
@@ -329,6 +332,20 @@ pub struct Joke {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MinecraftView {
+    /// `week` (one total for the coming weekend) or `weekend` (locked total
+    /// now, plus what is banked for next weekend).
+    pub phase: String,
+    pub minutes: i32,
+    pub time: String,
+    #[serde(default)]
+    pub next_minutes: i32,
+    /// Empty in the week phase.
+    #[serde(default)]
+    pub next_time: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Dashboard {
     pub family_name: String,
     pub weekday: String,
@@ -363,6 +380,9 @@ pub struct Dashboard {
     pub joke: Option<Joke>,
     #[serde(default)]
     pub school: School,
+    /// Minecraft allowance cell on the sidebar footer. `None` hides it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minecraft: Option<MinecraftView>,
     pub source_note: String,
     /// Homework / grades columns. Skipped in the layout hash JSON.
     #[serde(default, skip)]
@@ -410,6 +430,7 @@ impl Dashboard {
             history: Vec::new(),
             joke: None,
             school: School::default(),
+            minecraft: None,
             source_note: String::new(),
             show_school_sections: false,
             show_on_this_day: SHOW_ON_THIS_DAY,
@@ -496,7 +517,12 @@ impl Dashboard {
 
     fn fit_sidebar(&mut self, school_on: bool) {
         let footer_px = sidebar_block_px(self.tube.len(), TUBE_ROW_PX)
-            .max(sidebar_block_px(self.rooms.len(), ROOM_ROW_PX));
+            .max(sidebar_block_px(self.rooms.len(), ROOM_ROW_PX))
+            .max(if self.minecraft.is_some() {
+                MINECRAFT_BLOCK_PX
+            } else {
+                0
+            });
         if self
             .joke
             .as_ref()

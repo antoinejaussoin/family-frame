@@ -950,6 +950,38 @@ textarea {
   color: #2f6b46;
 }
 
+.mc-step {
+  padding: 0.8rem 0;
+  border-radius: 1rem;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-step-add {
+  color: #fff;
+  background: var(--color-sage);
+  box-shadow: 0 4px 0 #3a6e4f;
+}
+
+.mc-step-add:hover:not(:disabled) {
+  background: #457f5c;
+}
+
+.mc-step-remove {
+  color: var(--color-terracotta-dark);
+  background: #fff1ea;
+  box-shadow: 0 4px 0 rgba(184, 78, 54, 0.35);
+}
+
+.mc-step-remove:hover:not(:disabled) {
+  background: #ffe4d8;
+}
+
+.mc-step:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 rgba(58, 42, 36, 0.25);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .polaroid,
   .choice,

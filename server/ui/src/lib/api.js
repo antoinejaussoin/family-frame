@@ -88,6 +88,18 @@ export function deleteDebug() {
   return fetch('/api/debug', { method: 'DELETE' }).then(json)
 }
 
+export function getMinecraft() {
+  return fetch('/api/minecraft').then(json)
+}
+
+export function adjustMinecraft(minutes) {
+  return fetch('/api/minecraft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ minutes }),
+  }).then(json)
+}
+
 export function getFrameJson() {
   return fetch('/api/frame.json').then(json)
 }

@@ -20,6 +20,7 @@ The 1600×1200 dashboard is a fixed grid, not a widget toolkit.
 | On this day / school week | `history` / `pronote` | Wikipedia facts above the Mon–Fri week grid (next week on Sat/Sun) |
 | Transit | `tfl` | Default: Northern, Circle, District, Victoria |
 | House | `meross` | Demo rooms if no credentials |
+| Minecraft | `minecraft` | Weekend allowance; shares the Tube / House row (3 · 3 · 2) |
 | Battery / next wake | Pico POST | Hidden until the Pico has reported |
 
 Homework and grades have markup but stay off the glass unless
@@ -107,7 +108,7 @@ Open <http://127.0.0.1:5173/>. If the server is not on `:8765`, set
 `EINK_API` (for example `EINK_API=http://127.0.0.1:9000 npm run dev`).
 
 Then <http://127.0.0.1:5173/> (Vite) or <http://127.0.0.1:8765/> (built
-SPA), `/preview`, `/stats`, `/config`, `/dashboard`.
+SPA), `/preview`, `/stats`, `/minecraft`, `/config`, `/dashboard`.
 
 ### Screenshot mode
 
@@ -217,6 +218,59 @@ above the school week; leftover height decides how many fit.
 (same for `history` and `saints`). An empty slot collapses the same way
 `no-joke` / `no-history` already do.
 
+### Minecraft allowance
+
+Minutes of Minecraft earned during the week and played at the weekend.
+Household timezone:
+
+- **Week** is Monday 00:00 to Friday 12:00. Every change counts toward
+  the coming weekend, and the panel shows that one total.
+- **Weekend** is Friday 12:00 to the end of Sunday. The total locked at
+  Friday noon is shown large (`NOW`). Anything added or removed now
+  counts toward the next weekend, shown small underneath (`next 25m`).
+- A removal never takes a weekend below zero.
+
+Add or remove minutes on `/minecraft` (±5 to ±30), which also has the
+weekend-by-weekend history. Changes are stored in
+`minecraft-allowance.json` next to `config.toml`. The panel picks up the
+new total on its next wake.
+
+**From anywhere on the LAN** (no auth, like the rest of the server):
+
+```bash
+curl -X POST 'http://<frame-host>:8765/api/minecraft?minutes=15'    # add
+curl -X POST 'http://<frame-host>:8765/api/minecraft?minutes=-10'   # remove
+curl 'http://<frame-host>:8765/api/minecraft'                       # report
+```
+
+`minutes` can also go in a JSON body (`{"minutes": 15}`), and a plain GET
+with `?minutes=` works too. One step is capped at ±600. The reply is
+JSON. Its `summary` field reads `+15 min. Coming weekend: 1h 30`.
+
+**Siri / Shortcuts** (iPhone on the home Wi-Fi):
+
+1. Open Shortcuts, tap **+**, add **Get Contents of URL**.
+2. URL: `http://<frame-host>:8765/api/minecraft?minutes=15`
+   (a negative number removes minutes). Method: **POST**.
+3. Add **Get Dictionary Value**, key `summary`, then **Show Notification**
+   (or **Speak Text**) with that value.
+4. Name the shortcut, for example “Fifteen minutes of Minecraft”. Saying
+   “Hey Siri, fifteen minutes of Minecraft” runs it. It can also go on
+   the Home Screen or the Action button.
+
+One shortcut for any amount: start with **Ask for Input** (Number, turn on
+**Allow Negative Numbers**), then use the URL
+`http://<frame-host>:8765/api/minecraft?minutes=` followed by the
+**Provided Input** variable. Siri asks for the number. A few fixed
+shortcuts (`+15`, `-10`) are quicker to say.
+
+The phone has to reach the frame host, so this only works at home unless
+you expose the server through a VPN such as Tailscale. Do not open it to
+the internet: there is no auth.
+
+**To remove this source:** `sources.minecraft.enabled = false`. Tube and
+House go back to half the row each.
+
 ### School (Pronote)
 
 Unofficial session protocol (the flow documented by
@@ -260,8 +314,8 @@ mkdir -p data
 docker compose up -d
 ```
 
-Then <http://\<host\>:8765/>, `/preview`, `/stats`, `/config`. Meross login, BBC
-weather caches, uploaded photos, and Pico poll history stay in `data/`.
+Then <http://\<host\>:8765/>, `/preview`, `/stats`, `/minecraft`, `/config`. Meross login, BBC
+weather caches, uploaded photos, Minecraft minutes, and Pico poll history stay in `data/`.
 
 Local one-off: `cd server && make docker-build && make docker-run`.
 Pushes to Docker Hub (`antoinejaussoin/family-frame-server`) happen from
