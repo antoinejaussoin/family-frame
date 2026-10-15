@@ -41,3 +41,5 @@ The layout is the real 1600×1200 panel. Design it in the browser; the server sc
 ## Build one
 
 This is a work in progress. The parts list is in [`shopping.md`](shopping.md). Setup, configuration, and how the pieces talk live in [`docs/setup.md`](docs/setup.md).
+
+The plan for selling it as a product lives in [`commercial/`](commercial/).
