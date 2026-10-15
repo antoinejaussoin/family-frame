@@ -32,7 +32,16 @@ jobs:
         run: cargo check --no-default-features --features watch
 
   server:
-    runs-on: ubuntu-latest
+    name: server (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
       - name: Read VERSION
@@ -44,6 +53,14 @@ jobs:
             exit 1
           fi
           echo "content=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Prepare cache scope
+        run: |
+          if [ "${{ matrix.platform }}" = "linux/amd64" ]; then
+            echo "CACHE_SCOPE=family-frame-server" >> "$GITHUB_ENV"
+          else
+            platform="${{ matrix.platform }}"
+            echo "CACHE_SCOPE=family-frame-server-${platform//\//-}" >> "$GITHUB_ENV"
+          fi
       - name: Setup BuildX
         id: buildx
         uses: docker/setup-buildx-action@v4
@@ -56,13 +73,13 @@ jobs:
           build-args: |
             VERSION=${{ steps.package.outputs.content }}
           tags: family-frame-server:pr-${{ github.event.pull_request.number }}
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: false
           provenance: false
           cache-from: |
-            type=gha,scope=family-frame-server
-            type=gha,scope=family-frame-server-pr-${{ github.event.pull_request.number }}
-          cache-to: type=gha,mode=max,scope=family-frame-server-pr-${{ github.event.pull_request.number }}
+            type=gha,scope=${{ env.CACHE_SCOPE }}
+            type=gha,scope=${{ env.CACHE_SCOPE }}-pr-${{ github.event.pull_request.number }}
+          cache-to: type=gha,mode=max,scope=${{ env.CACHE_SCOPE }}-pr-${{ github.event.pull_request.number }}
 
   firmware-test:
     runs-on: ubuntu-latest
