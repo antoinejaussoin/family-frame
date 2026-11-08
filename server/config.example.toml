@@ -71,6 +71,15 @@ ics_urls = []
 # all-day calendar row (orange time column).
 uprn = ""
 
+[sources.heathrow]
+# Westerly landing runway whose approach passes over the house.
+# 27L is the southern runway (aircraft from the east), 27R the northern.
+# The sidebar shows seven days from today, each half split at 15:00.
+# BBC wind for sources.weather.location_id marks a half "East" when
+# arrivals are likely to come from the west instead. SW11 5QA is 27L.
+# Empty hides the grid.
+runway = ""
+
 [sources.birthdays]
 # Each entry is `Name,YYYY-MM-DD`. Merged into Today / Coming next up to
 # two weeks ahead as “Name turns N”.

@@ -135,6 +135,7 @@ fn calendar_event(
         school: false,
         recurring,
         bin: false,
+        planes: false,
     }
 }
 

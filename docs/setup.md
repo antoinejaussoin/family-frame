@@ -15,7 +15,7 @@ The 1600×1200 dashboard is a fixed grid, not a widget toolkit.
 | Block | Source | Notes |
 |---|---|---|
 | Mast (weekday, day, month, saint) | `saints` | French civil calendar |
-| Today / Next events | `calendar` (ICS) + `bins` + `birthdays` + Pronote hours | Weather icons sit in the headings |
+| Today / Next events | `calendar` (ICS) + `bins` + `heathrow` + `birthdays` + Pronote hours | Weather icons sit in the headings |
 | To do / joke | `todoist` / `jokes` | Same row; each a quarter of the 1600px panel |
 | On this day / school week | `history` / `pronote` | Wikipedia facts above the Mon–Fri week grid (next week on Sat/Sun) |
 | Transit | `tfl` | Default: Northern, Circle, District, Victoria |
@@ -208,6 +208,22 @@ kept in `weather-cache.json`.
 config; the default is Northern / Circle / District / Victoria.
 
 **To remove this source:** `sources.tfl.enabled = false`.
+
+### Heathrow arrivals
+
+A week grid under the forecast, in the same shape as the school
+timetable: seven days from today, each split at 15:00. **On** is the
+approach over the house, **Off** is the other runway, **East** means
+the forecast wind is strong enough that arrivals come from the west
+and miss London. Heathrow keeps landing towards the west until the
+tailwind passes about 5 knots. The wind is the BBC forecast for
+`sources.weather.location_id`; a live Heathrow observation overrides
+the half-day that is happening now.
+
+Set `sources.heathrow.runway` to `27L` (southern approach) or `27R`
+(northern). SW11 5QA is `27L`.
+
+**To remove this source:** `runway = ""`.
 
 ### Jokes / history / saints
 

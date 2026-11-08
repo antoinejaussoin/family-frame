@@ -84,6 +84,7 @@ pub fn upcoming_events(birthdays: &[Birthday], today: NaiveDate) -> Vec<Calendar
             school: false,
             recurring: false,
             bin: false,
+            planes: false,
         });
     }
     out

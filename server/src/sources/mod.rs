@@ -19,6 +19,7 @@ pub mod calendar;
 pub mod context;
 pub mod contribute;
 pub mod filter;
+pub mod heathrow;
 pub mod history;
 pub mod ics;
 pub mod jokes;
@@ -152,6 +153,7 @@ pub fn all_sources() -> Vec<Box<dyn DataSource>> {
         Box::new(meross::MerossSource),
         Box::new(calendar::IcsSource),
         Box::new(bins::BinsSource),
+        Box::new(heathrow::HeathrowSource),
         Box::new(weather::WeatherSource),
         Box::new(tfl::TflSource),
         Box::new(jokes::JokesSource),
@@ -256,6 +258,7 @@ mod tests {
                 "meross",
                 "calendar",
                 "bins",
+                "heathrow",
                 "weather",
                 "tfl",
                 "jokes",

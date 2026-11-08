@@ -205,6 +205,7 @@ pub fn demo_events(today: chrono::NaiveDate) -> Vec<CalendarEvent> {
             school: false,
             recurring,
             bin: false,
+            planes: false,
         }
     };
 
@@ -242,6 +243,7 @@ mod tests {
             school: false,
             recurring: false,
             bin: false,
+            planes: false,
         }
     }
 

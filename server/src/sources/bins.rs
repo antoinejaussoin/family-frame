@@ -172,6 +172,7 @@ fn bin_event(date: NaiveDate, today: NaiveDate, title: &str) -> CalendarEvent {
         school: false,
         recurring: false,
         bin: true,
+        planes: false,
     }
 }
 

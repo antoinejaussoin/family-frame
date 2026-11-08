@@ -922,11 +922,29 @@ mod tests {
         // Woke after ~1h, while this contact was scheduled for 15:00.
         let arrived = at_london(2026, 9, 16, 13, 2, 0);
         assert!(matches!(
-            drift_between_polls("timer", false, 3600, t0, "timer", false, arrived, Some(slot)),
+            drift_between_polls(
+                "timer",
+                false,
+                3600,
+                t0,
+                "timer",
+                false,
+                arrived,
+                Some(slot)
+            ),
             DriftSample::OutOfRange { .. }
         ));
         assert!(matches!(
-            timing_between_polls("timer", false, 3600, t0, "timer", false, arrived, Some(slot)),
+            timing_between_polls(
+                "timer",
+                false,
+                3600,
+                t0,
+                "timer",
+                false,
+                arrived,
+                Some(slot)
+            ),
             TimingPair::OutOfRange { .. }
         ));
         // Same gap is a normal sample when the slot is the one it actually hit.

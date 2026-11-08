@@ -133,6 +133,7 @@ mod tests {
             school: true,
             recurring: false,
             bin: false,
+            planes: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: "08:15".into(),
@@ -144,6 +145,7 @@ mod tests {
             school: true,
             recurring: false,
             bin: false,
+            planes: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"school-day\""));
@@ -192,6 +194,7 @@ mod tests {
             school: false,
             recurring: false,
             bin: false,
+            planes: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
@@ -203,6 +206,7 @@ mod tests {
             school: false,
             recurring: false,
             bin: false,
+            planes: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"birthday\""));
@@ -229,6 +233,7 @@ mod tests {
             school: false,
             recurring: false,
             bin: false,
+            planes: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
@@ -240,6 +245,7 @@ mod tests {
             school: false,
             recurring: true,
             bin: false,
+            planes: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert_eq!(html.matches("class=\"all-day\"").count(), 2);
@@ -264,6 +270,7 @@ mod tests {
             school: false,
             recurring: false,
             bin: false,
+            planes: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: "15:15".into(),
@@ -275,6 +282,7 @@ mod tests {
             school: false,
             recurring: true,
             bin: false,
+            planes: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert!(html.contains("class=\"one-off\""));
@@ -299,6 +307,7 @@ mod tests {
             school: false,
             recurring: false,
             bin: true,
+            planes: false,
         });
         dash.events_coming.push(crate::model::CalendarEvent {
             start: String::new(),
@@ -310,6 +319,7 @@ mod tests {
             school: false,
             recurring: false,
             bin: true,
+            planes: false,
         });
         let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
         assert_eq!(html.matches("class=\"bin-day\"").count(), 2);
@@ -319,6 +329,36 @@ mod tests {
         assert!(!html.contains("09:17"));
         assert!(!html.contains("class=\"one-off\""));
         assert!(!html.contains("class=\"all-day\""));
+    }
+
+    #[test]
+    fn dashboard_marks_heathrow_week() {
+        let today = NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.planes = crate::model::PlanesWeek {
+            title: "Planes".into(),
+            days: vec![crate::model::PlanesDay {
+                label: "Sun 8".into(),
+                today: true,
+                morning: crate::model::PlanesHalf {
+                    label: "Off".into(),
+                    kind: "off".into(),
+                },
+                afternoon: crate::model::PlanesHalf {
+                    label: "East".into(),
+                    kind: "east".into(),
+                },
+            }],
+        };
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        assert!(html.contains("class=\"planes-week\""));
+        assert!(html.contains("Planes"));
+        assert!(html.contains("week-day is-today"));
+        assert!(html.contains("Sun 8"));
+        assert!(html.contains("planes-off"));
+        assert!(html.contains("planes-east"));
+        assert!(html.contains(">to 3</div>"));
+        assert!(html.contains(">after</div>"));
     }
 
     #[test]
