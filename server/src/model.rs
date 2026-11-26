@@ -292,6 +292,9 @@ pub struct SchoolWeekDay {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SchoolLesson {
     pub subject: String,
+    /// Pronote `estAnnule`. Painted as a white chip with a red slash.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cancelled: bool,
     /// Pronote `CouleurFond` hex, darkened for the chip background.
     #[serde(default)]
     pub colour: String,
@@ -1129,6 +1132,7 @@ mod tests {
                 col: 2,
                 lessons: vec![SchoolLesson {
                     subject: "Maths".into(),
+                    cancelled: false,
                     colour: "#8000FF".into(),
                     ink: "#ffffff".into(),
                     row_start: 2,

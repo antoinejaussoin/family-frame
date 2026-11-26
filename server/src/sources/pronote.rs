@@ -118,6 +118,8 @@ struct TimetableLesson {
     subject: String,
     /// Pronote `CouleurFond`. Darkened before it is painted as the chip.
     colour: String,
+    /// Pronote `estAnnule`. Kept on the week grid, ignored for school hours.
+    cancelled: bool,
     num: i64,
 }
 
@@ -645,9 +647,6 @@ impl Session {
                 .await?;
             let data = inner_data(&resp);
             for item in list_field(data, "ListeCours") {
-                if json_truthy(item, "estAnnule") {
-                    continue;
-                }
                 let Some(lesson) = parse_lesson(item, &self.general) else {
                     continue;
                 };
@@ -893,6 +892,7 @@ fn school_week(lessons: &[TimetableLesson], today: NaiveDate) -> SchoolWeek {
         ink: String,
         start: NaiveTime,
         end: NaiveTime,
+        cancelled: bool,
     }
 
     let mut days_raw = Vec::with_capacity(5);
@@ -916,20 +916,28 @@ fn school_week(lessons: &[TimetableLesson], today: NaiveDate) -> SchoolWeek {
                 end = start + chrono::Duration::minutes(5);
             }
             if let Some(last) = merged.last_mut() {
-                if last.subject == subject && last.end >= start {
+                if last.subject == subject
+                    && last.cancelled == lesson.cancelled
+                    && last.end >= start
+                {
                     if end > last.end {
                         last.end = end;
                     }
                     continue;
                 }
             }
-            let (colour, ink) = chip_colours(&lesson.colour);
+            let (colour, ink) = if lesson.cancelled {
+                ("#ffffff".into(), "#ff0000".into())
+            } else {
+                chip_colours(&lesson.colour)
+            };
             merged.push(Placed {
                 colour,
                 ink,
                 subject,
                 start,
                 end,
+                cancelled: lesson.cancelled,
             });
         }
         for placed in &merged {
@@ -969,6 +977,7 @@ fn school_week(lessons: &[TimetableLesson], today: NaiveDate) -> SchoolWeek {
                         .unwrap_or(time_list.len());
                     (end > start).then_some(SchoolLesson {
                         subject: placed.subject,
+                        cancelled: placed.cancelled,
                         colour: placed.colour,
                         ink: placed.ink,
                         row_start: 2 + start as i32,
@@ -1018,6 +1027,7 @@ fn parse_lesson(item: &Value, general: &Value) -> Option<TimetableLesson> {
         end,
         subject: lesson_subject(item),
         colour: json_str(item, &["CouleurFond"]).unwrap_or_default(),
+        cancelled: json_truthy(item, "estAnnule"),
         num: json_i64(item, "P").unwrap_or(0),
     })
 }
@@ -1033,11 +1043,14 @@ fn lesson_subject(item: &Value) -> String {
     String::new()
 }
 
+/// One lesson per start time. A live course wins over a cancelled one
+/// when Pronote sends both for a replaced slot. Otherwise the higher `P` wins.
 fn prefer_shown_lessons(mut lessons: Vec<TimetableLesson>) -> Vec<TimetableLesson> {
     lessons.sort_by(|a, b| {
         a.date
             .cmp(&b.date)
             .then(a.start.cmp(&b.start))
+            .then(a.cancelled.cmp(&b.cancelled))
             .then(b.num.cmp(&a.num))
     });
     lessons.dedup_by(|a, b| a.date == b.date && a.start == b.start);
@@ -1203,6 +1216,7 @@ fn demo_lessons(today: NaiveDate) -> Vec<TimetableLesson> {
                 end: t(eh, em),
                 subject: subject.into(),
                 colour: colour.into(),
+                cancelled: false,
                 num: 0,
             },
         )
@@ -1470,7 +1484,7 @@ fn lesson_end_from_place(item: &Value, general: &Value) -> Option<NaiveTime> {
 fn day_spans(lessons: &[TimetableLesson]) -> Vec<SchoolDay> {
     use std::collections::BTreeMap;
     let mut by_day: BTreeMap<NaiveDate, (NaiveTime, NaiveTime)> = BTreeMap::new();
-    for lesson in lessons {
+    for lesson in lessons.iter().filter(|lesson| !lesson.cancelled) {
         by_day
             .entry(lesson.date)
             .and_modify(|(earliest, latest)| {
@@ -1823,6 +1837,28 @@ mod tests {
     }
 
     #[test]
+    fn day_spans_ignore_cancelled_lessons() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
+        let mut early = tl(today, t(8, 0), t(9, 0), "Maths", "#8000FF");
+        early.cancelled = true;
+        let mut late = tl(today, t(16, 0), t(17, 0), "EPS", "#FF0000");
+        late.cancelled = true;
+        let days = day_spans(&[
+            early,
+            tl(today, t(10, 0), t(11, 0), "Français", "#FF8080"),
+            late,
+        ]);
+        assert_eq!(days.len(), 1);
+        assert_eq!(days[0].start, "10:00");
+        assert_eq!(days[0].end, "11:00");
+
+        let mut only = tl(today, t(8, 0), t(9, 0), "Maths", "#8000FF");
+        only.cancelled = true;
+        assert!(day_spans(&[only]).is_empty());
+    }
+
+    #[test]
     fn school_hours_skip_empty_weekend() {
         let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
         let events = school_day_events(
@@ -1892,6 +1928,7 @@ mod tests {
             end,
             subject: subject.into(),
             colour: colour.into(),
+            cancelled: false,
             num: 0,
         }
     }
@@ -2021,6 +2058,71 @@ mod tests {
         );
         assert_eq!(week.days[0].lessons[0].colour, "#20003F");
         assert_eq!(week.days[0].lessons[0].ink, "#ffffff");
+        assert!(!week.days[0].lessons[0].cancelled);
+    }
+
+    #[test]
+    fn cancelled_lesson_fills_its_slot_and_stays_separate() {
+        let monday = NaiveDate::from_ymd_opt(2026, 9, 14).unwrap();
+        let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
+        let mut cancelled = tl(monday, t(8, 15), t(9, 10), "Maths", "#8000FF");
+        cancelled.cancelled = true;
+        let mut again = tl(monday, t(10, 20), t(11, 15), "Maths", "#8000FF");
+        again.cancelled = true;
+        let mut again_next = tl(monday, t(11, 15), t(12, 10), "Maths", "#8000FF");
+        again_next.cancelled = true;
+        let week = school_week(
+            &[
+                cancelled,
+                tl(monday, t(9, 10), t(10, 5), "Maths", "#8000FF"),
+                again,
+                again_next,
+            ],
+            monday,
+        );
+        let lessons = &week.days[0].lessons;
+        assert_eq!(lessons.len(), 3);
+        assert!(lessons[0].cancelled);
+        assert_eq!(lessons[0].subject, "Maths");
+        assert_eq!(lessons[0].colour, "#ffffff");
+        assert_eq!(lessons[0].ink, "#ff0000");
+        assert!(!lessons[1].cancelled);
+        assert_eq!(lessons[1].subject, "Maths");
+        assert!(lessons[0].row_end <= lessons[1].row_start);
+        assert!(lessons[2].cancelled);
+        assert_eq!(lessons[2].subject, "Maths");
+    }
+
+    #[test]
+    fn prefer_shown_keeps_live_lesson_over_cancelled() {
+        let monday = NaiveDate::from_ymd_opt(2026, 9, 14).unwrap();
+        let t = |h, m| NaiveTime::from_hms_opt(h, m, 0).unwrap();
+        let mut live = tl(monday, t(8, 15), t(9, 10), "Maths", "#8000FF");
+        live.num = 1;
+        let mut cancelled = tl(monday, t(8, 15), t(9, 10), "Maths", "#8000FF");
+        cancelled.cancelled = true;
+        cancelled.num = 9;
+        let kept = prefer_shown_lessons(vec![cancelled.clone(), live.clone()]);
+        assert_eq!(kept.len(), 1);
+        assert!(!kept[0].cancelled);
+        assert_eq!(kept[0].num, 1);
+
+        let mut earlier = live.clone();
+        earlier.num = 1;
+        let mut later = live.clone();
+        later.num = 4;
+        let kept = prefer_shown_lessons(vec![earlier, later]);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].num, 4);
+
+        let mut low = cancelled.clone();
+        low.num = 1;
+        let mut high = cancelled;
+        high.num = 4;
+        let kept = prefer_shown_lessons(vec![low, high]);
+        assert_eq!(kept.len(), 1);
+        assert!(kept[0].cancelled);
+        assert_eq!(kept[0].num, 4);
     }
 
     #[test]
@@ -2040,7 +2142,26 @@ mod tests {
         assert_eq!(lesson.subject, "MATHS");
         assert_eq!(lesson.colour, "#8000FF");
         assert_eq!(lesson.num, 2);
+        assert!(!lesson.cancelled);
         assert_eq!(chip_colours(&lesson.colour).0, "#20003F");
+    }
+
+    #[test]
+    fn parse_lesson_keeps_cancelled_courses() {
+        let item = serde_json::json!({
+            "DateDuCours": { "V": "16/09/2026 08:30:00" },
+            "DateDuCoursFin": { "V": "16/09/2026 09:25:00" },
+            "CouleurFond": "#8000FF",
+            "estAnnule": true,
+            "P": 2,
+            "ListeContenus": { "V": [
+                { "G": 16, "L": "MATHS" }
+            ]}
+        });
+        let lesson = parse_lesson(&item, &serde_json::json!({})).unwrap();
+        assert!(lesson.cancelled);
+        assert_eq!(lesson.subject, "MATHS");
+        assert_eq!(lesson.start, NaiveTime::from_hms_opt(8, 30, 0).unwrap());
     }
 
     fn events_as_days() -> Vec<SchoolDay> {
