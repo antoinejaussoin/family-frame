@@ -270,14 +270,6 @@ pub fn adjust(config_dir: &Path, tz: Tz, now: DateTime<Utc>, minutes: i32) -> Re
     })
 }
 
-fn signed(minutes: i32) -> String {
-    if minutes > 0 {
-        format!("+{minutes}")
-    } else {
-        minutes.to_string()
-    }
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct WeekendTotal {
     pub weekend: NaiveDate,
