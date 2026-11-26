@@ -1,12 +1,20 @@
 name: PR Build Check
 
 on:
+  # A cache saved during pull_request is visible only to that PR. Pushing
+  # main stores the Cargo caches on the default branch, which later PRs restore.
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -24,8 +32,6 @@ jobs:
         with:
           workspaces: server
           cache-on-failure: true
-          add-rust-environment-hash-key: false
-          key: ${{ hashFiles('server/Cargo.lock', 'server/Cargo.toml', 'server/rust-toolchain.toml') }}
       - name: cargo test
         run: make test
       - name: cargo check without Pronote/Meross
@@ -33,6 +39,9 @@ jobs:
 
   server:
     name: server (${{ matrix.platform }})
+    # main.yml builds and publishes this image on push. Running it here too
+    # would rebuild Rust in Docker and write the same layer cache.
+    if: github.event_name == 'pull_request'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -93,8 +102,6 @@ jobs:
         with:
           workspaces: firmware
           cache-on-failure: true
-          add-rust-environment-hash-key: false
-          key: ${{ hashFiles('firmware/Cargo.lock', 'firmware/Cargo.toml', 'firmware/rust-toolchain.toml', 'firmware/.cargo/config.toml') }}
       - name: make test
         run: make test
 
@@ -112,8 +119,6 @@ jobs:
         with:
           workspaces: firmware
           cache-on-failure: true
-          add-rust-environment-hash-key: false
-          key: ${{ hashFiles('firmware/Cargo.lock', 'firmware/Cargo.toml', 'firmware/rust-toolchain.toml', 'firmware/.cargo/config.toml') }}
       - name: make build
         run: make build
       - name: make build-oled
@@ -131,8 +136,6 @@ jobs:
         with:
           workspaces: pico-sim
           cache-on-failure: true
-          add-rust-environment-hash-key: false
-          key: ${{ hashFiles('pico-sim/Cargo.lock', 'pico-sim/Cargo.toml', 'pico-sim/rust-toolchain.toml') }}
       - name: make test
         run: make test
       - name: cargo build
