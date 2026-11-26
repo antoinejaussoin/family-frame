@@ -103,6 +103,9 @@
   --when-birthday: #3d0066;
   --when-school: #7373ff;
   --when-bin: #ff6a00;
+  --when-planes: #0000ff;
+  /* Dithers to red + blue + black on Spectra 6. */
+  --planes: #6b21a8;
   /* Small UI: TRMNL at native px only. */
   --type-xs-family: "TRMNL12", sans-serif;
   --type-xs-size: 12px;
@@ -208,6 +211,7 @@ body {
 .todos,
 .joke,
 .school-week,
+.planes-week,
 .forecast,
 .history { overflow: hidden; }
 .today,
@@ -216,6 +220,7 @@ body {
 .todos,
 .joke,
 .school-week,
+.planes-week,
 .forecast,
 .history,
 .tube,
@@ -333,6 +338,7 @@ h2 {
 .todos h2,
 .joke h2,
 .school-week h2,
+.planes-week h2,
 .forecast h2,
 .homework h2,
 .grades h2,
@@ -619,6 +625,12 @@ li {
   color: var(--black);
 }
 
+.today li.planes .when,
+.coming li.planes .when {
+  background: var(--when-planes);
+  color: var(--white);
+}
+
 .today .when {
   font-family: var(--type-body-family);
   font-size: 26px;
@@ -860,6 +872,7 @@ li {
 .todos h2,
 .joke h2,
 .school-week h2,
+.planes-week h2,
 .forecast h2,
 .history h2,
 .tube h2,
@@ -877,6 +890,7 @@ li {
 .todos .section-icon,
 .joke .section-icon,
 .school-week .section-icon,
+.planes-week .section-icon,
 .forecast .section-icon,
 .history .section-icon,
 .tube .section-icon,
@@ -1073,6 +1087,52 @@ li {
 .week-day.is-today {
   background: var(--yellow);
   color: var(--black);
+}
+
+.planes-grid {
+  display: grid;
+  grid-template-columns: 44px repeat(7, minmax(0, 1fr));
+  grid-template-rows: 22px 40px 40px;
+  column-gap: 4px;
+  row-gap: 4px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.planes-week .section-icon {
+  color: var(--planes);
+}
+
+.planes-time {
+  align-self: center;
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
+  font-weight: 700;
+  line-height: 12px;
+  letter-spacing: 0;
+  color: var(--black);
+}
+
+.planes-cell {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  font-family: var(--type-xs-family);
+  font-size: var(--type-xs-size);
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.planes-mark {
+  width: 36px;
+  height: 36px;
+  display: block;
+  color: var(--planes);
 }
 
 .school-week .lesson {

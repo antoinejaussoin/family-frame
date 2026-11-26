@@ -23,6 +23,9 @@ pub struct CalendarEvent {
     /// Wandsworth food & recycling, merged into one calendar row.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub bin: bool,
+    /// Heathrow landing alternation for the runway over the house.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub planes: bool,
 }
 
 /// Today/week title column is ~570px (half of 1600 − padding − time − gaps)
@@ -109,6 +112,10 @@ pub const WEEK_SLOT_PX: i32 = 18;
 /// Hourly forecast strip (heading + 8am–8pm columns). Keep in sync with
 /// `.forecast` / `.forecast-grid` in `dashboard.css`.
 pub const FORECAST_BLOCK_PX: i32 = 136;
+/// Planes week: heading, day labels, morning and afternoon rows.
+/// Keep in sync with `.planes-week` / `.planes-grid` in `dashboard.css`.
+pub const PLANES_BLOCK_PX: i32 =
+    SECTION_HEAD_PX + WEEK_GRID_TOP_PX + WEEK_DAY_LABEL_PX + 40 + 40 + 8;
 
 /// How many Coming next rows fit under Today on the 13.3″ panel.
 pub fn coming_event_capacity(today_count: usize) -> usize {
@@ -251,6 +258,40 @@ pub struct SchoolDay {
     pub end: String,
 }
 
+/// Seven days of Heathrow halves, starting today. Empty hides the grid.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct PlanesWeek {
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub days: Vec<PlanesDay>,
+}
+
+impl PlanesWeek {
+    fn is_empty(&self) -> bool {
+        self.days.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PlanesDay {
+    pub label: String,
+    #[serde(default)]
+    pub today: bool,
+    pub morning: PlanesHalf,
+    pub afternoon: PlanesHalf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PlanesHalf {
+        /// Unused. The cell is an icon chosen by [`Self::kind`].
+    #[serde(default)]
+    pub label: String,
+    /// `on` draws a plane, `east` a crossed plane (that half would have
+    /// been overhead), `off` draws nothing.
+    pub kind: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SchoolWeek {
     /// `School - This week`, or `School - Next week` on Saturday and Sunday.
@@ -383,6 +424,9 @@ pub struct Dashboard {
     /// Minecraft allowance cell on the sidebar footer. `None` hides it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub minecraft: Option<MinecraftView>,
+    /// Heathrow week. Omitted when the source is off.
+    #[serde(default, skip_serializing_if = "PlanesWeek::is_empty")]
+    pub planes: PlanesWeek,
     pub source_note: String,
     /// Homework / grades columns. Skipped in the layout hash JSON.
     #[serde(default, skip)]
@@ -431,6 +475,7 @@ impl Dashboard {
             joke: None,
             school: School::default(),
             minecraft: None,
+            planes: PlanesWeek::default(),
             source_note: String::new(),
             show_school_sections: false,
             show_on_this_day: SHOW_ON_THIS_DAY,
@@ -536,6 +581,8 @@ impl Dashboard {
         } else {
             0
         };
+        let planes_on = !self.planes.days.is_empty();
+        let planes_px = if planes_on { PLANES_BLOCK_PX } else { 0 };
         let forecast_on = self
             .weather
             .days
@@ -553,6 +600,7 @@ impl Dashboard {
         let gaps = |forecast_on: bool, history_on: bool| {
             2 + i32::from(school_on)
                 + i32::from(week_on)
+                + i32::from(planes_on)
                 + i32::from(forecast_on)
                 + i32::from(history_on)
                 - 1
@@ -572,6 +620,7 @@ impl Dashboard {
                 - footer_px
                 - pair_reserve
                 - week_px
+                - planes_px
                 - forecast_px
                 - history_floor
                 - SIDEBAR_GAP_PX * gaps(forecast_on, history_floor > 0))
@@ -591,6 +640,7 @@ impl Dashboard {
             - school_row
             - footer_px
             - week_px
+            - planes_px
             - forecast_px
             - history_floor
             - SIDEBAR_GAP_PX * gaps(forecast_on, history_floor > 0))
@@ -625,6 +675,7 @@ impl Dashboard {
             - school_row
             - pair_px
             - week_px
+            - planes_px
             - forecast_px
             - footer_px
             - SIDEBAR_GAP_PX * gaps(forecast_on, history_floor > 0);
@@ -1377,6 +1428,7 @@ mod tests {
             school: false,
             recurring: false,
             bin: false,
+            planes: false,
         }
     }
 

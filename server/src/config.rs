@@ -255,6 +255,14 @@ pub struct BinsSourceConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+pub struct HeathrowSourceConfig {
+    /// `27L` or `27R`: the westerly landing runway whose approach passes
+    /// over the house. Empty hides the row.
+    pub runway: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct BirthdaysSourceConfig {
     pub people: Vec<Birthday>,
 }
@@ -289,6 +297,9 @@ pub struct SourcesConfig {
     pub ics_urls: Vec<String>,
     pub calendar: Option<CalendarSourceConfig>,
     pub bins: BinsSourceConfig,
+    /// Heathrow half-day landing alternation. Empty runway hides the row.
+    #[serde(default)]
+    pub heathrow: HeathrowSourceConfig,
     pub birthdays: Option<BirthdaysSourceConfig>,
     pub todoist: Option<TodoistConfig>,
     pub meross: Option<MerossConfig>,
@@ -398,6 +409,14 @@ impl Default for BinsSourceConfig {
     }
 }
 
+impl Default for HeathrowSourceConfig {
+    fn default() -> Self {
+        Self {
+            runway: String::new(),
+        }
+    }
+}
+
 impl Default for BirthdaysSourceConfig {
     fn default() -> Self {
         Self { people: Vec::new() }
@@ -425,6 +444,7 @@ impl Default for SourcesConfig {
             ics_urls: Vec::new(),
             calendar: None,
             bins: BinsSourceConfig::default(),
+            heathrow: HeathrowSourceConfig::default(),
             birthdays: None,
             todoist: None,
             meross: None,
@@ -1029,6 +1049,18 @@ impl Config {
         !self.sources.bins.uprn.trim().is_empty()
     }
 
+    pub fn heathrow_enabled(&self) -> bool {
+        matches!(
+            self.sources
+                .heathrow
+                .runway
+                .trim()
+                .to_ascii_uppercase()
+                .as_str(),
+            "27L" | "27R"
+        )
+    }
+
     pub fn pronote_enabled(&self) -> bool {
         !self.pronote.url.trim().is_empty()
             && !self.pronote.username.trim().is_empty()
@@ -1555,6 +1587,7 @@ mod tests {
         assert!(!cfg.pronote.show_sections);
         assert!(cfg.sources.tfl.enabled);
         assert!(cfg.sources.history.enabled);
+        assert!(!cfg.heathrow_enabled());
         assert_eq!(cfg.sources.tfl.lines.len(), 4);
         assert_eq!(cfg.birthdays.len(), 2);
         assert_eq!(cfg.birthdays[0].name, "Maya");

@@ -254,7 +254,10 @@ pub fn adjust(config_dir: &Path, tz: Tz, now: DateTime<Utc>, minutes: i32) -> Re
     let lead = if applied == 0 {
         "Nothing left to remove.".to_string()
     } else if applied != minutes {
-        format!("{verb} {} (that was all that was left).", spoken_minutes(applied))
+        format!(
+            "{verb} {} (that was all that was left).",
+            spoken_minutes(applied)
+        )
     } else {
         format!("{verb} {}.", spoken_minutes(applied))
     };

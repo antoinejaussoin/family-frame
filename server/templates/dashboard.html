@@ -10,7 +10,7 @@
   <link rel="preload" href="/static/fonts/TRMNL16-Bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/TRMNL21-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/TRMNL21-Bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/static/dashboard.css?v=minecraft-2">
+  <link rel="stylesheet" href="/static/dashboard.css?v=planes-4">
 </head>
 <body>
   <main class="panel{% if show_school_sections %} with-school{% endif %}{% if not show_on_this_day or not history %} no-history{% endif %}{% if not joke %} no-joke{% endif %}">
@@ -104,6 +104,14 @@
           <circle cx="32" cy="32" r="22" fill="none" stroke="#ff0000" stroke-width="8"/>
           <rect x="6" y="26" width="52" height="12" rx="2" fill="#0000ff"/>
         </symbol>
+        <!-- Airplane, Phosphor Icons, MIT. https://github.com/phosphor-icons/core -->
+        <symbol id="icon-planes" viewBox="0 0 256 256">
+          <path fill="currentColor" d="M240,136v32a8,8,0,0,1-8,8,7.61,7.61,0,0,1-1.57-.16L156,161v23.73l17.66,17.65A8,8,0,0,1,176,208v24a8,8,0,0,1-11,7.43l-37-14.81L91,239.43A8,8,0,0,1,80,232V208a8,8,0,0,1,2.34-5.66L100,184.69V161L25.57,175.84A7.61,7.61,0,0,1,24,176a8,8,0,0,1-8-8V136a8,8,0,0,1,4.42-7.16L100,89.06V44a28,28,0,0,1,56,0V89.06l79.58,39.78A8,8,0,0,1,240,136Z"/>
+        </symbol>
+        <symbol id="icon-planes-off" viewBox="0 0 256 256">
+          <path fill="currentColor" d="M240,136v32a8,8,0,0,1-8,8,7.61,7.61,0,0,1-1.57-.16L156,161v23.73l17.66,17.65A8,8,0,0,1,176,208v24a8,8,0,0,1-11,7.43l-37-14.81L91,239.43A8,8,0,0,1,80,232V208a8,8,0,0,1,2.34-5.66L100,184.69V161L25.57,175.84A7.61,7.61,0,0,1,24,176a8,8,0,0,1-8-8V136a8,8,0,0,1,4.42-7.16L100,89.06V44a28,28,0,0,1,56,0V89.06l79.58,39.78A8,8,0,0,1,240,136Z"/>
+          <polygon points="36,28 64,12 228,228 200,244" fill="#ff0000"/>
+        </symbol>
         <symbol id="icon-house" viewBox="0 0 64 64">
           <polygon points="32,6 60,32 4,32" fill="#000000"/>
           <rect x="12" y="30" width="40" height="28" fill="#000000"/>
@@ -192,8 +200,8 @@
         {% if events_today %}
         <ol>
           {% for ev in events_today %}
-          <li{% if ev.birthday %} class="birthday"{% elif ev.school %} class="school-day"{% elif ev.bin %} class="bin-day"{% elif ev.all_day %} class="all-day"{% elif not ev.recurring %} class="one-off"{% endif %}>
-            <span class="when">{% if ev.birthday %}Birthday{% elif ev.all_day %}All day{% else %}{{ ev.start }}{% endif %}</span>
+          <li{% if ev.birthday %} class="birthday"{% elif ev.school %} class="school-day"{% elif ev.planes %} class="planes"{% elif ev.bin %} class="bin-day"{% elif ev.all_day %} class="all-day"{% elif not ev.recurring %} class="one-off"{% endif %}>
+            <span class="when">{% if ev.birthday %}Birthday{% elif ev.planes %}Heathrow{% elif ev.all_day %}All day{% else %}{{ ev.start }}{% endif %}</span>
             <span class="what">
               {% if ev.birthday %}
               <svg class="present-icon" viewBox="0 0 64 64" aria-hidden="true"><use href="#icon-present"/></svg>
@@ -253,7 +261,7 @@
         {% if events_coming %}
         <ol>
           {% for ev in events_coming %}
-          <li{% if ev.birthday %} class="birthday"{% elif ev.school %} class="school-day"{% elif ev.bin %} class="bin-day"{% elif ev.all_day %} class="all-day"{% elif not ev.recurring %} class="one-off"{% endif %}>
+          <li{% if ev.birthday %} class="birthday"{% elif ev.school %} class="school-day"{% elif ev.planes %} class="planes"{% elif ev.bin %} class="bin-day"{% elif ev.all_day %} class="all-day"{% elif not ev.recurring %} class="one-off"{% endif %}>
             <span class="when">{{ ev.day_label }}{% if ev.start %} {{ ev.start }}{% endif %}</span>
             <span class="what">
               {% if ev.birthday %}
@@ -396,6 +404,41 @@
         </li>
         {% endfor %}
       </ul>
+    </section>
+    {% endif %}
+
+    {% if planes is defined and planes.days %}
+    <section class="planes-week">
+      <h2>
+        <svg class="section-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="#icon-planes"/></svg>
+        {{ planes.title }}
+      </h2>
+      <div class="planes-grid" aria-label="Heathrow arrivals this week">
+        <div class="planes-time"></div>
+        {% for day in planes.days %}
+        <h3 class="week-day{% if day.today %} is-today{% endif %}">{{ day.label }}</h3>
+        {% endfor %}
+        <div class="planes-time">to 3</div>
+        {% for day in planes.days %}
+        <div class="planes-cell planes-{{ day.morning.kind }}">
+          {% if day.morning.kind == "on" %}
+          <svg class="planes-mark" viewBox="0 0 256 256" aria-hidden="true"><use href="#icon-planes"/></svg>
+          {% elif day.morning.kind == "east" %}
+          <svg class="planes-mark" viewBox="0 0 256 256" aria-hidden="true"><use href="#icon-planes-off"/></svg>
+          {% endif %}
+        </div>
+        {% endfor %}
+        <div class="planes-time">after</div>
+        {% for day in planes.days %}
+        <div class="planes-cell planes-{{ day.afternoon.kind }}">
+          {% if day.afternoon.kind == "on" %}
+          <svg class="planes-mark" viewBox="0 0 256 256" aria-hidden="true"><use href="#icon-planes"/></svg>
+          {% elif day.afternoon.kind == "east" %}
+          <svg class="planes-mark" viewBox="0 0 256 256" aria-hidden="true"><use href="#icon-planes-off"/></svg>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
     </section>
     {% endif %}
 
