@@ -10,7 +10,7 @@
   <link rel="preload" href="/static/fonts/TRMNL16-Bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/TRMNL21-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/fonts/TRMNL21-Bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/static/dashboard.css?v=minecraft-2">
+  <link rel="stylesheet" href="/static/dashboard.css?v=cancelled-lesson">
 </head>
 <body>
   <main class="panel{% if show_school_sections %} with-school{% endif %}{% if not show_on_this_day or not history %} no-history{% endif %}{% if not joke %} no-joke{% endif %}">
@@ -412,7 +412,7 @@
         {% for day in school.week.days %}
         <h3 class="week-day{% if day.today %} is-today{% endif %}" style="grid-column: {{ day.col }}; grid-row: 1">{{ day.label }}</h3>
         {% for lesson in day.lessons %}
-        <div class="lesson" style="grid-column: {{ day.col }}; grid-row: {{ lesson.row_start }} / {{ lesson.row_end }}; background: {{ lesson.colour }}; color: {{ lesson.ink }}">{{ lesson.subject }}</div>
+        <div class="lesson{% if lesson.cancelled %} cancelled{% endif %}" style="grid-column: {{ day.col }}; grid-row: {{ lesson.row_start }} / {{ lesson.row_end }};{% if not lesson.cancelled %} background: {{ lesson.colour }}; color: {{ lesson.ink }};{% endif %}">{% if lesson.cancelled %}<svg class="cancel-slash" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="100" x2="100" y2="0" stroke="#ff0000" stroke-width="3" vector-effect="non-scaling-stroke" shape-rendering="crispEdges"/></svg>{% endif %}{{ lesson.subject }}</div>
         {% endfor %}
         {% endfor %}
       </div>

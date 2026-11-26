@@ -357,6 +357,55 @@ mod tests {
         assert!(html.contains("Français"));
         assert!(!html.contains("Mme "));
         assert!(!html.contains("On this day"));
+        assert!(!html.contains("lesson cancelled"));
+    }
+
+    #[test]
+    fn dashboard_marks_cancelled_lessons() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let mut dash = Dashboard::empty("Family", today);
+        dash.school.week = crate::model::SchoolWeek {
+            title: "School - This week".into(),
+            days: vec![crate::model::SchoolWeekDay {
+                label: "Fri 18".into(),
+                today: true,
+                col: 2,
+                lessons: vec![
+                    crate::model::SchoolLesson {
+                        subject: "Maths".into(),
+                        cancelled: true,
+                        colour: "#ffffff".into(),
+                        ink: "#ff0000".into(),
+                        row_start: 2,
+                        row_end: 3,
+                    },
+                    crate::model::SchoolLesson {
+                        subject: "Français".into(),
+                        cancelled: false,
+                        colour: "#20003F".into(),
+                        ink: "#ffffff".into(),
+                        row_start: 3,
+                        row_end: 4,
+                    },
+                ],
+            }],
+            times: vec![crate::model::SchoolWeekTime {
+                label: "08:15".into(),
+                row: 2,
+                end: false,
+            }],
+            bands: 2,
+        };
+        let html = Templates::load().unwrap().render_dashboard(&dash).unwrap();
+        let cancelled = html.find("class=\"lesson cancelled\"").unwrap();
+        let end = html[cancelled..].find("</div>").unwrap();
+        let chip = &html[cancelled..cancelled + end];
+        assert!(chip.contains("Maths"));
+        assert!(chip.contains("cancel-slash"));
+        assert!(chip.contains("stroke=\"#ff0000\""));
+        assert!(!chip.contains("background:"));
+        assert!(html.contains("background: #20003F"));
+        assert!(html.contains("Français"));
     }
 
     #[test]
