@@ -115,7 +115,7 @@ pub const FORECAST_BLOCK_PX: i32 = 136;
 /// Planes week: heading, day labels, morning and afternoon rows.
 /// Keep in sync with `.planes-week` / `.planes-grid` in `dashboard.css`.
 pub const PLANES_BLOCK_PX: i32 =
-    SECTION_HEAD_PX + WEEK_GRID_TOP_PX + WEEK_DAY_LABEL_PX + 22 + 22 + 6;
+    SECTION_HEAD_PX + WEEK_GRID_TOP_PX + WEEK_DAY_LABEL_PX + 40 + 40 + 8;
 
 /// How many Coming next rows fit under Today on the 13.3″ panel.
 pub fn coming_event_capacity(today_count: usize) -> usize {
@@ -284,9 +284,11 @@ pub struct PlanesDay {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlanesHalf {
-    /// `On`, `Off`, or `East`.
+        /// Unused. The cell is an icon chosen by [`Self::kind`].
+    #[serde(default)]
     pub label: String,
-    /// `on`, `off`, or `east`.
+    /// `on` draws a plane, `east` a crossed plane (that half would have
+    /// been overhead), `off` draws nothing.
     pub kind: String,
 }
 

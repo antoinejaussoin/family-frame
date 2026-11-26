@@ -356,7 +356,8 @@ mod tests {
         assert!(html.contains("week-day is-today"));
         assert!(html.contains("Sun 8"));
         assert!(html.contains("planes-off"));
-        assert!(html.contains("planes-east"));
+        assert_eq!(html.matches("href=\"#icon-planes\"/>").count(), 1);
+        assert_eq!(html.matches("href=\"#icon-planes-off\"/>").count(), 1);
         assert!(html.contains(">to 3</div>"));
         assert!(html.contains(">after</div>"));
     }

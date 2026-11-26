@@ -212,10 +212,10 @@ config; the default is Northern / Circle / District / Victoria.
 ### Heathrow arrivals
 
 A week grid under the forecast, in the same shape as the school
-timetable: seven days from today, each split at 15:00. **On** is the
-approach over the house, **Off** is the other runway, **East** means
-the forecast wind is strong enough that arrivals come from the west
-and miss London. Heathrow keeps landing towards the west until the
+timetable: seven days from today, each split at 15:00. A plane is the
+approach over the house. A crossed plane is that same half when the
+wind turns arrivals away from London. An empty cell is the other
+runway. Heathrow keeps landing towards the west until the
 tailwind passes about 5 knots. The wind is the BBC forecast for
 `sources.weather.location_id`; a live Heathrow observation overrides
 the half-day that is happening now.

@@ -104,6 +104,8 @@
   --when-school: #7373ff;
   --when-bin: #ff6a00;
   --when-planes: #0000ff;
+  /* Dithers to red + blue + black on Spectra 6. */
+  --planes: #6b21a8;
   /* Small UI: TRMNL at native px only. */
   --type-xs-family: "TRMNL12", sans-serif;
   --type-xs-size: 12px;
@@ -1090,11 +1092,15 @@ li {
 .planes-grid {
   display: grid;
   grid-template-columns: 44px repeat(7, minmax(0, 1fr));
-  grid-template-rows: 22px 22px 22px;
+  grid-template-rows: 22px 40px 40px;
   column-gap: 4px;
-  row-gap: 3px;
+  row-gap: 4px;
   margin-top: 8px;
   min-width: 0;
+}
+
+.planes-week .section-icon {
+  color: var(--planes);
 }
 
 .planes-time {
@@ -1122,18 +1128,11 @@ li {
   white-space: nowrap;
 }
 
-.planes-cell.planes-on {
-  background: var(--blue);
-  color: var(--white);
-}
-
-.planes-cell.planes-east {
-  background: var(--yellow);
-  color: var(--black);
-}
-
-.planes-cell.planes-off {
-  color: var(--black);
+.planes-mark {
+  width: 36px;
+  height: 36px;
+  display: block;
+  color: var(--planes);
 }
 
 .school-week .lesson {

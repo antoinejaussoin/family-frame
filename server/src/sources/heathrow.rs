@@ -9,8 +9,8 @@
 //! Daytime westerly preference holds until the tailwind on runway 27 exceeds
 //! 5 knots. The BBC forecast (same location as the weather row) supplies the
 //! wind for each half-day. A fresh EGLL observation overrides the half that
-//! is happening now. `East` means arrivals are from the west, so the house
-//! is clear of both approaches.
+//! is happening now. A plane marks the overhead half. A crossed plane is
+//! that same half when arrivals are turned away from London.
 
 use std::time::Duration;
 
@@ -224,15 +224,15 @@ fn half_state(
         Half::Afternoon => morning_runway(date) != runway,
     };
     match (flow, ours) {
-        (Flow::Easterly, _) => half_cell("East", "east"),
-        (Flow::Westerly, true) => half_cell("On", "on"),
-        (Flow::Westerly, false) => half_cell("Off", "off"),
+        (_, false) => half_cell("off"),
+        (Flow::Easterly, true) => half_cell("east"),
+        (Flow::Westerly, true) => half_cell("on"),
     }
 }
 
-fn half_cell(label: &str, kind: &str) -> PlanesHalf {
+fn half_cell(kind: &str) -> PlanesHalf {
     PlanesHalf {
-        label: label.into(),
+        label: String::new(),
         kind: kind.into(),
     }
 }
@@ -516,7 +516,7 @@ mod tests {
         assert_eq!(week.days[1].morning.kind, "on");
         assert_eq!(week.days[1].afternoon.kind, "off");
         assert_eq!(week.days[2].morning.kind, "east");
-        assert_eq!(week.days[2].afternoon.kind, "east");
+        assert_eq!(week.days[2].afternoon.kind, "off");
         assert_eq!(week.days[6].label, "Sat 14");
     }
 
